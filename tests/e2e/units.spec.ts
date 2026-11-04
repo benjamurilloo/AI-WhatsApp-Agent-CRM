@@ -508,9 +508,9 @@ test("una venta sin pedido vende sus unidades, rechaza una reservada y su anulac
     "reserved",
   ]);
 
-  // «Anular» quedó en «Más» (brief-24.6.2-b, AC-7): es un <details>, y el enlace aparece recién al
+  // «Anular» vive en el menú de desbordamiento (brief-24.6.2-b, AC-7): el enlace aparece recién al
   // abrirlo. Igual que en `sales.spec.ts`.
-  await page.getByRole("group").filter({ hasText: "Más" }).first().click();
+  await page.getByRole("button", { name: "Más acciones de la venta" }).click();
   await page.getByRole("link", { name: "Anular venta" }).click();
   await page.getByRole("radio", { name: "Error de carga" }).check();
   // «Anular venta» desde la 24.6.2-d, como la lámina 04 (AC-10).

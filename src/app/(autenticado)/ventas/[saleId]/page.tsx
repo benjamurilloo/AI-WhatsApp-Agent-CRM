@@ -26,13 +26,17 @@ import {
 import { DetailList } from "@/app/_components/detail-list";
 import {
   cardClass,
-  dangerOutlineLinkClass,
   linkClass,
   primaryLinkClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
+import {
+  moreActionDangerClass,
+  moreActionItemClass,
+} from "@/app/_components/more-action-styles";
+import { MoreActions } from "@/app/_components/more-actions";
 import { PageNotice } from "@/app/_components/page-notice";
 import { ReceiptForm } from "@/app/_components/receipt-form";
 import { SectionCard } from "@/app/_components/section-card";
@@ -410,28 +414,35 @@ export default async function SalePage({
               actions={tab === "resumen" ? <PrintButton /> : null}
               more={
                 isAdmin && saleVoid === null ? (
-                  // «Anular» queda en «Más» (AC-7). Es un <details>, así que abre y cierra sin
-                  // JavaScript, igual que las pestañas son enlaces y no botones.
-                  <details className="relative">
-                    <summary
-                      className={`${linkClass} inline-flex min-h-11 cursor-pointer list-none items-center px-3`}
-                    >
-                      Más
-                    </summary>
-                    <div
-                      className={`${cardClass} absolute right-0 z-10 mt-2 w-max max-w-[min(16rem,calc(100vw-2rem))] p-3`}
-                    >
+                  // «Anular» vive en el menú de desbordamiento (AC-7), que es el **mismo de todas
+                  // las fichas**: `MoreActions` con `iconOnly`, el botón de tres puntos de la ficha
+                  // del producto, del cliente y de la entrada.
+                  //
+                  // *Corregido el 2026-11-04*, por el recorrido del usuario en producción (AC-19).
+                  // La 24.6.2-b lo había escrito a mano, como un `<details>` con la palabra «Más»:
+                  // resolvía lo mismo sin JavaScript, pero no se parecía a ningún otro encabezado
+                  // del sistema. Una pieza propia que duplica una compartida no se nota en una
+                  // pantalla sola; se nota al lado de las otras, y es el usuario quien la ve.
+                  //
+                  // **Sin JavaScript no se pierde nada**: `MoreActions` esconde el botón hasta
+                  // hidratar y deja la lista a la vista, que es como ya andaban las otras fichas.
+                  <MoreActions
+                    id="mas-acciones-venta"
+                    label="Más acciones de la venta"
+                    iconOnly
+                  >
+                    <li>
                       <Link
                         // Conserva la pestaña: desde la 24.6.2-d el diálogo vive en la página y no
                         // dentro de «Resumen», así que anular desde «Cobros» ya no cambia de pestaña.
                         href={`${selfHref}${selfHref.includes("?") ? "&" : "?"}confirmar=anular`}
-                        className={dangerOutlineLinkClass}
+                        className={`${moreActionItemClass} ${moreActionDangerClass}`}
                       >
                         <Icon name="close" className="size-4" />
                         Anular venta
                       </Link>
-                    </div>
-                  </details>
+                    </li>
+                  </MoreActions>
                 ) : null
               }
             />

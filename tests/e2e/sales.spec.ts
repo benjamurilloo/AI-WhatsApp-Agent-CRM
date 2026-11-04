@@ -643,9 +643,9 @@ test("brief-20.4: un admin anula una venta sin pedido con el teclado, repone el 
   await expect(page.getByRole("region", { name: "Anulación" })).toContainText(
     "Esta venta está vigente.",
   );
-  // «Anular» quedó en «Más» (brief-24.6.2-b, AC-7). Es un <details>, así que se abre con el
-  // teclado y sin JavaScript, y recién entonces aparece el enlace.
-  await page.getByRole("group").filter({ hasText: "Más" }).first().click();
+  // «Anular» vive en el menú de desbordamiento (brief-24.6.2-b, AC-7), que desde el recorrido
+  // del 2026-11-04 es el mismo `MoreActions` de las demás fichas: el botón de tres puntos.
+  await page.getByRole("button", { name: "Más acciones de la venta" }).click();
   await page.getByRole("link", { name: "Anular venta" }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\?confirmar=anular$/);
