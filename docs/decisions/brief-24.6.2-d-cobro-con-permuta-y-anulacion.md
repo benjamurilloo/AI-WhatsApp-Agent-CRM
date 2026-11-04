@@ -1,7 +1,8 @@
 # Brief 24.6.2-d — Ventas: cobro con permuta y anulación
 
 - **Tipo de tarea**: `implementation`.
-- **Estado**: **aprobado por el usuario el 2026-11-04, con las recomendaciones.** Las cinco
+- **Estado**: **CERRADA el 2026-11-04**, desplegada en `7432629` y recorrida por el usuario. El
+  §Cierre está al final. *Aprobado por el usuario el 2026-11-04, con las recomendaciones.* Las cinco
   decisiones que quedaban abiertas —D-1, D-3, D-5, D-7 y D-8— se cierran en la opción recomendada,
   y cada una lo dice en su apartado. **Aprobar el brief no autoriza commit, push ni despliegue**:
   cada uno se pide en su turno.
@@ -606,3 +607,41 @@ Ventas queda entero: listado, alta de mostrador, ficha, comprobante, cobro y anu
 escribe hoy por otras rutas.
 **Mejora posterior**: el rediseño de la seña de un pedido (D-1), la garantía real de la vista previa
 de la anulación (D-5, empieza por un ADR) y el objetivo táctil de 44 px.
+
+## Cierre
+
+**Cerrada el 2026-11-04.** Nivel alcanzado: **validado en staging**. No certifica preparado para
+producción.
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 a AC-13 | Cumplidos | `tests/e2e/sales.spec.ts` (el panel, la previsión, el diálogo, los tres orígenes, sin JavaScript), `tests/integration/{receipts,trade-in-payments}.test.ts` y la CI de `6f2dba7` |
+| AC-14 · comparación visual | Cumplido | Las dos tablas entrada por entrada de este brief, sobre capturas del build de producción. **Encontró lo que ninguna prueba vio**: el fondo del diálogo no se atenuaba |
+| AC-15 · axe | Cumplido | `expectAccessible` dentro de los casos de `sales.spec.ts`, en verde en la CI |
+| AC-16 · `Screens.md` | Cumplido **después de la revisión** | No traía ninguna de las diferencias con la v2, que el criterio pide por escrito. Agregadas las seis, con su motivo |
+| AC-17 · CI sobre el SHA exacto | Cumplido | Run 41831878111 sobre `6f2dba7`, `success`, 36,1 min, **leída por `headSha`**. El cambio del menú tiene la suya: run 41844563682 sobre `7432629` |
+| AC-18 · revisión independiente | Cumplido | R1, seis hallazgos, ninguno bloqueante, todos reales. §La revisión independiente de este brief |
+| AC-19 · recorrido del usuario | Cumplido | 2026-11-04, sobre `6f2dba7`. Encontró **un defecto estético**: el menú «Más» hecho a mano. Corregido en `7432629` y vuelto a recorrer |
+
+**Las dos mediciones**: M-1 dio **6 sentencias** con 2, 11 y 41 ventas del cliente, planas, en 12, 13
+y 12 ms. M-2 quedó **declarado como no medido** y verificado por el camino del código, con el mismo
+criterio que AC-11-b de la 24.6.2-b.
+
+**Lo que este cierre deja aprendido**, además de lo que ya está en §Lo que se encontró implementando
+y en §La revisión independiente:
+
+- **`npx playwright test` no construye.** `next start` sirve el `.next` que haya, y `reuseExistingServer:
+  false` reinicia el servidor pero no reconstruye. **Tres corridas locales de extremo a extremo
+  pasaron en verde habiendo probado un build de dos horas antes**, y se informaron como evidencia
+  del código corregido sin serlo. Se descubrió solo porque el cambio del menú sí tenía una prueba
+  que lo miraba: las otras no habrían avisado nunca. Un resultado local de extremo a extremo no vale
+  sin `npm run build` inmediatamente antes, o se declara como lo que es. La CI no tiene el problema
+  porque construye desde cero.
+- **El control negativo del salto de proxy por túnel SOCKS dejó de ser el camino principal.** Tercer
+  despliegue seguido en que no se puede abrir; la variante desde dentro del droplet contra el
+  dominio público es la que funciona, y da la misma garantía por el mismo mecanismo.
+
+**Pendientes que este cierre no toca**, declarados: el objetivo táctil de 44 px; la inconsistencia
+entre el listado y la ficha (D-4 y V-1 de la 24.6.2-e); la garantía real de la vista previa, que
+empieza por enmendar el punto 6 del ADR 0022; y que `docs/decisions/README.md` **no indexa ningún
+brief de la serie 24.6**, hallazgo de la revisión independiente, anterior a esta subfase.

@@ -2,6 +2,42 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-11-04 — 24.6.2-d: el cobro con permuta y el efecto de la anulación
+
+Decimonovena subfase de la Fase 24 ([brief-24.6.2-d](docs/decisions/brief-24.6.2-d-cobro-con-permuta-y-anulacion.md)). El cobro de una venta deja de ser una ruta aparte y pasa a ser el **panel `?panel=cobro`** de la pestaña «Cobros» de la ficha, con la lámina 03: la ficha del usado —valor reconocido, ya aplicado y disponible— y la **«Vista previa»** del cobro. La anulación pasa a ser el **diálogo de la lámina 04**, con «Efecto de la anulación» **calculado** donde antes había dos textos fijos que no miraban la venta. **Sin migraciones, sin tablas y sin contratos nuevos**; siguen **67** migraciones.
+
+**Certifica:**
+
+- **Ninguna regla de dinero es nueva.** Las siete de la permuta las puso la 29.7.2 y siguen corriendo dentro de la transacción del cobro; `createSaleReceipt` y `voidSale` no cambiaron. Lo único que cambió en el camino de escritura es un parámetro **opcional** de `saleStanding` —la cuenta del cliente ya leída—, que de sus cuatro llamadores solo usa el nuevo.
+- **El efecto en dinero es la misma regla corrida dos veces, no una segunda versión de la regla.** Se arma la cuenta del cliente con la venta vigente y otra vez con la venta marcada anulada, se corre `imputeAccount` en las dos y se toman las diferencias. El contrafáctico se arma con `ledgerFrom` y no tocando la entrada a mano, porque anular la venta **también suelta la seña de su pedido**: eso lo decide el recálculo de la venta vigente, y escribirlo de nuevo habría sido reimplementar el punto 5 del [ADR 0022](docs/decisions/0022-cobros-y-caja.md).
+- **La lectura nueva mide 6 sentencias y no crece con la cuenta del cliente**: 12, 13 y 12 ms con **2, 11 y 41 ventas**. La primera versión medía 10, porque leía la cuenta dos veces; hacer que `saleStanding` acepte la cuenta ya leída compró las otras cuatro.
+- **La vista previa del dinero se declara como una foto, y la pantalla lo dice.** La línea 129 del ADR 0022 establece que la anulación **no mira los cobros**: entre leer el diálogo y confirmar puede entrar uno y la anulación se hace igual con otra cifra. Volver a leer al confirmar achicaría la ventana sin cerrarla, y una comprobación que reduce un riesgo sin eliminarlo compra una confianza que no respalda. Cerrarla de verdad es enmendar el punto 6 del ADR, que es otra subfase: quedó como condición de detención y no se cruzó.
+- **El diálogo anda sin JavaScript porque es un `<dialog>` nativo.** Con JavaScript se promueve a modal y trae el fondo atenuado, el foco atrapado y el cierre con Escape **sin escribirlos**; sin JavaScript queda el `<dialog open>` del servidor, un bloque más de la página. **22 archivos de `tests/e2e/` prueban esta aplicación sin JavaScript** —la cifra se contó, no se heredó—, y un modal de estado de cliente solo anda con él.
+- **El fondo del diálogo no se atenuaba, y no lo encontró ninguna prueba.** `backdrop:bg-black/40` no generaba una sola regla, porque `globals.css` borra la paleta por omisión de Tailwind con `--color-*: initial`. Lo encontró **poner la captura al lado de la lámina**, que es el instrumento que la regla de esta fase pide, y se arregló con `bg-overlay`, el token que los otros dos `<dialog>` del repositorio ya usaban.
+- **«Conservar venta» tiene el foco, y hubo que ponérselo a mano.** El `<a>` que Next renderiza **no lleva el atributo `autofocus`**, medido sobre el build, así que `showModal()` se quedaba con la cruz de cerrar. En una operación que no se deshace el foco va a la salida segura.
+- **La revisión independiente dio R1 con seis hallazgos, y los seis eran reales.** Ninguno bloqueante. El mayor: el efecto en dinero informaba solo los cobros directos y **dejaba afuera lo que la regla había imputado a la venta desde el remanente**, así que una venta cubierta con un **cobro a cuenta** no decía **nada** del dinero —la pantalla no dibuja la fila cuando ese número es cero— y una con las dos cosas conservaba un importe y repartía otro más grande. Se reprodujo con dos pruebas **antes** de arreglar nada, y se comprobó que se ponen rojas deshaciendo el arreglo. La corrección es de una línea: lo cobrado es directo + seña + imputado, el mismo criterio que el encabezado usa para decir «Cobrada», y con eso los tres términos del reparto suman exactamente eso.
+
+**No certifica:**
+
+- **Que la anulación mire los cobros al confirmar.** Sigue sin hacerlo, por el punto 6 del ADR 0022. La pantalla avisa que el importe está calculado ahora.
+- **El costo de las otras pestañas, M-2.** Verificado **por el camino del código y no medido**: el contador de sentencias envuelve el pool del proceso de los tests y Next corre en otro. Las tres lecturas nuevas están cada una detrás de su condición.
+- **El objetivo táctil de 44 px**, que sigue medido y sin corregir, y es una subfase propia.
+
+**Lo que el recorrido del usuario en producción encontró**: el encabezado de la venta tenía su propio `<details>` con la palabra «Más», hecho a mano por la 24.6.2-b, que no se parecía a ningún otro encabezado del sistema. Pasó a ser el mismo `MoreActions` de tres puntos de las fichas del producto, del cliente y de la entrada. Corrige una decisión de la 24.6.2-b y **no estaba en el alcance de este brief**: va como commit aparte.
+
+**Despliegue y evidencia:**
+
+| | |
+|---|---|
+| Implementación | **`6f2dba7`**, CI **`success`** (run 41831878111, 36,1 min, leída por `headSha`), vuelta atrás **`c59b4b1`** |
+| Menú unificado | **`7432629`**, CI **`success`** (run 41844563682, leída por `headSha`), vuelta atrás **`6f2dba7`** |
+| Migraciones | **ninguna**: cero archivos de `drizzle/` entre los tres SHA; siguen 67 |
+| Verificación del runbook | Los siete pasos sobre `6f2dba7`; sobre `7432629`, los cinco que el cambio podía afectar —los dos de configuración y salto de proxy se declararon **no vueltos a medir**, porque el commit no toca nginx, ni el esquema, ni el código de sesión |
+
+**Nivel alcanzado: validado en staging.** No certifica preparado para producción.
+
+**Una trampa del entorno que costó tres informes falsos, y conviene no repetir**: `npx playwright test` **no construye**. `next start` sirve el `.next` que haya, así que tres corridas locales de extremo a extremo pasaron en verde **habiendo probado un build de dos horas antes**, sin avisar. Se descubrió solo porque el cambio del menú sí tenía una prueba que lo miraba. Un resultado local de extremo a extremo no vale sin `npm run build` inmediatamente antes.
+
 ## 2026-11-03 — 24.6.2-c: el mostrador vende en dos monedas
 
 Decimoctava subfase de la Fase 24 ([brief-24.6.2-c](docs/decisions/brief-24.6.2-c-mostrador-con-dos-monedas.md)). El alta de mostrador de **`/ventas/nueva`** acepta líneas en **monedas distintas** y al emitir produce **un comprobante por moneda**, cada uno con su número y su cobro, en **una sola transacción**. Sale del pedido del usuario al recorrer la 24.6.2: el negocio vende un accesorio en pesos y un equipo en dólares en la misma atención, y la pantalla lo rechazaba. **Sin migraciones, sin tablas, sin contratos y sin lecturas nuevas.**
