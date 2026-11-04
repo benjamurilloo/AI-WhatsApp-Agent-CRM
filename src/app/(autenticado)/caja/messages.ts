@@ -11,6 +11,7 @@ import type {
   RecordCashMovementResult,
   RenamePaymentMethodResult,
 } from "@/modules/cash";
+import type { IconName } from "@/app/_components/icons";
 import { formatMoney } from "@/shared/money";
 import type { ReferenceLineText } from "./reference-total";
 
@@ -27,6 +28,68 @@ export const NO_PAYMENT_METHODS_MESSAGE =
 // ADR 0019, punto 6, como en la venta.
 export const NOT_AN_INVOICE_LEGEND = "Documento no válido como factura";
 export const UNKNOWN_MEMBER_TEXT = "Usuario no disponible";
+
+// **Los textos de la lámina 01** (brief-24.7.1).
+//
+// El aviso de moneda no es decorativo: separa cuatro cosas que se confunden —la caja física, las
+// ventas emitidas, la deuda de los clientes y un saldo bancario— y dice por qué una transferencia
+// o una permuta no aparecen acá aunque sean cobros.
+export const CASH_CURRENCY_NOTE =
+  "El efectivo se controla por moneda. Las transferencias y las permutas no integran esta caja.";
+
+// **Lo que un viewer no ve, dicho** (brief-24.7.1, D-1). Sus pagos a proveedores y de usados suman
+// a los totales de arriba y no están en la lista de abajo, porque `cash` no le da el detalle
+// (brief-22.6, D-9). Callarlo dejaría una lista que no cuadra con su propio total, que es el modo
+// de falla que la 24.6.2-d pagó caro.
+export const CASH_VIEWER_DETAIL_NOTE =
+  "Los pagos a proveedores y de usados suman a los totales, y su detalle es solo para un administrador: por eso no están en esta lista.";
+
+// El aviso de la lámina 03: qué NO es este movimiento. Un gasto y un pago a proveedor tienen su
+// propio camino, y la lista de motivos de caja no los incluye a propósito (brief-21.2, D-5).
+export const MOVEMENT_KIND_NOTE = {
+  contribution:
+    "No registra una venta ni un cobro. Es efectivo que entra a la caja por fuera de una operación.",
+  withdrawal:
+    "No registra una compra ni un pago a proveedor. El dinero se retira físicamente.",
+} as const;
+
+// Los textos de la revisión del movimiento (brief-24.7.1, D-2; lámina 03).
+export const PREVIEW_TITLE = {
+  contribution: "Revisión del aporte",
+  withdrawal: "Revisión del retiro",
+} as const;
+
+// **Por qué este aviso y no el de la anulación**: acá el servidor vuelve a comprobar la regla
+// dentro de la transacción al registrar, así que la previsión anticipa el rechazo y no promete
+// nada que la escritura no compruebe. La anulación de una venta necesita decir «calculado ahora»
+// porque el ADR 0022 establece que no mira los cobros; este caso no.
+export const MOVEMENT_PREVIEW_NOTE =
+  "La disponibilidad se vuelve a comprobar al guardar.";
+
+// **Los textos de la lámina 04**, el paso de revisión del cierre.
+//
+// Las tres advertencias son reglas que ya rigen, dichas antes de confirmar y no después:
+//
+// - el arqueo se inserta y la sesión cerrada no se edita ni se reabre (brief-21.2, D-4);
+// - un faltante **no** escribe ningún movimiento: `closeCashSession` inserta los montos, el cierre
+//   y la auditoría, y nada más — verificado en `src/modules/cash/service.ts`;
+// - si entra otro movimiento mientras confirmabas, el cierre recalcula lo esperado con el bloqueo
+//   tomado y vuelve a pedir la revisión (R-5 de la 29.4).
+export const CLOSE_PHYSICAL_NOTE =
+  "Lo contado es físico; la diferencia no se compensa entre monedas.";
+
+export const CLOSE_WARNINGS = [
+  "El arqueo se guarda y la sesión cerrada no se edita ni se reabre.",
+  "El faltante no genera un retiro automático.",
+  "Si entra otro movimiento, hay que revisar otra vez.",
+] as const;
+
+// **El aviso del arqueo guardado** (lámina 05). Un arqueo es una foto: lo que se insertó al
+// cerrar queda tal cual, y una anulación posterior se registra aparte, en «Anulaciones posteriores
+// al cierre», sin reescribirlo. Hasta la 24.7.1 esto solo se decía cuando había alguna; ahora se
+// dice siempre, que es cuando sirve: antes de que aparezca la primera.
+export const ARQUEO_SAVED_NOTE =
+  "Valores guardados al cierre. Una anulación posterior no reescribe este arqueo.";
 
 export const KIND_LABEL: Record<CashMovementKind, string> = {
   contribution: "Aporte",
@@ -78,6 +141,18 @@ export function unexpectedErrorMessage(requestId: string): string {
 }
 
 // La diferencia de un arqueo, con su signo: «sobrante», «faltante» o «sin diferencia».
+// **El tono de una diferencia** (lámina 04): un estado no depende solo del color, lleva nombre e
+// ícono (brief-24.1, D-6). Sin diferencia es un hecho bueno y se ve verde; un sobrante y un faltante
+// son los dos algo que explicar, así que comparten el ámbar: la lámina pinta el faltante y acá el
+// sobrante va igual, porque un sobrante tampoco es normal en un arqueo.
+export function differenceTone(difference: {
+  sign: "positive" | "negative" | "zero";
+}): { tone: "success" | "warning"; icon: IconName } {
+  return difference.sign === "zero"
+    ? { tone: "success", icon: "circleCheck" }
+    : { tone: "warning", icon: "alert" };
+}
+
 export function differenceText(
   difference: { sign: "positive" | "negative" | "zero"; amount: string },
   currency: string,

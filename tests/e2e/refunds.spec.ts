@@ -238,10 +238,20 @@ test("un admin anula con el teclado un cobro en efectivo de la sesión abierta y
     name: "Totales por moneda de la sesión C-000002",
   });
   // Inicial 2.000 + cobros 500 − anulados 500: lo esperado vuelve a 2.000, y los cobros netos, a 0.
-  await expect(totals).toContainText(/\$\s0,00/);
+  //
+  // **Anclado al concepto y no a «alguna celda en cero».** Con la tabla transpuesta de la 24.7.1
+  // hay varias celdas en cero en cualquier sesión —Aportes, Retiros, Devoluciones—, así que
+  // buscar «0,00» suelto pasaba aunque la anulación no hubiera restado nada. Lo encontró la
+  // revisión independiente de la 24.7.1.
+  const fila = (concepto: string) =>
+    totals.getByRole("row").filter({ hasText: concepto });
+  await expect(fila("Cobros en efectivo")).toContainText(/\$\s0,00/);
+  await expect(fila("Esperado")).toContainText(/\$\s2\.000,00/);
+  // Desde la 24.7.1 el cobro anulado se lee en la lista unificada de la caja, con su marca
+  // (brief-24.7.1, D-1); su tarjeta propia quedó en la pantalla 26.
   await expect(
     page.getByRole("region", {
-      name: "Cobros en efectivo de la sesión C-000002",
+      name: "Movimientos de la sesión C-000002",
     }),
   ).toContainText("Anulado");
 

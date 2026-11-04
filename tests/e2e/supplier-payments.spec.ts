@@ -262,9 +262,14 @@ test("el pago en efectivo baja lo esperado; los rechazos por lo que falta y por 
   const totals = page.getByRole("region", {
     name: "Totales por moneda de la sesión C-000001",
   });
+  // **Desde la 24.7.1 la tabla por moneda está transpuesta** (brief-24.7.1): una fila por
+  // concepto y una columna por moneda, así que la fila ya no es «la moneda» sino «el concepto».
+  // Nombrar el concepto, en vez de contar filas, dice además qué se está midiendo.
+  const fila = (concepto: string) =>
+    totals.getByRole("row").filter({ hasText: concepto });
   await expect(totals).toContainText("Pagos a proveedores");
-  await expect(totals.getByRole("row").nth(1)).toContainText("$ 250,00");
-  await expect(totals.getByRole("row").nth(1)).toContainText("$ 50,00");
+  await expect(fila("Pagos a proveedores")).toContainText("$ 250,00");
+  await expect(fila("Esperado")).toContainText("$ 50,00");
   const list = page.getByRole("region", {
     name: "Pagos a proveedores en efectivo de la sesión C-000001",
   });
@@ -451,6 +456,27 @@ test("un viewer ve el total de los pagos en la caja, sin la lista, y el aviso en
   await expect(page.getByText("PP-000001")).toHaveCount(0);
   await expect(page.getByText("Importaciones Sur")).toHaveCount(0);
   await expectAccessible(page, "sesión vista por un viewer");
+
+  // **El escenario de D-1, en la pantalla 21** (brief-24.7.1): este `viewer` sí tiene un pago a
+  // proveedor en la sesión. Su total lo incluye —1.000 − 200— y la lista unificada **no lo
+  // muestra**, porque `cash` no le da el detalle (brief-22.6, D-9). Esa diferencia es la que la
+  // línea tiene que explicar, y este es el único estado del sistema donde existe: hasta la
+  // revisión independiente de la 24.7.1 no se probaba en ninguna parte.
+  await page.goto("/caja");
+  const totalesHoy = page.getByRole("region", {
+    name: "Totales por moneda de la sesión C-000001",
+  });
+  await expect(totalesHoy).toContainText("Pagos a proveedores");
+  await expect(totalesHoy).toContainText("$ 800,00");
+  // La lista unificada de este `viewer` **sale vacía**: lo único que movió efectivo en la sesión
+  // es el pago a proveedor, y no lo recibe. Por eso no hay tabla que mirar, y por eso el aviso de
+  // abajo es la única cosa que explica por qué el total no cuadra con lo que se ve.
+  await expect(page.getByText("PP-000001")).toHaveCount(0);
+  await expect(page.getByText("Todavía no hubo movimientos.")).toBeVisible();
+  await expect(
+    page.getByText(/su detalle es solo para un administrador/),
+  ).toBeVisible();
+  await expectAccessible(page, "caja de un viewer con un pago oculto");
 
   for (const url of [
     "/compras/pagos",

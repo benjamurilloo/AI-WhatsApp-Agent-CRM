@@ -90,6 +90,8 @@ function CurrencyRowFields({
           Moneda {position}
         </label>
         <CurrencySelect
+          // Que pueda encogerse: a 320 px su opción más larga desbordaba la página (24.7.1, AC-8).
+          className="w-full min-w-0"
           id={currencyId}
           defaultValue={row.currency}
           currencies={currencies}

@@ -26,7 +26,7 @@ export async function CashSubNav({
       items={[
         {
           href: "/caja",
-          label: "Caja de hoy",
+          label: "Caja actual",
           icon: "banknote",
           current: current === "caja",
         },
@@ -48,12 +48,19 @@ export async function CashSubNav({
           icon: "undo",
           current: current === "devoluciones",
         },
+        // **«Deudores» se queda a la vista.** La primera versión lo mandó al menú, y D-3 (a) nombra
+        // solo «Medios de pago» y «Cotización»: mover un destino que la decisión no mencionó es
+        // cambiar la navegación por mi cuenta. Lo encontró la revisión independiente.
         {
           href: "/caja/deudores",
           label: "Deudores",
           icon: "users",
           current: current === "deudores",
         },
+      ]}
+      // Los destinos secundarios de la lámina 01 (brief-24.7.1, D-3): se consultan y se configuran,
+      // no son el trabajo del día. Si estás parado en uno, la barra lo muestra igual.
+      more={[
         ...(mainCurrency
           ? [
               {

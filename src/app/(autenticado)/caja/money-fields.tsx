@@ -28,6 +28,7 @@ export function CurrencySelect({
   invalid,
   describedBy,
   onChange,
+  className = "",
 }: {
   id: string;
   defaultValue: string;
@@ -36,6 +37,17 @@ export function CurrencySelect({
   invalid?: boolean;
   describedBy?: string;
   onChange: (currency: string) => void;
+  // **Agregado en la 24.7.1**, para que las pantallas de caja puedan dejarlo encogerse.
+  //
+  // Un `<select>` tiene un ancho mínimo propio: el de su opción más larga. Acá la más larga es el
+  // nombre completo de una moneda, y a 320 px eso mide 413 px, así que **la página entera
+  // desbordaba**: 109 px en el movimiento y 130 px en el cierre. Viene de la 21.2 y lo encontró el
+  // barrido de anchos de la 24.7.1 (AC-8), que para la caja no existía.
+  //
+  // La clase va por prop y no adentro para que las pantallas de otros módulos que usan este
+  // componente —cobrar a cuenta, pagos a proveedores— queden exactamente como están. *Desvío de la
+  // lista cerrada del brief-24.7.1, que marcaba este archivo «sin tocar»; autorizado el 2026-11-04.*
+  className?: string;
 }) {
   return (
     <select
@@ -46,7 +58,7 @@ export function CurrencySelect({
       onChange={(event) => onChange(event.target.value)}
       aria-invalid={invalid ? true : undefined}
       aria-describedby={describedBy}
-      className={selectClass}
+      className={`${selectClass} ${className}`}
     >
       <option value="">{required ? "Elegí una moneda" : "Sin moneda"}</option>
       {currencies.map((code) => (

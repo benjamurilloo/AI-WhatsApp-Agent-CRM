@@ -225,11 +225,13 @@ test("un admin seña un pedido en dos medios con el teclado, ve el rechazo de un
   await expect(receipt).toContainText("P-000001");
   await page.getByRole("link", { name: "Volver al pedido" }).click();
 
-  // La caja dice el destino de la seña en efectivo: el pedido, no una venta.
+  // La caja dice el destino de la seña en efectivo: el pedido, no una venta. Desde la 24.7.1 lo
+  // dice en el concepto de la lista unificada (brief-24.7.1, D-1), donde antes había una columna
+  // «Destino» en la tarjeta de cobros.
   await page.goto("/caja");
   await expect(
-    page.getByRole("region", { name: /Cobros en efectivo de la sesión/ }),
-  ).toContainText("Pedido P-000001");
+    page.getByRole("region", { name: /Movimientos de la sesión/ }),
+  ).toContainText("Cobro · Pedido P-000001");
   await page.goto(`/pedidos/${orderId}`);
 
   // Confirmar, entregar y emitir la venta.

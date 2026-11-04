@@ -17,6 +17,14 @@ export const metadata: Metadata = {
 const TITLE = "Cerrar caja";
 
 // Pantalla 24 (brief-21.2, D-4 y D-10): el cierre de la sesión abierta, solo admin.
+//
+// **Desde la 24.7.1, la jerarquía de la lámina 04** (brief-24.7.1). La página pone el encabezado y
+// el regreso; la forma de cada paso la pone el formulario, porque solo él sabe en cuál está.
+//
+// **Lo que la lámina pide y no está, dicho acá**: su subtítulo nombra quién abrió la sesión y
+// cuándo. Ese dato exige la zona horaria de la organización, que esta pantalla no lee hoy, y la
+// condición de detención 1 del brief dice que una lectura nueva se pregunta, no se agrega. Está a
+// un clic, en la pantalla 21, que ya lo muestra.
 export default async function CloseCashPage() {
   const context = await requireSession();
   if (context.role !== "admin") {
@@ -35,7 +43,7 @@ export default async function CloseCashPage() {
   const open = state.open;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8">
+    <main className="mx-auto max-w-5xl px-4 py-8 lg:px-8">
       <BackLink href="/caja" label="Volver a la caja" />
       <div className="mt-4">
         <PageHeader
@@ -43,7 +51,7 @@ export default async function CloseCashPage() {
           subtitle="Contá el efectivo de cada moneda. Antes de cerrar vas a ver la diferencia con lo esperado."
         />
       </div>
-      <div className={`mt-6 ${cardClass} p-5 sm:p-6`}>
+      <div className="mt-6">
         {open ? (
           <CloseForm
             sessionId={open.id}
@@ -55,7 +63,7 @@ export default async function CloseCashPage() {
             currencies={acceptedCurrencies()}
           />
         ) : (
-          <p>
+          <p className={`${cardClass} p-5 sm:p-6`}>
             La caja ya está cerrada.{" "}
             <Link href="/caja" className={linkClass}>
               Volver a la caja

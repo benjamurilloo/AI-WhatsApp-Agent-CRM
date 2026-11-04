@@ -16,6 +16,7 @@ import { EmptyState } from "@/app/_components/empty-state";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
+import { StatusBadge } from "@/app/_components/status-badge";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { CashSubNav } from "../cash-sub-nav";
 import {
@@ -48,6 +49,18 @@ function hrefFor(number: string, page: number): string {
 
 // Pantalla 25 (brief-21.2, D-10): las sesiones, de la más nueva a la más vieja, con quién abrió y
 // cerró y la diferencia de cada moneda; búsqueda por número. Para los dos roles.
+//
+// **Desde la 24.7.1, la lámina 05** (brief-24.7.1): el título es el de la pantalla y no el de la
+// sección, y el estado de cada sesión es una insignia con nombre e ícono, no la palabra «Abierta»
+// escondida en la columna del cierre.
+//
+// **Dos diferencias con la lámina, a propósito:**
+//
+// - **la columna «Diferencia» se queda.** La lámina la saca y la muestra en un panel lateral; acá
+//   ese panel es la pantalla 26, que es una página, y sacarla escondería un número que esta lista
+//   da hoy de un vistazo;
+// - **no hay columna «Acciones» con un «Ver».** El número es el enlace, como en todas las listas
+//   del sistema desde la 24.1; un botón al lado sería un segundo camino al mismo lugar.
 export default async function CashSessionsPage({
   searchParams,
 }: {
@@ -67,7 +80,7 @@ export default async function CashSessionsPage({
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
       <PageHeader
-        title="Caja"
+        title={TITLE}
         subtitle="Cada sesión de caja, con su apertura, su cierre y su arqueo."
       />
       <CashSubNav current="sesiones" />
@@ -145,6 +158,9 @@ export default async function CashSessionsPage({
                     Cierre
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
+                    Estado
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
                     Diferencia
                   </th>
                 </tr>
@@ -175,7 +191,18 @@ export default async function CashSessionsPage({
                           </span>
                         </>
                       ) : (
-                        <span className="font-semibold">Abierta</span>
+                        "—"
+                      )}
+                    </td>
+                    <td className={tableCellClass}>
+                      {session.closedAt ? (
+                        <StatusBadge tone="neutral" icon="lock">
+                          Cerrada
+                        </StatusBadge>
+                      ) : (
+                        <StatusBadge tone="success" icon="circleCheck">
+                          Abierta
+                        </StatusBadge>
                       )}
                     </td>
                     <td className={tableCellClass}>

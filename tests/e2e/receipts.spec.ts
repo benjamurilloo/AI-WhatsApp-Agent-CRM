@@ -283,10 +283,15 @@ test("un admin busca un recibo en «Cobros» y cierra la caja con el cobro en ef
   });
   await expect(totals).toContainText("2.500,00");
   await expect(totals).toContainText("3.500,00");
+  // **Desde la 24.7.1 los cobros de la sesión no tienen tarjeta propia en la caja**: están en la
+  // lista unificada, con su concepto (brief-24.7.1, D-1). Lo que esta aserción prueba es lo mismo
+  // de antes —el cobro en efectivo de la sesión se ve, y el que no fue en efectivo no— leído donde
+  // ahora vive. La tarjeta sigue existiendo en la pantalla 26, que es el arqueo.
   const sessionReceipts = page.getByRole("region", {
-    name: "Cobros en efectivo de la sesión C-000001",
+    name: "Movimientos de la sesión C-000001",
   });
   await expect(sessionReceipts).toContainText("R-000001");
+  await expect(sessionReceipts).toContainText("Cobro");
   await expect(sessionReceipts).not.toContainText("R-000002");
   await expectAccessible(page, "caja con cobros");
 
@@ -295,7 +300,7 @@ test("un admin busca un recibo en «Cobros» y cierra la caja con el cobro en ef
   await page.getByLabel("Contado 1").fill("3500");
   await page.getByRole("button", { name: "Revisar el cierre" }).click();
   await expect(page.getByText("Sin diferencia")).toBeVisible();
-  await page.getByRole("button", { name: "Sí, cerrar la caja" }).click();
+  await page.getByRole("button", { name: "Cerrar caja" }).click();
   await expect(page).toHaveURL(/\/caja\/sesiones\/[0-9a-f-]+\?aviso=cerrada$/);
   const arqueo = page.locator("[data-comprobante]");
   await expect(arqueo).toContainText("Arqueo de caja C-000001");

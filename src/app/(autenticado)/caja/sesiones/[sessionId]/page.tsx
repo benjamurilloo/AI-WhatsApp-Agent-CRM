@@ -13,9 +13,12 @@ import {
   HeaderIcon,
 } from "@/app/_components/detail-header";
 import { cardClass } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
+import { StatusBadge } from "@/app/_components/status-badge";
 import { formatFullDateTime } from "@/app/_format/date-time";
 import {
+  ARQUEO_SAVED_NOTE,
   CASH_NOTICE,
   FORBIDDEN_PAGE_MESSAGE,
   NOT_AN_INVOICE_LEGEND,
@@ -58,6 +61,14 @@ function page(value: string | string[] | undefined): number {
 // cobros en efectivo por moneda y en su lista, también impresos (brief-21.3, D-5). Desde la 22.6, los
 // pagos a proveedores en efectivo: su total para los dos roles, y su lista y sus anulaciones posteriores
 // al cierre solo para un admin (brief-22.6, D-9).
+//
+// **Desde la 24.7.1, dos cosas de la lámina 05** (brief-24.7.1): el estado es una insignia con
+// nombre e ícono, y una sesión cerrada dice **siempre** que su arqueo es una foto, no un vivo.
+//
+// **Lo que la lámina dibuja y acá no está**: su arqueo vive en un panel lateral con pestañas
+// —Resumen, Movimientos, Actividad— y una tabla compacta de cuatro columnas. Acá la pantalla 26 es
+// una **página imprimible**: lo impreso tiene que llevar todo el arqueo, así que no se parte en
+// pestañas, y la tabla por moneda es la completa, la misma de la pantalla 21.
 export default async function CashSessionPage({
   params,
   searchParams,
@@ -110,7 +121,17 @@ export default async function CashSessionPage({
         <DetailHeader
           title={`Sesión ${session.displayNumber}`}
           leading={<HeaderIcon name="banknote" />}
-          subtitle={<p>{closed ? "Cerrada" : "Abierta"}</p>}
+          subtitle={
+            closed ? (
+              <StatusBadge tone="neutral" icon="lock">
+                Cerrada
+              </StatusBadge>
+            ) : (
+              <StatusBadge tone="success" icon="circleCheck">
+                Abierta
+              </StatusBadge>
+            )
+          }
           actions={closed ? <PrintButton /> : null}
         />
         <div role="status" className="mt-4 empty:hidden">
@@ -162,6 +183,12 @@ export default async function CashSessionPage({
             label="Lo esperado, en total"
             timeZone={timeZone}
           />
+          {closed ? (
+            <p className="mt-4 flex items-start gap-3 rounded-xl border border-border bg-tag-blue-soft px-3 py-2 text-sm text-on-tag-blue-soft print:border-border print:bg-transparent print:text-foreground">
+              <Icon name="info" className="mt-0.5 size-4 shrink-0" />
+              <span>{ARQUEO_SAVED_NOTE}</span>
+            </p>
+          ) : null}
         </div>
 
         <h3 className="mt-6 font-semibold">Cobros en efectivo</h3>

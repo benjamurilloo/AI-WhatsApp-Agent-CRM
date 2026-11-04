@@ -197,7 +197,14 @@ test("un admin carga la cotización y un viewer la ve sin el formulario", async 
       .getByRole("navigation", { name: "Principal" })
       .getByRole("link", { name: "Tipo de cambio" }),
   ).toHaveAttribute("href", "/caja/cotizacion");
-  await page.getByRole("link", { name: "Cotización" }).click();
+  // Desde la 24.7.1 la cotización es un destino secundario y vive en el menú «Más» de la barra de
+  // secciones (brief-24.7.1, D-3): se consulta y se configura, no es el trabajo del día. El menú es
+  // un `<details>`, así que abre sin JavaScript.
+  const barraCaja = page.getByRole("navigation", {
+    name: "Secciones de la caja",
+  });
+  await barraCaja.locator("summary").click();
+  await barraCaja.getByRole("link", { name: "Cotización" }).click();
   await expect(page).toHaveURL(/\/caja\/cotizacion$/);
   await expect(
     page.getByText("Todavía no hay una cotización cargada."),
@@ -350,8 +357,11 @@ test("un admin cobra en pesos una venta en dólares, la caja suma pesos y la anu
   ).toBeVisible();
 
   await page.goto("/caja");
+  // Desde la 24.7.1 la pantalla 21 lo llama «Equivalente orientativo», como la lámina 01; el dato,
+  // la cotización y su fecha son los mismos de la 29.4. En el arqueo sigue siendo «Lo esperado, en
+  // total», que es lo que ahí se está diciendo.
   await expect(
-    page.getByText(/Lo esperado, en total:\s*US\$\s100,00\s*de referencia/),
+    page.getByText(/Equivalente orientativo:\s*US\$\s100,00\s*de referencia/),
   ).toBeVisible();
   await expectAccessible(page, "caja con un cobro en pesos");
 
@@ -363,7 +373,7 @@ test("un admin cobra en pesos una venta en dólares, la caja suma pesos y la anu
   await page.getByRole("button", { name: "Sí, anular el cobro" }).click();
   await expect(page).not.toHaveURL(/\/anular/);
   await page.goto("/caja");
-  await expect(page.getByText(/Lo esperado, en total/)).toHaveCount(0);
+  await expect(page.getByText(/Equivalente orientativo/)).toHaveCount(0);
 });
 
 // Revisión independiente de la 29.4, R1-3: si la vigente cambia mientras se carga el cobro, el
@@ -550,7 +560,7 @@ test("un admin devuelve en pesos lo que está a favor en dólares, la caja resta
   ).toBeVisible();
   await page.goto("/caja");
   await expect(
-    page.getByText(/Lo esperado, en total:\s*US\$\s27,39\s*de referencia/),
+    page.getByText(/Equivalente orientativo:\s*US\$\s27,39\s*de referencia/),
   ).toBeVisible();
 
   await page.context().clearCookies();
@@ -609,7 +619,7 @@ test("un admin paga en pesos una recepción en dólares, la caja resta pesos y l
 
   await page.goto("/caja");
   await expect(
-    page.getByText(/Lo esperado, en total:\s*US\$\s27,39\s*de referencia/),
+    page.getByText(/Equivalente orientativo:\s*US\$\s27,39\s*de referencia/),
   ).toBeVisible();
 
   await page.goto("/compras/pagos");
@@ -620,7 +630,7 @@ test("un admin paga en pesos una recepción en dólares, la caja resta pesos y l
   await expect(page).toHaveURL(/\?aviso=anulado$/);
   await page.goto("/caja");
   await expect(
-    page.getByText(/Lo esperado, en total:\s*US\$\s127,39\s*de referencia/),
+    page.getByText(/Equivalente orientativo:\s*US\$\s127,39\s*de referencia/),
   ).toBeVisible();
 });
 

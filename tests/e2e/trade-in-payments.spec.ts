@@ -295,11 +295,16 @@ test("un admin paga un usado en efectivo, la caja lo resta, y lo anula", async (
   await expectAccessible(page, "comprobante del pago");
   const paymentUrl = page.url().replace(/\?.*$/, "");
 
-  // La caja lo resta y lo lista.
+  // La caja lo resta y lo lista. Desde la 24.7.1 la tabla por moneda está transpuesta
+  // (brief-24.7.1), así que «Pagos de usados» es el encabezado de su **fila**, no de una columna; y
+  // el pago se lee en la lista unificada, con su concepto.
   await page.goto("/caja");
   await expect(
-    page.getByRole("columnheader", { name: "Pagos de usados" }),
+    page.getByRole("rowheader", { name: "Pagos de usados" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: /Movimientos de la sesión/ }),
+  ).toContainText("Pago de usado");
   await expect(page.getByRole("link", { name: "PPU-000001" })).toBeVisible();
 
   // La anulación devuelve la plata a la caja abierta.
