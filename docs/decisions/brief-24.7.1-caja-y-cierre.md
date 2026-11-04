@@ -339,11 +339,67 @@ por (b) o (c).
 
 ## Cierre
 
-*Implementado el 2026-11-04.* **Validado localmente**: AC-1 a AC-13 en verde contra un build hecho
-en la misma corrida, con la guarda de frescura del build confirmándolo («Build de la corrida»).
-**AC-15 cumplido**: la revisión independiente devolvió **R1**, sus hallazgos se verificaron uno por
-uno y los diez reales están corregidos (§Revisión independiente, más abajo). Falta AC-14 (la batería
-completa en una corrida de CI sobre el SHA exacto) y AC-16 (tu recorrido en producción).
+*Implementado el 2026-11-04. Cerrada el 2026-11-04.*
+
+**Nivel alcanzado: validado en integración.** Lo fija este mismo brief en §Nivel de validación
+objetivo, sin interpretación: «**Validado en integración** con AC-14. **Validado en staging** solo
+después del despliegue y de tu recorrido (AC-16)». AC-14 está cumplido y AC-16 **no**, así que el
+nivel se queda en integración. **No certifica preparado para producción.**
+
+- **AC-1 a AC-13**: en verde contra un build hecho en la misma corrida, con la guarda de frescura
+  del build confirmándolo («Build de la corrida»).
+- **AC-14 cumplido**: la batería completa en **una sola corrida de CI**, en verde, sobre el SHA
+  exacto. Run **41909701797** sobre `cad4e60f125aeb3608f1754be11e3fa736b6b4fa`, leída por
+  `headSha` y no por «la última». Pasaron los treinta y siete pasos, **incluido el de formato**,
+  que en esta máquina falla por `core.autocrlf` y que acá es el único veredicto real.
+- **AC-15 cumplido**: la revisión independiente devolvió **R1**, sus hallazgos se verificaron uno
+  por uno y los diez reales están corregidos (§Revisión independiente, más abajo).
+- **AC-16 NO cumplido, y este brief no lo da por hecho.** El criterio pide «tu confirmación», y el
+  usuario autorizó el cierre sin declarar el recorrido. Queda pendiente, no satisfecho por el
+  despliegue: desplegar y verificar no es recorrer, y un nivel superior no se infiere de uno
+  inferior. Si el recorrido se hace después, se anota acá con su fecha y el nivel pasa a
+  **validado en staging**.
+
+### Despliegue y verificación en producción
+
+| | |
+|---|---|
+| SHA desplegado | **`cad4e60`** (`cad4e60f125aeb3608f1754be11e3fa736b6b4fa`) |
+| CI sobre ese SHA | **`success`**, run 41909701797, leída por `headSha` |
+| Vuelta atrás | **`7432629`**, anotado en `/var/lib/crm-production/despliegues` antes de desplegar |
+| Migraciones | **ninguna** entre `7432629` y `cad4e60`: cero archivos de `drizzle/`; siguen **67**. La vuelta atrás es solo de código |
+| Caída durante el despliegue | unos **dos minutos**, la ventana esperada: el servicio se detiene para el build desde la 29.5. Activo otra vez a las 21:49:43 UTC, `Ready in 422ms` |
+
+**Las siete verificaciones del runbook, todas pasadas:**
+
+1. **La configuración desplegada es la versionada**: **18 de 18 iguales**, y el bucle mira
+   exactamente los 18 archivos versionados — la cuenta se comprobó, que es justo lo que falló las
+   dos veces anteriores, cuando el bucle pasó en verde habiendo mirado menos archivos de los que
+   decía.
+2. **Un solo salto de proxy**, medido por consecuencia: **iguales**, con las tres condiciones que
+   lo hacen válido comprobadas y no supuestas — la ventana de 15 minutos estaba en **cero antes**
+   del intento, la fila es de recién (21:52:40 UTC) y su clave **no** es el `sha256` de la
+   constante `'sin-proxy'`. El **control negativo** dejó **dos claves distintas para dos
+   orígenes**. Se hizo con la variante desde dentro del droplet: **cuarto despliegue seguido** sin
+   poder usar el túnel SOCKS, así que la nota del README acierta y la variante es el camino
+   principal. *El recuento se corrigió al cerrar*: acá decía «tercer», copiado del README, que
+   documenta dos —2026-11-01 y 2026-11-03— y **no registró el del 2026-11-04**; la memoria de
+   trabajo sí lo tenía. Recontar en vez de copiar es la regla del proyecto y esta vez la aplicó
+   el cierre, no la redacción. Ni la IP ni su hash se escriben acá.
+3. **HSTS** presente sobre HTTPS (`max-age=31536000; includeSubDomains`) y ausente sobre HTTP, que
+   responde 301.
+4. **La aplicación escucha solo en loopback**: `127.0.0.1:3000`.
+5. **El rol de la aplicación no es el dueño**: `crm_app_login` contra `crm_owner`, con
+   `INSERT=t`, `DELETE=f` y `UPDATE=f` sobre `audit_logs`, leído del catálogo y sin mandar
+   ninguna escritura destructiva.
+6. **La ingestión y la API de lectura**: las tres rutas responden **401** sin token desde afuera,
+   que es como deben estar desde la 13.5.2-a.
+7. **Ningún dato real de un cliente**: «Vixora» en **0 clientes, 0 mensajes y 0 productos**; las
+   otras dos organizaciones son de demostración, con el desglose por organización y no en total.
+
+**El journal, desde el reinicio**: nada a prioridad *warning* o superior en journald, y los únicos
+avisos de aplicación son los que dejaron las propias verificaciones —los dos intentos de ingreso
+del paso 2 y las tres sondas del paso 6—. Ninguno viene del código nuevo.
 
 ### AC-13 · Comparación visual contra las láminas, entrada por entrada
 
