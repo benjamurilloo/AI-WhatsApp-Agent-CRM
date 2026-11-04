@@ -1,6 +1,7 @@
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client } from "pg";
 import { createDb } from "@/shared/db";
+import { assertFreshBuild } from "./build-freshness";
 import { seedBasic } from "../../seeds/basic";
 import {
   e2eDatabaseName,
@@ -18,6 +19,10 @@ export const E2E_INGESTION_CREDENTIAL_ID =
 
 // Recrea la base _e2e, le aplica las migraciones y la siembra (brief-3.5, D-8).
 export default async function globalSetup() {
+  // Antes que nada y antes de tocar la base: si el build es anterior al código, la corrida
+  // probaría la versión anterior y no lo diría (build-freshness.ts).
+  assertFreshBuild();
+
   const base = process.env.DATABASE_URL;
   if (!base) {
     throw new Error("Falta DATABASE_URL: copiá .env.example a .env.");
