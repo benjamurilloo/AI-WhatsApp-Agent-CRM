@@ -162,7 +162,13 @@ texto.***
 ***Decisión del usuario, 2026-11-04: **(a)**. (b) convierte en dos pasos una operación de un paso que hoy funciona, y el
 cierre es de dos pasos porque es irreversible; un aporte se corrige con el movimiento opuesto.***
 
-### D-3 · El «Más» de la barra de caja (H-3) — CERRADA en (a)
+### D-3 · El «Más» de la barra de caja (H-3) — CERRADA en (a), ENMENDADA el 2026-11-04
+
+*Enmienda*: al aprobarse el brief de la **24.7.2** el mismo día, su **D-2** sacó «Deudores» de la
+barra de la caja: las láminas del lote 22, que esta subfase no tenía en su alcance, lo dibujan como
+**«Cuentas de clientes», un ítem propio de Finanzas y hermano de Caja**. Lo que esta D-3 decidió
+—que el «Más» agrupa solo «Cotización» y «Medios de pago»— sigue en pie; lo que cambia es que
+«Deudores» deja de estar en la barra porque **deja de ser una sección de la caja**.
 
 - **(a)** Un `<details>` de navegación propio de la barra, con «Medios de pago» y «Cotización»
   adentro, y «Caja actual», «Sesiones», «Cobros» y «Devoluciones» siempre visibles.
