@@ -358,6 +358,18 @@ test("una orden recorre la recepción, el técnico, el presupuesto, la reparaci�
     page.locator("[data-estado-venta]").getByText("Cobrada", { exact: true }),
   ).toBeVisible();
 
+  // El tercer origen del efecto de la anulación (brief-24.6.2-d, D-6 y AC-7): una venta de una
+  // orden de servicio no tiene mercadería que reponer. Lo decide una lectura de `service` que
+  // **solo corre con la capacidad `repairs`**, así que este es el único lugar del repositorio
+  // donde ese camino se puede recorrer entero.
+  await page.getByRole("group").filter({ hasText: "Más" }).first().click();
+  await page.getByRole("link", { name: "Anular venta" }).click();
+  const anulacion = page.getByRole("dialog", { name: /^Anular venta V-/ });
+  await expect(anulacion).toContainText("Venta de una orden de servicio");
+  await expect(anulacion).toContainText(
+    "No hay stock de mercadería que reponer: la orden sigue entregada.",
+  );
+
   // La cuenta del técnico: la orden reparada, al debe (AC-7).
   await page.goto(`/compras/proveedores/${ids.technician}/cuenta`);
   await expect(

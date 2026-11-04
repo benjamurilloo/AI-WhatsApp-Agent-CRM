@@ -18,6 +18,12 @@ export const RECEIPT_COLLECTED_MESSAGE =
 export const NO_ACTIVE_METHODS_MESSAGE =
   "No hay medios de pago activos. Un administrador los crea o los reactiva en la caja.";
 
+// El panel de cobro de la lámina 03, que desde la 24.6.2-d reemplaza a la página de /cobrar
+// (brief-24.6.2-d, D-2 y D-3).
+export const RECEIPT_PANEL_TITLE = "Registrar cobro";
+export const RECEIPT_FORM_UNAVAILABLE_MESSAGE =
+  "No pudimos preparar el cobro de esta venta.";
+
 const AMOUNT_TEXT: Record<string, string> = {
   ...ROW_PROBLEM_TEXT,
   limit:

@@ -159,7 +159,9 @@ test("un admin cobra una venta en dos partes y en dos medios con el teclado, ve 
 
   // El primer cobro, en efectivo, por una parte. El monto se propone en lo que falta.
   await page.getByRole("link", { name: "Registrar cobro" }).click();
-  await expect(page).toHaveURL(new RegExp(`/ventas/${saleId}/cobrar$`));
+  // Desde la 24.6.2-d el cobro es el panel «?panel=cobro» de la pestaña «Cobros» de la ficha, y
+  // no la ruta /cobrar, que queda redirigiendo (brief-24.6.2-d, D-2, D-3 y D-4).
+  await expect(page).toHaveURL(/\?pestana=cobros&panel=cobro$/);
   const amount = page.getByLabel(/Monto en/);
   await expect(amount).toHaveValue("15000.00");
   const cash = page.getByRole("radio", { name: /Efectivo/ });
@@ -324,9 +326,16 @@ test("un viewer ve los cobros de una venta, el recibo y la lista sin ninguna acc
   );
   await expectAccessible(page, "venta para un viewer");
 
+  // La ruta vieja lleva al panel, y **un viewer no lo abre**: ve la ficha sin él, como en la
+  // ficha del pedido desde la 24.6.1. Antes era una página propia que le contestaba «Solo un
+  // administrador puede registrar cobros»; ahora directamente no hay panel que negar.
   await page.goto(`/ventas/${saleId}/cobrar`);
+  await expect(page).toHaveURL(/\?pestana=cobros&panel=cobro$/);
   await expect(
-    page.getByText("Solo un administrador puede registrar cobros."),
+    page.getByRole("dialog", { name: "Registrar cobro" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Cobros de la venta V-000001" }),
   ).toBeVisible();
 
   await page.goto("/caja/cobros");

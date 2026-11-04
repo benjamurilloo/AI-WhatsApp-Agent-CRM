@@ -635,6 +635,8 @@ test("brief-20.4: un admin anula una venta sin pedido con el teclado, repone el 
     "7",
   );
   const saleId = await insertCounterSale(coffee, "3", "1234.50", "3703.50");
+  // Con un cobro, para que el diálogo tenga un efecto en dinero que calcular (24.6.2-d, AC-8).
+  await insertSaleReceipt(saleId, 1, await insertTransferMethod(), "3703.50");
   await login(page, ADMIN);
 
   await page.goto(`/ventas/${saleId}`);
@@ -647,28 +649,33 @@ test("brief-20.4: un admin anula una venta sin pedido con el teclado, repone el 
   await page.getByRole("link", { name: "Anular venta" }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\?confirmar=anular$/);
-  const question = page.getByText("¿Anular la venta V-000001?");
-  await expect(question).toBeFocused();
+  // Desde la 24.6.2-d es el diálogo de la lámina 04, con el efecto **calculado** antes de
+  // confirmar y no dos textos fijos que no miraban la venta.
+  const dialog = page.getByRole("dialog", { name: "Anular venta V-000001" });
+  await expect(dialog).toBeVisible();
+  // AC-10: la salida segura tiene el foco al abrirse.
   await expect(
-    page.getByText(/Se repone el stock de cada línea/),
-  ).toBeVisible();
+    page.getByRole("link", { name: "Conservar venta" }),
+  ).toBeFocused();
+  // AC-7: el origen y **el número real** de lo que vuelve al stock.
+  await expect(dialog).toContainText("Venta de mostrador sin pedido");
+  await expect(dialog).toContainText("Se reponen 3 unidades al stock");
+  // AC-8 y AC-9: el efecto en dinero, calculado, y que es una foto que puede cambiar.
+  await expect(dialog).toContainText(/Se conserva el cobro de \$\s3\.703,50/);
+  await expect(dialog).toContainText(
+    /Quedará \$\s3\.703,50 a devolver porque no tiene cliente/,
+  );
+  await expect(dialog).toContainText(
+    "Calculado ahora. Si entra un cobro mientras tanto, la anulación se hace igual y este importe cambia.",
+  );
   await expectAccessible(page, "confirmación de la anulación");
-  // El primer motivo recibe el foco; la flecha elige el siguiente.
+  // El orden del teclado: primero la salida segura, después el destructivo.
   await page.keyboard.press("Tab");
   await expect(
-    page.getByRole("radio", { name: "Error de carga" }),
+    dialog.getByRole("button", { name: "Anular venta" }),
   ).toBeFocused();
-  await page.keyboard.press("ArrowDown");
-  await expect(
-    page.getByRole("radio", { name: "Operación no concretada" }),
-  ).toBeChecked();
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "No, volver" })).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(
-    page.getByRole("button", { name: "Sí, anular la venta" }),
-  ).toBeFocused();
-  await page.keyboard.press("Enter");
+  await dialog.getByRole("radio", { name: "Operación no concretada" }).check();
+  await dialog.getByRole("button", { name: "Anular venta" }).click();
 
   await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]{36}\?aviso=anulada$/);
   await expect(page.getByText("Venta anulada.")).toBeVisible();
@@ -724,7 +731,7 @@ test("brief-20.4: la lista filtra las anuladas y la encuentra por el número de 
   await login(page, ADMIN);
   await page.goto(`/ventas/${saleId}?confirmar=anular`);
   await page.getByRole("radio", { name: "Operación no concretada" }).check();
-  await page.getByRole("button", { name: "Sí, anular la venta" }).click();
+  await page.getByRole("button", { name: "Anular venta" }).click();
   await expect(page).toHaveURL(/\?aviso=anulada$/);
 
   await page.goto("/ventas");
@@ -778,9 +785,11 @@ test("brief-20.4: anular la venta de un pedido no mueve el stock y deja emitir o
   const firstUrl = page.url().replace(/\?.*$/, "");
 
   await page.goto(`${firstUrl}?confirmar=anular`);
+  // AC-7, el segundo de los tres orígenes de la tabla del README.
+  await expect(page.getByText("Venta de un pedido entregado")).toBeVisible();
   await expect(page.getByText(/El stock no cambia/)).toBeVisible();
   await page.getByRole("radio", { name: "Error de carga" }).check();
-  await page.getByRole("button", { name: "Sí, anular la venta" }).click();
+  await page.getByRole("button", { name: "Anular venta" }).click();
   await expect(page).toHaveURL(/\?aviso=anulada$/);
   expect(await counts()).toEqual({ sales: 1, movements: 0 });
 
@@ -826,9 +835,9 @@ test("brief-20.4: un viewer ve la anulación y no puede anular", async ({
     page.getByRole("heading", { level: 1, name: "Venta V-000001" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Anular venta" })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Sí, anular la venta" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Anular venta" })).toHaveCount(
+    0,
+  );
 
   await db.execute(
     sql`insert into sale_voids (organization_id, number, sale_id, currency, total, reason,
@@ -2020,4 +2029,151 @@ test("brief-24.6.2-b: sin desbordamiento de 320 a 1440 px en el listado y en las
       `ancho de ${nombre}`,
     ).toBeGreaterThanOrEqual(44);
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// La 24.6.2-d: el cobro en un panel de la ficha (lámina 03) y la anulación con
+// su vista previa (lámina 04).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// «Efectivo», para el aviso de la caja cerrada. Como «Transferencia»: payment_methods no está en
+// el TRUNCATE de esta spec, así que se reusa el que haya.
+async function insertCashMethod() {
+  const result = await db.execute<{ id: string }>(
+    sql`insert into payment_methods (organization_id, name, is_cash)
+        values (${SEED_ORGANIZATION_ID}, 'Efectivo', true)
+        on conflict do nothing
+        returning id`,
+  );
+  if (result.rows[0]) return result.rows[0].id;
+  const found = await db.execute<{ id: string }>(
+    sql`select id from payment_methods
+        where organization_id = ${SEED_ORGANIZATION_ID} and lower(name) = 'efectivo'`,
+  );
+  return found.rows[0]!.id;
+}
+
+// Una venta de 3.000 con 1.000 ya cobrados: dos números distintos para que la vista previa no
+// pueda pasar por casualidad con uno solo.
+async function insertPartlyCollectedSale() {
+  const product = await insertStockedProduct(
+    "CAF-250",
+    "Café molido",
+    "1000",
+    "10",
+  );
+  const saleId = await insertCounterSale(product, "3", "1000", "3000.00");
+  await insertSaleReceipt(saleId, 1, await insertTransferMethod(), "1000.00");
+  // **El contador va con el recibo que se inserta por SQL.** `document_counters` está en el
+  // TRUNCATE de esta spec y `insertSaleReceipt` no lo toca, así que sin esto el primer cobro que
+  // registra la aplicación vuelve a pedir el número 1 y choca con el que ya está. El síntoma no
+  // dice de dónde viene: la acción devuelve su error genérico y el caso ve una pantalla que no
+  // cambió. Costó media hora encontrarlo escribiendo estos casos.
+  // Nace en 0 y sube de a uno: lo exige el trigger de la 0036, que rechaza las dos cosas con
+  // «document_counters nace en 0».
+  await db.execute(
+    sql`insert into document_counters (organization_id, kind, last_number)
+        values (${SEED_ORGANIZATION_ID}, 'receipt', 0)
+        on conflict (organization_id, kind) do nothing`,
+  );
+  await db.execute(
+    sql`update document_counters set last_number = 1
+        where organization_id = ${SEED_ORGANIZATION_ID} and kind = 'receipt'`,
+  );
+  await insertCashMethod();
+  return saleId;
+}
+
+test("brief-24.6.2-d: el cobro es un panel de la ficha con su vista previa, y /cobrar lleva a él", async ({
+  page,
+}) => {
+  const saleId = await insertPartlyCollectedSale();
+  await login(page, ADMIN);
+
+  // AC-13: la ruta que la aplicación viene generando desde la 21.3 sigue respondiendo y lleva al
+  // panel. No se borra: borrarla rompería enlaces que el proyecto no controla (D-4).
+  await page.goto(`/ventas/${saleId}/cobrar`);
+  await expect(page).toHaveURL(/\?pestana=cobros&panel=cobro$/);
+
+  // AC-1: el panel de la lámina 03, con la venta que se está cobrando.
+  const panel = page.getByRole("dialog", { name: "Registrar cobro" });
+  await expect(panel).toContainText("V-000001");
+  // AC-3: sin la capacidad «trade_ins» la permuta **no existe**, ni siquiera deshabilitada: una
+  // opción deshabilitada promete una función que la organización no contrató.
+  await expect(panel.getByRole("radio", { name: /Permuta/ })).toHaveCount(0);
+
+  // AC-4: la previsión dice la situación **después** del cobro y sigue lo que se escribe.
+  const amount = panel.getByLabel(/Monto en/);
+  await expect(amount).toHaveValue("2000.00");
+  const preview = panel.getByRole("region", { name: "Vista previa del cobro" });
+  await expect(preview).toContainText(/Cobrados después:\s*\$\s3\.000,00/);
+  await expect(preview).toContainText(/Faltará:\s*\$\s0,00/);
+  await expect(preview).toContainText(
+    "Previsión. El cobro todavía no se registró.",
+  );
+  // 800 y no 500: con 500 las dos filas darían 1.500 y la aserción no distinguiría una de la otra.
+  await amount.fill("800");
+  await expect(preview).toContainText(/Cobrados después:\s*\$\s1\.800,00/);
+  await expect(preview).toContainText(/Faltará:\s*\$\s1\.200,00/);
+  // Escribir de más no dibuja un saldo negativo: dice el rechazo que el registro va a dar.
+  await amount.fill("5000");
+  await expect(preview).toContainText("Supera lo que falta cobrar");
+  await expectAccessible(page, "panel de cobro");
+
+  // AC-6: efectivo con la caja cerrada avisa, ofrece abrirla y **no borra lo cargado**.
+  await amount.fill("2000");
+  await panel.getByRole("radio", { name: /Efectivo/ }).check();
+  await panel.getByRole("button", { name: "Registrar cobro" }).click();
+  await expect(page.getByText(/La caja está cerrada/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Abrir caja" })).toBeVisible();
+  await expect(panel.getByLabel(/Monto en/)).toHaveValue("2000");
+  await expectAccessible(page, "panel de cobro rechazado");
+
+  await panel.getByRole("radio", { name: "Transferencia" }).check();
+  await panel.getByRole("button", { name: "Registrar cobro" }).click();
+  await expect(page).toHaveURL(new RegExp(`/ventas/${saleId}\\?cobro=`));
+  await expect(page.getByText("Se registró el cobro")).toBeVisible();
+  // Cobrada: el encabezado ya no ofrece el panel.
+  await expect(page.getByRole("link", { name: "Registrar cobro" })).toHaveCount(
+    0,
+  );
+});
+
+// AC-11: las dos piezas andan sin JavaScript. No es una preferencia: 22 archivos de esta carpeta
+// lo prueban, y por eso ni el panel ni el diálogo se hicieron con estado de cliente.
+test.describe("brief-24.6.2-d sin JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("el panel de cobro y el diálogo de anulación funcionan igual", async ({
+    page,
+  }) => {
+    const saleId = await insertPartlyCollectedSale();
+    await login(page, ADMIN);
+
+    // El panel es una dirección, así que se abre y se cierra con enlaces.
+    await page.goto(`/ventas/${saleId}?pestana=cobros&panel=cobro`);
+    const panel = page.getByRole("dialog", { name: "Registrar cobro" });
+    await expect(panel).toBeVisible();
+    // Sin JavaScript la previsión no sigue lo que se escribe, pero dice la verdad al abrirse: la
+    // calculó el servidor con el monto propuesto.
+    await expect(
+      panel.getByRole("region", { name: "Vista previa del cobro" }),
+    ).toContainText(/Cobrados después:\s*\$\s3\.000,00/);
+    await panel.getByRole("radio", { name: "Transferencia" }).check();
+    await panel.getByLabel(/Monto en/).fill("500");
+    await panel.getByRole("button", { name: "Registrar cobro" }).click();
+    await expect(page).toHaveURL(new RegExp(`/ventas/${saleId}\\?cobro=`));
+
+    // El diálogo es un <dialog open> del servidor: sin JavaScript no se promueve a modal, y sigue
+    // siendo un formulario con sus enlaces.
+    await page.goto(`/ventas/${saleId}?confirmar=anular`);
+    const dialog = page.getByRole("dialog", { name: "Anular venta V-000001" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Se reponen 3 unidades al stock");
+    await expect(dialog).toContainText(/Se conserva el cobro de \$\s1\.500,00/);
+    await dialog.getByRole("radio", { name: "Error de carga" }).check();
+    await dialog.getByRole("button", { name: "Anular venta" }).click();
+    await expect(page).toHaveURL(/\?aviso=anulada$/);
+    await expect(page.getByText("Venta anulada.")).toBeVisible();
+  });
 });

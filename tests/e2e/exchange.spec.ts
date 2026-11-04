@@ -332,7 +332,9 @@ test("un admin cobra en pesos una venta en dólares, la caja suma pesos y la anu
     "true",
   );
   await choice.getByRole("link", { name: "ARS" }).click();
-  await expect(page).toHaveURL(/\?moneda=ARS$/);
+  // Desde la 24.6.2-d el cobro de una venta vive en el panel de la ficha, así que la moneda se
+  // suma a los parámetros que la dirección ya trae en vez de abrir la consulta.
+  await expect(page).toHaveURL(/&moneda=ARS$/);
   await expect(
     page.getByText(/Faltan US\$\s100,00 = \$\s156\.500,00/),
   ).toBeVisible();

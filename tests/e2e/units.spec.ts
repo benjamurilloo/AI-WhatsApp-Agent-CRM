@@ -513,7 +513,8 @@ test("una venta sin pedido vende sus unidades, rechaza una reservada y su anulac
   await page.getByRole("group").filter({ hasText: "Más" }).first().click();
   await page.getByRole("link", { name: "Anular venta" }).click();
   await page.getByRole("radio", { name: "Error de carga" }).check();
-  await page.getByRole("button", { name: "Sí, anular la venta" }).click();
+  // «Anular venta» desde la 24.6.2-d, como la lámina 04 (AC-10).
+  await page.getByRole("button", { name: "Anular venta" }).click();
   await expect(page.getByText("Venta anulada.")).toBeVisible();
   expect((await unitRows(productId)).map((row) => row.status)).toEqual([
     "available",

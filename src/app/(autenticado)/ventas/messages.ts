@@ -1,3 +1,4 @@
+import type { SaleVoidMoneyPreview } from "@/modules/cash";
 import type {
   IssueSaleResult,
   IssueSaleWithoutOrderResult,
@@ -6,7 +7,12 @@ import type {
   SaleVoidReason,
   VoidSaleResult,
 } from "@/modules/sales";
-import { formatQuantity } from "@/shared/quantity";
+import {
+  formatQuantity,
+  quantityFromDatabase,
+  quantityToDatabase,
+  type Quantity,
+} from "@/shared/quantity";
 import {
   STATUS_LABEL,
   unitIssuesByLine,
@@ -374,11 +380,162 @@ export const VOID_REASON_LABEL: Record<SaleVoidReason, string> = {
   other: "Otro",
 };
 
-// Lo que pasa con el stock, dicho antes de confirmar (D-7).
-export const VOID_RESTOCK_NOTE =
-  "Se repone el stock de cada línea, con un movimiento «Anulación de venta».";
-export const VOID_ORDER_NOTE =
-  "El stock no cambia: el pedido sigue entregado y se puede emitir otra venta.";
+// Lo que pasa antes de confirmar (D-7), **calculado** desde la 24.6.2-d: hasta la 24.6.2-c eran dos
+// textos fijos que no miraban la venta, y la lámina 04 pide el número real y distingue tres orígenes
+// (brief-24.6.2-d, D-6; tabla «Anulación y dinero» del README del lote V2-09).
+
+// De dónde salió la venta. El tercero necesita la capacidad `repairs`: sin ella la organización no
+// tiene órdenes de servicio y la venta es de mostrador o de un pedido, como hasta ahora.
+export type VoidOrigin = "counter" | "order" | "service";
+
+// Una línea de la venta, con lo único que el efecto en stock necesita.
+export type VoidStockLine = {
+  quantity: string;
+  // La unidad de medida del producto de hoy; null si el producto ya no está.
+  unit: string | null;
+  // Cuántas unidades con IMEI tiene la línea. Cero en una línea por cantidad.
+  units: number;
+};
+
+// «2 unidades», «1,5 kg». Solo se pluraliza «unidad», que es la unidad por omisión del catálogo y
+// una palabra nuestra; «kg» o «m» se escriben como el catálogo las guarda, que es lo que hace el
+// resto de la aplicación.
+function quantityPhrase(amount: string, unit: string): string {
+  const text = formatQuantity(amount);
+  if (unit !== "unidad") return `${text} ${unit}`;
+  return `${text} ${text === "1" ? "unidad" : "unidades"}`;
+}
+
+// Lo que vuelve al stock, con el número de esta venta. Las unidades con IMEI se cuentan de a una;
+// las líneas por cantidad se suman **por unidad de medida**, porque kilos y unidades no se suman
+// entre sí, igual que no se suman dos monedas (ADR 0019, punto 3).
+function restockPhrase(lines: VoidStockLine[]): string | null {
+  const serials = lines.reduce((sum, line) => sum + line.units, 0);
+  const byUnit = new Map<string, Quantity>();
+  for (const line of lines) {
+    if (line.units > 0) continue;
+    const unit = line.unit ?? "unidad";
+    byUnit.set(
+      unit,
+      (byUnit.get(unit) ?? 0n) + quantityFromDatabase(line.quantity),
+    );
+  }
+  const parts: string[] = [];
+  if (serials > 0) {
+    parts.push(`${serials} ${serials === 1 ? "unidad" : "unidades"}`);
+  }
+  for (const [unit, amount] of byUnit) {
+    parts.push(quantityPhrase(quantityToDatabase(amount), unit));
+  }
+  if (parts.length === 0) return null;
+  return parts.join(" y ");
+}
+
+export type VoidEffect = { title: string; detail: string };
+
+export function voidStockEffect(
+  origin: VoidOrigin,
+  lines: VoidStockLine[],
+): VoidEffect {
+  if (origin === "service") {
+    return {
+      title: "Venta de una orden de servicio",
+      detail:
+        "No hay stock de mercadería que reponer: la orden sigue entregada.",
+    };
+  }
+  if (origin === "order") {
+    return {
+      title: "Venta de un pedido entregado",
+      detail:
+        "El stock no cambia: el pedido sigue entregado y se puede emitir otra venta.",
+    };
+  }
+  const phrase = restockPhrase(lines);
+  return {
+    title: "Venta de mostrador sin pedido",
+    detail:
+      phrase === null
+        ? "Se repone el stock de cada línea, con un movimiento «Anulación de venta»."
+        : `Se ${phrase.startsWith("1 ") ? "repone" : "reponen"} ${phrase} al stock, con un movimiento «Anulación de venta».`,
+  };
+}
+
+// Un importe de la base que vale cero, en cualquier escala.
+function isZero(amount: string): boolean {
+  return /^-?0+(\.0+)?$/.test(amount);
+}
+
+// El efecto en dinero, con los importes que calculó `cash` (brief-24.6.2-d, H-3). Null cuando la
+// venta no tiene nada de dinero encima: no hay efecto que anunciar y decirlo sería ruido.
+//
+// Con cliente **no es una resta**: lo que la venta tiene aplicado vuelve al remanente de la cuenta y
+// la regla de imputación lo reparte entre las otras ventas con saldo y lo que queda a favor
+// (ADR 0022, punto 9 y línea 104). La seña del pedido no entra en ese reparto: vuelve a quedar
+// retenida (punto 5), y por eso se nombra aparte.
+//
+// **El corte de arriba y el reparto de abajo miden lo mismo**, y eso es lo que hace que el texto no
+// se contradiga: `collected` es todo lo que la venta tiene aplicado —directo, seña e imputado—, y
+// los tres términos suman exactamente eso. Antes `collected` dejaba afuera lo imputado, así que una
+// venta cubierta con un cobro a cuenta cortaba acá en cero y el diálogo no decía **nada** del
+// dinero, y una con las dos cosas conservaba un número y repartía otro más grande. *Corregido el
+// 2026-11-04, por la revisión independiente (MAYOR-1).*
+export function voidMoneyEffect(
+  preview: SaleVoidMoneyPreview,
+  money: (amount: string) => string,
+): VoidEffect | null {
+  if (isZero(preview.collected)) return null;
+  const title = `Se conserva el cobro de ${money(preview.collected)}`;
+  if (!preview.hasClient) {
+    return {
+      title,
+      detail: `Quedará ${money(preview.toRefund)} a devolver porque no tiene cliente.`,
+    };
+  }
+  const parts: string[] = [];
+  if (!isZero(preview.toOtherSales)) {
+    parts.push(
+      `${money(preview.toOtherSales)} se aplicará a otras ventas con saldo`,
+    );
+  }
+  if (!isZero(preview.toFavor)) {
+    parts.push(`${money(preview.toFavor)} quedará a favor`);
+  }
+  if (!isZero(preview.retained)) {
+    parts.push(
+      `${money(preview.retained)} volverá a quedar retenido como seña del pedido`,
+    );
+  }
+  return {
+    title,
+    detail:
+      parts.length === 0
+        ? "Lo cobrado pasa a la cuenta del cliente."
+        : `Lo cobrado pasa a la cuenta del cliente: ${parts.join(", y ")}.`,
+  };
+}
+
+// **Lo que la vista previa del dinero no promete** (brief-24.6.2-d, H-2 y D-5). El ADR 0022 dice en
+// su línea 129 que la anulación no mira los cobros: entre leer esto y confirmar puede entrar uno, y
+// la anulación se hace igual con otra cifra. Decirlo es la única opción que no le miente al usuario
+// sobre dinero; volver a leer al confirmar achicaría la ventana sin cerrarla, y una comprobación
+// que reduce el riesgo sin eliminarlo compra una confianza que no respalda.
+export const VOID_MONEY_SNAPSHOT_NOTE =
+  "Calculado ahora. Si entra un cobro mientras tanto, la anulación se hace igual y este importe cambia.";
+
+// Las dos advertencias fijas de la lámina 04: la anulación no es una devolución, y no se deshace.
+// Si la lectura del efecto en dinero falla, el diálogo lo dice en vez de callarse: una venta puede
+// tener cobros y un silencio se leería como «no hay nada cobrado».
+export const VOID_MONEY_UNAVAILABLE: VoidEffect = {
+  title: "No pudimos calcular el efecto en dinero",
+  detail:
+    "Mirá los cobros de la venta en su pestaña antes de anularla. La anulación no los anula ni los devuelve.",
+};
+
+export const VOID_NO_REFUND_NOTE =
+  "Anular la venta no devuelve dinero ni anula el recibo. La devolución se registra aparte.";
+export const VOID_DOCUMENT_NOTE =
+  "Se genera un comprobante de anulación. No se puede deshacer.";
 
 export type VoidSaleState =
   | { status: "idle" }

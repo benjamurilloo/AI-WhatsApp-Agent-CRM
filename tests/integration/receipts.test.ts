@@ -1,9 +1,12 @@
 import { sql, type SQL } from "drizzle-orm";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { voidMoneyEffect } from "@/app/(autenticado)/ventas/messages";
 import { hashPassword, login } from "@/modules/auth";
 import {
   closeCashSession,
+  createAccountReceipt,
   createInitialPaymentMethods,
+  createOrderReceipt,
   createSaleReceipt,
   deactivatePaymentMethod,
   getCashSession,
@@ -11,6 +14,7 @@ import {
   getReceipt,
   getSaleReceiptForm,
   getSaleReceipts,
+  getSaleVoidMoneyPreview,
   listPaymentMethods,
   listReceipts,
   openCashSession,
@@ -18,8 +22,9 @@ import {
   type CashAmountInput,
 } from "@/modules/cash";
 import { adjustStock } from "@/modules/inventory";
+import { confirmOrder, createOrder, deliverOrder } from "@/modules/orders";
 import { getAuthContext, type AuthContext } from "@/modules/organizations";
-import { issueSale, voidSale } from "@/modules/sales";
+import { issueSale, issueSaleFromOrder, voidSale } from "@/modules/sales";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
 
@@ -177,6 +182,66 @@ async function sell(
   });
   if (!result.ok) throw new Error(`venta rechazada: ${JSON.stringify(result)}`);
   return result.sales[0];
+}
+
+// Un cobro a cuenta del cliente: no elige venta, así que alimenta el remanente y la regla lo
+// imputa a las ventas con saldo, de la más vieja a la más nueva (ADR 0022, punto 9).
+async function receivedAccount(
+  context: AuthContext,
+  clientId: string,
+  paymentMethodId: string,
+  amount: string,
+  currency = "ARS",
+) {
+  const result = await createAccountReceipt(context, {
+    clientId,
+    currency,
+    paymentMethodId,
+    amount,
+  });
+  if (!result.ok)
+    throw new Error(`cobro a cuenta rechazado: ${JSON.stringify(result)}`);
+  return result.receipt;
+}
+
+// Un pedido entregado de n unidades, con su seña, y la venta que emite: la única forma de llegar al
+// término `retained` de la vista previa (brief-24.6.2-d, H-3).
+async function soldFromOrder(
+  context: AuthContext,
+  product: { productId: string; priceId: string },
+  units: number,
+  clientId: string,
+  paymentMethodId: string,
+  deposit: string,
+) {
+  const placed = await createOrder(context, {
+    clientId,
+    lines: [
+      {
+        productId: product.productId,
+        quantity: String(units),
+        expectedPriceId: product.priceId,
+      },
+    ],
+  });
+  if (!placed.ok)
+    throw new Error(`pedido rechazado: ${JSON.stringify(placed)}`);
+  const orderId = placed.order.id;
+  // La seña va primero: solo se toma con el pedido abierto (`order_not_open`).
+  const signed = await createOrderReceipt(context, {
+    orderId,
+    paymentMethodId,
+    amount: deposit,
+  });
+  if (!signed.ok) throw new Error(`seña rechazada: ${JSON.stringify(signed)}`);
+  for (const transition of [confirmOrder, deliverOrder]) {
+    const moved = await transition(context, orderId);
+    if (!moved.ok) throw new Error(`transición rechazada: ${moved.code}`);
+  }
+  const issued = await issueSaleFromOrder(context, orderId);
+  if (!issued.ok)
+    throw new Error(`emisión rechazada: ${JSON.stringify(issued)}`);
+  return issued.sale;
 }
 
 async function voided(context: AuthContext, saleId: string) {
@@ -1153,4 +1218,259 @@ describe("las lecturas (AC-6)", () => {
     expect(parseReceiptNumberSearch("R-0")).toBeNull();
     expect(parseReceiptNumberSearch("")).toBeNull();
   });
+});
+
+// La vista previa en dinero de una anulación (brief-24.6.2-d, H-3, AC-8 y M-1). Es la lectura nueva
+// de la subfase y **no es una resta**: con cliente, lo cobrado vuelve al remanente de la cuenta y la
+// regla de imputación lo reparte entre las otras ventas con saldo y lo que queda a favor (ADR 0022,
+// punto 9 y línea 104).
+//
+// **Por qué el fixture tiene dos ventas y no una.** Con una sola venta, «se aplica a otras ventas»
+// y «queda a favor» dan el mismo número, así que el caso pasaría con una implementación que
+// restara, que es justo lo que hay que descartar. La nota del vault
+// [[A Comparative Measurement Needs a Fixture Where the Two Sides Can Differ]] dice esto mismo, y
+// este proyecto la escribió hace dos subfases y la confirmó hace una.
+describe("la vista previa en dinero de una anulación (AC-8)", () => {
+  it(
+    "con cliente, reparte lo cobrado entre las otras ventas con saldo y lo que queda a favor, y la anulación hace exactamente eso",
+    async () => {
+      const s = await seed();
+      // La que se va a anular: 2000, cobrada entera. La otra, 1000, sin cobrar.
+      const target = await sell(s.adminA, s.pesos, 2, s.clientA);
+      const other = await sell(s.adminA, s.pesos, 1, s.clientA);
+      await received(s.adminA, target.id, s.methods.transfer, "2000");
+
+      const preview = await getSaleVoidMoneyPreview(s.adminA, target.id);
+      if (!preview.ok) throw new Error(`previsión rechazada: ${preview.code}`);
+      expect(preview.preview).toEqual({
+        currency: "ARS",
+        hasClient: true,
+        collected: "2000.00",
+        toRefund: "0.00",
+        // 1000 cubren lo que le falta a la otra venta; los otros 1000 quedan a favor.
+        toOtherSales: "1000.00",
+        toFavor: "1000.00",
+        retained: "0.00",
+      });
+
+      // Y ahora la anulación de verdad: la previsión tiene que haber dicho lo que pasó. Sin esta
+      // mitad el caso solo probaría que la función es consistente consigo misma.
+      await voided(s.adminA, target.id);
+      expect(await standing(s.adminA, other.id)).toMatchObject({
+        imputed: "1000.00",
+        outstanding: "0.00",
+        status: "collected",
+        clientInFavor: "1000.00",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "con cliente y sin otras ventas con saldo, lo cobrado queda entero a favor",
+    async () => {
+      const s = await seed();
+      const sale = await sell(s.adminA, s.pesos, 2, s.clientA);
+      await received(s.adminA, sale.id, s.methods.transfer, "2000");
+      const preview = await getSaleVoidMoneyPreview(s.adminA, sale.id);
+      if (!preview.ok) throw new Error("previsión rechazada");
+      expect(preview.preview).toMatchObject({
+        hasClient: true,
+        collected: "2000.00",
+        toOtherSales: "0.00",
+        toFavor: "2000.00",
+      });
+      await voided(s.adminA, sale.id);
+      expect(await standing(s.adminA, sale.id)).toMatchObject({
+        clientInFavor: "2000.00",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "sin cliente, lo cobrado queda a devolver sobre la venta y no toca ninguna cuenta",
+    async () => {
+      const s = await seed();
+      const sale = await sell(s.adminA, s.pesos, 2);
+      await received(s.adminA, sale.id, s.methods.transfer, "1500");
+      const preview = await getSaleVoidMoneyPreview(s.adminA, sale.id);
+      if (!preview.ok) throw new Error("previsión rechazada");
+      expect(preview.preview).toEqual({
+        currency: "ARS",
+        hasClient: false,
+        collected: "1500.00",
+        toRefund: "1500.00",
+        toOtherSales: "0.00",
+        toFavor: "0.00",
+        retained: "0.00",
+      });
+      await voided(s.adminA, sale.id);
+      expect(await standing(s.adminA, sale.id)).toMatchObject({
+        toRefund: "1500.00",
+        toAccount: "0.00",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  // **Los tres casos de abajo salen de la revisión independiente del 2026-11-04.** Los dos
+  // primeros son su hallazgo MAYOR-1: `collected` informaba solo los cobros directos y la seña, y
+  // dejaba afuera lo que la regla de imputación le había aplicado a la venta desde el remanente.
+  // Como la pantalla no dibuja el efecto cuando ese número es cero, una venta cubierta con un
+  // cobro a cuenta no decía **nada** del dinero en el diálogo de una operación que no se deshace.
+  // El tercero es su MENOR-1: el término `retained` no tenía ninguna prueba que lo ejercitara.
+  it(
+    "una venta cubierta con un cobro a cuenta informa el dinero que se mueve, y la pantalla lo dibuja",
+    async () => {
+      const s = await seed();
+      const sale = await sell(s.adminA, s.pesos, 1, s.clientA);
+      await receivedAccount(s.adminA, s.clientA, s.methods.transfer, "1000");
+      // La venta está cobrada **sin un solo cobro directo**: todo lo tiene imputado.
+      expect(await standing(s.adminA, sale.id)).toMatchObject({
+        collected: "0.00",
+        imputed: "1000.00",
+        outstanding: "0.00",
+      });
+
+      const preview = await getSaleVoidMoneyPreview(s.adminA, sale.id);
+      if (!preview.ok) throw new Error(`previsión rechazada: ${preview.code}`);
+      expect(preview.preview).toMatchObject({
+        hasClient: true,
+        collected: "1000.00",
+        toOtherSales: "0.00",
+        toFavor: "1000.00",
+        retained: "0.00",
+      });
+      // Y la mitad de la pantalla: con cero, el diálogo no dibujaba ninguna fila de dinero.
+      expect(
+        voidMoneyEffect(preview.preview, (amount) => amount),
+      ).not.toBeNull();
+
+      await voided(s.adminA, sale.id);
+      expect(await standing(s.adminA, sale.id)).toMatchObject({
+        clientInFavor: "1000.00",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "con cobros directos y lo imputado del remanente, los tres términos suman lo que la venta tiene aplicado",
+    async () => {
+      const s = await seed();
+      // La que se anula: 2000, con 1000 cobrados directo y 1000 imputados del cobro a cuenta, que
+      // la toma a ella por ser la más vieja. La otra, 1000, esperando saldo.
+      const target = await sell(s.adminA, s.pesos, 2, s.clientA);
+      const other = await sell(s.adminA, s.pesos, 1, s.clientA);
+      await received(s.adminA, target.id, s.methods.transfer, "1000");
+      await receivedAccount(s.adminA, s.clientA, s.methods.transfer, "1000");
+      expect(await standing(s.adminA, target.id)).toMatchObject({
+        collected: "1000.00",
+        imputed: "1000.00",
+        outstanding: "0.00",
+      });
+
+      const preview = await getSaleVoidMoneyPreview(s.adminA, target.id);
+      if (!preview.ok) throw new Error(`previsión rechazada: ${preview.code}`);
+      const p = preview.preview;
+      expect(p).toMatchObject({
+        collected: "2000.00",
+        toOtherSales: "1000.00",
+        toFavor: "1000.00",
+        retained: "0.00",
+      });
+      // **La identidad que el diálogo necesita para no contradecirse**: antes informaba 1000
+      // conservados y 2000 repartidos, y cada número era cierto por separado.
+      expect(
+        Number(p.toOtherSales) + Number(p.toFavor) + Number(p.retained),
+      ).toBe(Number(p.collected));
+
+      await voided(s.adminA, target.id);
+      expect(await standing(s.adminA, other.id)).toMatchObject({
+        imputed: "1000.00",
+        outstanding: "0.00",
+        clientInFavor: "1000.00",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "la seña de un pedido vuelve a quedar retenida, y la previsión la nombra aparte",
+    async () => {
+      const s = await seed();
+      const sale = await soldFromOrder(
+        s.adminA,
+        s.pesos,
+        2,
+        s.clientA,
+        s.methods.transfer,
+        "500",
+      );
+      expect(await standing(s.adminA, sale.id)).toMatchObject({
+        collected: "500.00",
+        outstanding: "1500.00",
+      });
+
+      const preview = await getSaleVoidMoneyPreview(s.adminA, sale.id);
+      if (!preview.ok) throw new Error(`previsión rechazada: ${preview.code}`);
+      const p = preview.preview;
+      // La seña **no** se reparte: vuelve a quedar retenida contra el pedido (punto 5), que sigue
+      // entregado y sin venta vigente. Por eso se nombra aparte y no entra en los otros dos.
+      expect(p).toMatchObject({
+        collected: "500.00",
+        toOtherSales: "0.00",
+        toFavor: "0.00",
+        retained: "500.00",
+      });
+      expect(
+        Number(p.toOtherSales) + Number(p.toFavor) + Number(p.retained),
+      ).toBe(Number(p.collected));
+
+      await voided(s.adminA, sale.id);
+      // Y la anulación hizo eso: la seña no quedó a favor del cliente.
+      expect(await standing(s.adminA, sale.id)).toMatchObject({
+        clientInFavor: "0.00",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "una venta sin cobros no tiene efecto en dinero, y la pantalla no dibuja ninguno",
+    async () => {
+      const s = await seed();
+      const sale = await sell(s.adminA, s.pesos, 1, s.clientA);
+      const preview = await getSaleVoidMoneyPreview(s.adminA, sale.id);
+      if (!preview.ok) throw new Error("previsión rechazada");
+      expect(preview.preview).toMatchObject({
+        collected: "0.00",
+        toOtherSales: "0.00",
+        toFavor: "0.00",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "solo un admin de la organización la lee",
+    async () => {
+      const s = await seed();
+      const sale = await sell(s.adminA, s.pesos, 1, s.clientA);
+      expect(await getSaleVoidMoneyPreview(s.viewerA, sale.id)).toEqual({
+        ok: false,
+        code: "FORBIDDEN",
+      });
+      expect(await getSaleVoidMoneyPreview(s.adminB, sale.id)).toEqual({
+        ok: false,
+        code: "NOT_FOUND",
+      });
+      expect(await getSaleVoidMoneyPreview(s.adminA, "no-es-un-id")).toEqual({
+        ok: false,
+        code: "VALIDATION_ERROR",
+      });
+    },
+    TEST_TIMEOUT,
+  );
 });

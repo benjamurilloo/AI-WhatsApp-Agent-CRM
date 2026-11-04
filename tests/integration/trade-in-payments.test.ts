@@ -1438,3 +1438,54 @@ describe("el viewer, la capacidad y la exportación (AC-12 y AC-13)", () => {
     TEST_TIMEOUT,
   );
 });
+
+// La previsión del panel de cobro con permuta (brief-24.6.2-d, AC-2 y AC-4). La previsión es
+// aritmética del navegador —lo cobrado más el importe, lo que falta menos el importe, lo disponible
+// del usado menos el importe—, así que lo que hay que probar contra la base es que **esos tres
+// números son los que el registro escribe**: si la previsión y la escritura se separaran, la
+// pantalla estaría prometiendo algo que el servicio no hace.
+describe("la previsión del cobro con «Permuta» (AC-2 y AC-4)", () => {
+  it(
+    "los tres números que anuncia coinciden con lo que el registro escribe",
+    async () => {
+      const s = await seed();
+      const tradeIn = await receive(s);
+      const sale = await sell(s);
+      // Un cobro previo, para que «cobrados después» no arranque de cero y pueda distinguirse de
+      // «el importe de este cobro».
+      ok(await permuta(s, sale.id, tradeIn.id, "100"));
+
+      const before = await getSaleReceiptForm(s.admin, sale.id);
+      if (!before.ok) throw new Error("formulario rechazado");
+      // El usado, con los tres importes que la lámina 03 muestra bajo «Permuta».
+      expect(before.permuta?.tradeIns).toEqual([
+        expect.objectContaining({
+          id: tradeIn.id,
+          value: "300.00",
+          applied: "100.00",
+          available: "200.00",
+        }),
+      ]);
+      const collected = ok(await getSaleReceipts(s.admin, sale.id)).sale
+        .collected;
+      const outstanding = before.outstanding;
+      const available = before.permuta!.tradeIns[0]!.available;
+
+      // Lo que la previsión diría con un importe de 150.
+      const amount = 150;
+      const after = (value: string) => (Number(value) - amount).toFixed(2);
+      const plus = (value: string) => (Number(value) + amount).toFixed(2);
+
+      ok(await permuta(s, sale.id, tradeIn.id, String(amount)));
+
+      const now = ok(await getSaleReceipts(s.admin, sale.id)).sale;
+      expect(now.collected).toBe(plus(collected));
+      expect(now.outstanding).toBe(after(outstanding));
+      const reread = await getSaleReceiptForm(s.admin, sale.id);
+      if (!reread.ok) throw new Error("formulario rechazado");
+      expect(reread.permuta?.tradeIns[0]?.available).toBe(after(available));
+      expect(reread.permuta?.tradeIns[0]?.applied).toBe(plus("100.00"));
+    },
+    TEST_TIMEOUT,
+  );
+});

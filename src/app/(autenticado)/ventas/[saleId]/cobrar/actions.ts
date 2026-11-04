@@ -78,8 +78,10 @@ export async function createSaleReceiptAction(
     if (!result.ok) {
       log(result.code);
       // Si la vigente cambió mientras se cargaba, la página se vuelve a leer: el formulario muestra la
-      // nueva equivalencia y manda su id (revisión independiente de la 29.4, R1-3).
-      if (isRateChange(result)) revalidatePath(`/ventas/${saleId}/cobrar`);
+      // nueva equivalencia y manda su id (revisión independiente de la 29.4, R1-3). Desde la
+      // 24.6.2-d se revalida **la ficha**, que es donde vive el panel: `/cobrar` solo redirige, así
+      // que revalidarla no refrescaba nada (autorizado por el usuario el 2026-11-04).
+      if (isRateChange(result)) revalidatePath(`/ventas/${saleId}`);
       return {
         status: "error",
         requestId,

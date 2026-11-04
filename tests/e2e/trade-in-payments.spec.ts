@@ -233,7 +233,9 @@ test("un admin descuenta un usado de una venta con «Permuta», y el usado ya no
   await page
     .getByRole("link", { name: "Proponer lo que queda de PU-000001" })
     .click();
-  await expect(page).toHaveURL(/\?usado=/);
+  // Desde la 24.6.2-d el cobro vive en el panel de la ficha: el usado se suma a los
+  // parámetros que la dirección ya trae.
+  await expect(page).toHaveURL(/&usado=/);
   await expect(
     page.getByRole("radio", { name: /Permuta con el usado PU-000001/ }),
   ).toBeChecked();

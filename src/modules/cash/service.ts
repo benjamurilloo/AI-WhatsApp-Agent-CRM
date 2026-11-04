@@ -1946,6 +1946,10 @@ async function saleStanding(
   tx: DbTransaction,
   organizationId: string,
   sale: SaleForReceipt,
+  // La cuenta del cliente, si quien llama ya la leyó. La vista previa de la anulación la necesita
+  // entera para correr la regla dos veces (brief-24.6.2-d, H-3), y sin esto la leería de nuevo acá:
+  // cuatro consultas repetidas por una lectura que ya las hizo.
+  account?: ClientAccount,
 ): Promise<SaleStanding> {
   const receipts = await repository.findSaleReceipts(
     organizationId,
@@ -1989,8 +1993,9 @@ async function saleStanding(
       refunds: [],
     };
   }
-  const account = await clientAccount(tx, organizationId, sale.clientId);
-  const row = outstandingOf(account.accounts, sale.id);
+  const resolved =
+    account ?? (await clientAccount(tx, organizationId, sale.clientId));
+  const row = outstandingOf(resolved.accounts, sale.id);
   if (!row) {
     throw new Error(`la venta ${sale.id} no está en la cuenta de su cliente`);
   }
@@ -1998,7 +2003,7 @@ async function saleStanding(
   const deposits =
     sale.orderId === null
       ? []
-      : account.receipts.filter((receipt) => receipt.orderId === sale.orderId);
+      : resolved.receipts.filter((receipt) => receipt.orderId === sale.orderId);
   return {
     receipts,
     deposits,
@@ -3506,6 +3511,143 @@ export async function getSaleReceipts(
   };
 }
 
+// El efecto en dinero de **anular** una venta, calculado antes de confirmar (brief-24.6.2-d, H-3).
+// Es la lectura nueva de la subfase, y vive acá y no en `sales` porque la dirección entre módulos es
+// `cash` → `sales` y nunca al revés (`Overview.md:173` y `:177`): la mitad de dinero de la vista
+// previa no puede vivir en el módulo que emite la venta. La página compone las dos mitades.
+//
+// **No es una resta.** Con cliente, lo cobrado contra la venta vuelve al remanente de su cuenta y la
+// regla de imputación lo reparte: primero a sus otras ventas con saldo, de la más vieja a la más
+// nueva, y solo lo que sobra queda a favor (ADR 0022, punto 9 y línea 104). La seña de su pedido no
+// entra en ese reparto: vuelve a quedar **retenida** (punto 5). Por eso los tres números salen de
+// correr la **misma** regla dos veces —con la venta vigente y con la venta anulada— y comparar, en
+// vez de escribir una segunda versión de la regla que podría contradecir a la primera.
+//
+// **Lo que esta lectura no promete** (H-2, D-5). Es una foto del momento. El ADR 0022 dice en su
+// línea 129 que la anulación sigue en `sales` **sin mirar los cobros**: entre leer esto y confirmar
+// puede entrar un cobro, y la anulación se hace igual con otra cifra. Darle una garantía real exige
+// enmendar el punto 6 del ADR, que es condición de detención de esta subfase. La pantalla dice que
+// está calculado ahora y puede cambiar; acá no se simula una garantía que el ADR no da.
+export type SaleVoidMoneyPreview = {
+  currency: string;
+  hasClient: boolean;
+  // **Todo el dinero que la venta tiene aplicado hoy**: sus cobros directos, la seña de su pedido
+  // y lo que la regla de imputación le aplicó desde el remanente de la cuenta. Es el número que la
+  // anulación pone en movimiento, y por eso es el que cierra con los tres términos de abajo:
+  //
+  //     collected = toOtherSales + toFavor + retained   (con cliente)
+  //
+  // **No** es la fila «Cobrado» de la pestaña de cobros, que es solo lo directo y tiene al lado su
+  // propia fila «Imputado desde la cuenta del cliente». Es el mismo criterio que el encabezado de
+  // la ficha usa para decir «Cobrada» (`getSalesStanding`: directo + imputado), porque la pregunta
+  // es la misma: cuánta plata tiene esta venta encima. *Corregido el 2026-11-04, por la revisión
+  // independiente de la 24.6.2-d (MAYOR-1): decía solo `standing.collected`, y entonces una venta
+  // cubierta con un cobro a cuenta informaba cero y la pantalla no dibujaba ningún efecto.*
+  collected: string;
+  // Sin cliente: lo que quedaría a devolver sobre la venta, ya descontado lo devuelto (punto 6).
+  toRefund: string;
+  // Con cliente: lo que la regla aplicaría a sus otras ventas con saldo, y lo que quedaría a favor.
+  toOtherSales: string;
+  toFavor: string;
+  // Con cliente y pedido: la seña que volvería a quedar retenida (punto 5). Ni se aplica ni queda a
+  // favor, así que sin este número los otros dos no cerrarían con lo cobrado.
+  retained: string;
+};
+
+export async function getSaleVoidMoneyPreview(
+  context: AuthContext,
+  saleId: string,
+): Promise<
+  | { ok: true; preview: SaleVoidMoneyPreview }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  // Solo admin: es la pantalla de una operación que solo admin puede hacer, y el importe que
+  // devuelve es dinero de la cuenta de un cliente.
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(saleId).success) return failure("VALIDATION_ERROR");
+  const { organizationId } = context;
+  const found = await repository.withTransaction(async (tx) => {
+    const sale = await getSaleForReceipt(tx, organizationId, saleId);
+    if (!sale) return null;
+    // La cuenta entera, **una sola vez**: la usa la situación de la venta y la usa el contrafáctico.
+    const account =
+      sale.clientId === null
+        ? null
+        : await clientAccount(tx, organizationId, sale.clientId);
+    return {
+      sale,
+      account,
+      standing: await saleStanding(
+        tx,
+        organizationId,
+        sale,
+        account ?? undefined,
+      ),
+    };
+  });
+  if (!found) return failure("NOT_FOUND");
+  const { sale, account, standing } = found;
+  const zero = moneyToDatabase(0n);
+  if (account === null) {
+    // Sin cliente no hay cuenta ni regla que correr (ADR 0022, punto 3): lo cobrado queda a
+    // devolver sobre la venta, menos lo que ya se devolvió.
+    return {
+      ok: true,
+      preview: {
+        currency: sale.currency,
+        hasClient: false,
+        collected: moneyToDatabase(standing.collected),
+        toRefund: moneyToDatabase(
+          standing.collected - sumAmounts(standing.refunds),
+        ),
+        toOtherSales: zero,
+        toFavor: zero,
+        retained: zero,
+      },
+    };
+  }
+  // El contrafáctico: la misma cuenta, con esta venta anulada. Se arma con `ledgerFrom` y no
+  // tocando `input` a mano porque anular la venta **también** suelta la seña de su pedido, que deja
+  // de tener venta vigente: eso lo decide `ledgerFrom` al recalcular `currentSaleOf`, y escribirlo
+  // de nuevo acá sería una segunda versión de la regla del punto 5.
+  const after = ledgerFrom(
+    account.sales.map((row) =>
+      row.id === sale.id ? { ...row, voided: true } : row,
+    ),
+    account.ordersById,
+    account.receipts,
+    account.refunds,
+  );
+  const inCurrency = (accounts: CurrencyAccount[]) =>
+    accounts.find((row) => row.currency === sale.currency);
+  const before = inCurrency(account.accounts);
+  const next = inCurrency(imputeAccount(after.input));
+  // Lo imputado a las **otras** ventas: lo que esta venta tenía imputado vuelve al remanente igual
+  // que sus cobros directos, así que contarla acá sería contarla dos veces.
+  const toOthers = (row: CurrencyAccount | undefined) =>
+    (row?.sales ?? [])
+      .filter((item) => item.saleId !== sale.id)
+      .reduce((sum, item) => sum + item.imputed, 0n);
+  return {
+    ok: true,
+    preview: {
+      currency: sale.currency,
+      hasClient: true,
+      // Directo + seña + imputado: los tres términos de abajo suman exactamente esto. Lo
+      // imputado vuelve al remanente igual que lo directo, así que dejarlo afuera acá rompía la
+      // identidad y, cuando era todo lo que la venta tenía, informaba cero.
+      collected: moneyToDatabase(standing.collected + standing.imputed),
+      toRefund: zero,
+      toOtherSales: moneyToDatabase(toOthers(next) - toOthers(before)),
+      toFavor: moneyToDatabase((next?.inFavor ?? 0n) - (before?.inFavor ?? 0n)),
+      retained: moneyToDatabase(
+        (next?.retained ?? 0n) - (before?.retained ?? 0n),
+      ),
+    },
+  };
+}
+
 // La situación de cobro de **un lote** de ventas, para el listado y para el encabezado de la ficha
 // (brief-24.6.2-b, D-2 y D-4). Lo compone la página, nunca sales: la dirección es cash → sales.
 //
@@ -3691,6 +3833,12 @@ export type PermutaOffer = {
   paymentMethodId: string;
   tradeIns: (DocumentRef & {
     createdAt: Date;
+    // El valor reconocido al recibir el usado y lo que ya se le aplicó a otras ventas, que la
+    // lámina 03 muestra junto a lo disponible (brief-24.6.2-d). Los dos salen de lo que esta
+    // lectura **ya tiene en la mano**: el valor es del usado y lo aplicado es la resta contra lo
+    // disponible. No cuestan ninguna consulta más.
+    value: string;
+    applied: string;
     available: string;
     availableInput: string;
   })[];
@@ -3722,6 +3870,8 @@ async function permutaOffer(
         id: tradeIn.id,
         displayNumber: tradeIn.displayNumber,
         createdAt: tradeIn.createdAt,
+        value: tradeIn.value,
+        applied: moneyToDatabase(moneyFromDatabase(tradeIn.value) - available),
         available: text,
         availableInput: amountForInput(text, tradeIn.currency),
       });

@@ -9,8 +9,11 @@ import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import { receiptExchange } from "@/app/(autenticado)/caja/exchange";
 import { NO_ACTIVE_METHODS_MESSAGE } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
-import { ReceiptForm } from "@/app/(autenticado)/ventas/[saleId]/cobrar/receipt-form";
 import { ActionNotice } from "@/app/_components/action-notice";
+// Desde la 24.6.2-d, ReceiptForm vive en _components y ya no en una ruta de ventas: lo comparten
+// la seña de un pedido y el cobro de una venta (brief-24.6.2-d, D-1, opción c). Solo cambia de dónde
+// se importa: la pantalla de la seña no cambia (AC-12).
+import { ReceiptForm } from "@/app/_components/receipt-form";
 import {
   BackLink,
   DetailHeader,
