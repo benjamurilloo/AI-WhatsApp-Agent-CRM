@@ -514,6 +514,84 @@ evidencia es una captura que no se versiona. Lo anotó como lo que es —**sigue
 autoevaluación**— y tiene razón: es el criterio que en la 24.6.2-e encontró el único defecto que
 nada más vio. Queda cubierto por AC-17, el recorrido del usuario sobre producción.
 
+## Cierre
+
+**Cerrada el 2026-11-03.** Nivel alcanzado: **validado en staging**. No certifica **preparado
+para producción**.
+
+- **Commits**: dos, y el segundo es una corrección de la primera verificación, no del diseño.
+  `aa6782af7f3672888ecee86146af6d5617f72cf8`, 29 archivos, la implementación y este brief; y
+  `c59b4b1bc088003abf2db32f6a2521704aac5a8a`, un archivo y solo formato. El chequeo de la lista
+  cerrada se hizo con `git show --stat` contra la tabla, fila por fila: **nada fuera de la lista**,
+  más la **extensión registrada** `src/modules/inventory/unit-repairs.ts`, que se tocó antes de
+  preguntar —el error— y el usuario autorizó dejar. **Dos filas de la lista no hicieron falta**, y
+  conviene decir por qué, porque una lista que se cumple de menos se parece a una que no se
+  verificó:
+  - `src/modules/sales/index.ts` **reexporta el tipo por nombre**
+    (`type IssueSaleWithoutOrderResult`), y lo que cambió fue la **forma** del tipo dentro de
+    `service.ts`. La línea del reexporte siguió siendo correcta sin tocarla.
+  - **Cinco de los 18** archivos de prueba previstos: `goods-receipt-voids`, `service-orders`,
+    `service-own-units`, `units` y `warranty-claims`. Los dos que sí leen `.sale`
+    —`service-orders` y `warranty-claims`— lo leen de **`deliverServiceOrder`**, no de `issueSale`,
+    que es **D-6 funcionando**: el camino del pedido conservó su forma. `tsc` marcó **15** archivos
+    de prueba, no 20.
+- **CI**: run **41752673219** en `success` sobre `c59b4b1bc088003abf2db32f6a2521704aac5a8a`,
+  los doce pasos en verde, ~29 min. Es la corrida que cerró **AC-14**.
+
+  **AC-14 falló primero, y eso es parte del cierre, no una nota al pie.** El run **41736896180**,
+  sobre `aa6782a`, dio **`failure`** en el paso **Formato**: al cambiar `sale.sale.id` por
+  `sale.sales[0].id` la línea creció y el plegado dejó de ser el que `prettier` produce. Yo había
+  visto ese archivo marcado localmente, lo atribuí al **ruido por CRLF** y lo «confirmé» con un
+  `git stash` que **no podía distinguir nada**: con el cambio y sin el cambio quedaba marcado
+  igual, porque las dos hipótesis predecían el mismo resultado. El ruido local **existe** y son 17
+  archivos del área de reparaciones, que la CI considera limpios; el error fue estirar una
+  explicación verdadera para 17 casos hasta un decimoctavo con causa propia, en vez de preguntar
+  **qué quería cambiar** `prettier`, que es un `diff` de cuatro segundos. **El commit salió a
+  `origin/main` con la CI en rojo.** Y hubo un segundo error encadenado: el watch de esa corrida
+  se leyó como `gh run watch --exit-status | tail`, que **devuelve el código de `tail`** y terminó
+  en 0 con la corrida en `failure`. La conclusión se leyó después por `headSha`, que es lo que
+  este brief pedía como evidencia de AC-14 y lo que el runbook exige en su paso 1.
+- **Despliegue**: `c59b4b1` el 2026-11-03. Vuelta atrás, **`f3b2f53`**, anotado en
+  `/var/lib/crm-production/despliegues` **antes** de desplegar; entre los dos **no hay
+  migraciones**, así que la vuelta es solo de código. **Siguen 67.**
+- **Las siete verificaciones del runbook, pasadas**: los **18** archivos de configuración sin
+  diferencias, con el recuento cerrado; **un solo salto de proxy**, con las tres condiciones de
+  validez comprobadas —la fila del intento de 11 s antes, **la única** de la ventana de 15 minutos,
+  y su clave distinta de la de `'sin-proxy'`— y su control negativo desde dentro del droplet contra
+  el dominio público, que dejó **dos claves distintas**; HSTS presente sobre HTTPS
+  (`max-age=31536000; includeSubDomains`) y **ausente** sobre HTTP, que es el que le da valor; la
+  aplicación escuchando **solo** en `127.0.0.1:3000`; el rol `crm_app_login` distinto del dueño
+  `crm_owner`, con `audit_logs` en `INSERT=t`, `DELETE=f`, `UPDATE=f`; los tres extremos de
+  ingestión y lectura en **401 sin token**; y la organización real «Vixora» en **cero** clientes,
+  mensajes y productos, con las otras dos de demostración desglosadas. El servicio quedó `active`,
+  con **cero reinicios** y **ningún error** en el journal.
+
+  **El túnel SOCKS del control negativo quedó bloqueado por segunda vez consecutiva**, ahora por
+  el clasificador de permisos (`Sensitive Remote Exec`). Se usó la variante que el runbook
+  registró el 2026-11-01 para este caso. Queda anotado allá: dos despliegues seguidos sugieren que
+  la variante es el camino principal y el túnel la excepción.
+- **AC-17**: el usuario recorrió el mostrador en producción el 2026-11-03 y **no encontró
+  defectos**.
+- **AC-11 sigue siendo autoevaluación**, y la revisión independiente tenía razón al señalarlo: su
+  evidencia es una captura que no se versiona. Lo que la cubre es AC-17, no una afirmación mía.
+
+**Lo que esta subfase explícitamente no certifica**, además de lo anotado en el CHANGELOG: el
+aviso del listado es **texto compuesto desde la URL** y no una lectura de la base —comprueba la
+forma de cada número y cae en el genérico ante cualquier otra cosa, pero cualquiera puede visitar
+esa URL con dos números válidos—; la **prominencia del total** de la lámina, imposible con dos
+monedas sin sumarlas; y el **objetivo táctil de 44 px**, que sigue sin cumplirse en los botones
+dentro de tablas y es una subfase propia todavía sin abrir.
+
+**Conocimiento capturado**: **ninguna nota nueva y dos segundas observaciones**, que es el
+resultado correcto cuando lo aprendido ya estaba escrito y lo que faltaba era una instancia.
+[[A Comparative Measurement Needs a Fixture Where the Two Sides Can Differ]] pasó a `validated`
+porque el mecanismo apareció fuera de una medición de costo —el `git stash` que no podía
+distinguir—, y le agregó dos reglas: escribir qué resultado esperaría cada hipótesis **antes** de
+correr el experimento, y preferir el instrumento que devuelve **contenido** al que devuelve un
+**veredicto binario**, porque un binario se satura con una sola causa.
+[[A Test Run Can Exit Zero With a File That Never Ran]] pasó a `validated` con el caso del watch:
+el problema no es de Vitest ni de Windows, y un no-cero tampoco es un veredicto.
+
 ## Condiciones de detención
 
 Se para y se pregunta, sin seguir:
