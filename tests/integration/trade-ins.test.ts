@@ -620,14 +620,14 @@ describe("el IMEI de un equipo vendido que vuelve (AC-4, U-2)", () => {
         ),
       ).toBe(2);
 
-      expect(await voidSale(s.admin, sale.sales[0].id, "data_entry_error")).toEqual(
-        {
-          ok: false,
-          code: "BUSINESS_RULE_VIOLATION",
-          rule: "unit_serial_back",
-          serials: ["imei-vuelve"],
-        },
-      );
+      expect(
+        await voidSale(s.admin, sale.sales[0].id, "data_entry_error"),
+      ).toEqual({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "unit_serial_back",
+        serials: ["imei-vuelve"],
+      });
 
       // Liberada, un pedido que pide ese IMEI elige la del local, no la vendida.
       ok(await releaseUnit(s.admin, back.unitId));
