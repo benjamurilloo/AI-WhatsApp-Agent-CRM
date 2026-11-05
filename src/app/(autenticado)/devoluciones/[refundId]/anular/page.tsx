@@ -7,7 +7,6 @@ import { cardClass, linkClass } from "@/app/_components/form-styles";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatMoney } from "@/shared/money";
-import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 import { VoidForm } from "@/app/(autenticado)/cobros/[receiptId]/anular/void-form";
 import { voidRefundAction } from "../../actions";
 import {
@@ -27,7 +26,9 @@ const REASONS = Object.entries(REFUND_VOID_REASON_LABEL);
 
 // Pantalla 36: la anulación de una devolución (brief-21.5, D-9; ADR 0022, punto 7), solo admin, con
 // el formulario de la anulación de un cobro: corrige una devolución mal registrada, y lo devuelto
-// vuelve a estar a favor o a devolver.
+// vuelve a estar a favor o a devolver. Desde la 24.7.2-b, con la forma de la tarjeta de la lámina
+// 09 (D-4): `Screens.md` §36 dice que usa «la confirmación de la pantalla 32», así que rediseñar
+// una sola las habría separado y habría dejado la contradicción escrita en el documento.
 export default async function VoidRefundPage({
   params,
 }: {
@@ -66,23 +67,40 @@ export default async function VoidRefundPage({
     );
   }
   const refund = found.refund;
-  // Con lo que salió en otra moneda, que es lo que vuelve a la caja (brief-29.4.3, D-7).
-  const amount = refund.tender
-    ? `${formatMoney(refund.amount, refund.currency)} (${tenderNote(refund.tender, true).toLowerCase()})`
-    : formatMoney(refund.amount, refund.currency);
+  const applied = formatMoney(refund.amount, refund.currency);
+  const session = refund.session?.displayNumber ?? "sin sesión";
   const cash = !refund.isCash
-    ? "No es efectivo: no mueve la caja."
+    ? "no mueve la caja, porque no es efectivo"
     : refund.sessionOpen
-      ? `Es efectivo de la sesión ${refund.session?.displayNumber ?? ""}, que sigue abierta: vuelve a lo esperado.`
-      : `Es efectivo de la sesión ${refund.session?.displayNumber ?? ""}, que ya se cerró: su arqueo no cambia y va a mostrar esta anulación. La caja abierta no se toca.`;
+      ? `vuelve a lo esperado de la sesión ${session}, que sigue abierta`
+      : `no cambia el arqueo de la sesión ${session}, que ya se cerró, y va a aparecer ahí como explicación de su diferencia`;
+  const details = [
+    { label: "Devuelto", value: applied },
+    ...(refund.tender
+      ? [
+          {
+            label: "Salió",
+            value: formatMoney(refund.tender.amount, refund.tender.currency),
+          },
+        ]
+      : []),
+    {
+      label: refund.isCash ? "Efectivo" : "Medio",
+      value: refund.isCash
+        ? `${session} ${refund.sessionOpen ? "abierta" : "cerrada"}`
+        : refund.paymentMethodName,
+    },
+  ];
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8">
+    <main className="mx-auto max-w-2xl px-4 py-8 lg:px-8">
       <BackLink href={back.href} label={back.label} />
       <div className="mt-4">
         <PageHeader
-          title={`Anular la devolución ${refund.displayNumber}`}
-          subtitle={`${amount} en ${refund.paymentMethodName}.`}
+          title={TITLE}
+          subtitle={`De la devolución ${refund.displayNumber}${
+            refund.sale ? `, de la venta ${refund.sale.displayNumber}` : ""
+          }.`}
         />
       </div>
       <div className={`mt-6 ${cardClass} p-5 sm:p-6`}>
@@ -99,11 +117,13 @@ export default async function VoidRefundPage({
             action={voidRefundAction}
             field="refundId"
             id={refund.id}
-            question={`¿Anular la devolución ${refund.displayNumber} por ${amount}?`}
-            explanation={`La anulación es otro comprobante, con su propio número, y anula la devolución entera: lo devuelto vuelve a estar a favor o a devolver. ${cash} Una anulación no se deshace.`}
+            question={`¿Anular ${refund.displayNumber}?`}
+            details={details}
+            explanation={`Lo devuelto vuelve a estar a favor o a devolver, y ${cash}. La anulación es otro comprobante, con su propio número, y no se deshace.`}
             reasons={REASONS}
             cancelHref={back.href}
-            submitLabel="Sí, anular la devolución"
+            cancelLabel="Conservar devolución"
+            submitLabel="Anular devolución"
           />
         )}
       </div>

@@ -114,7 +114,7 @@ export default async function ReceiptPage({
                   href={`/cobros/${receipt.id}/anular`}
                   className={dangerOutlineLinkClass}
                 >
-                  Anular cobro
+                  Anular recibo
                 </Link>
               ) : null}
               <PrintButton />

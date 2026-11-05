@@ -15,7 +15,6 @@ import {
 } from "@/app/(autenticado)/devoluciones/messages";
 import { voidReceiptAction } from "./actions";
 import { VoidForm } from "./void-form";
-import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 
 export const metadata: Metadata = {
   title: "Anular cobro — AI WhatsApp Agent CRM",
@@ -25,17 +24,34 @@ const TITLE = "Anular cobro";
 
 const REASONS = Object.entries(RECEIPT_VOID_REASON_LABEL);
 
+// De dónde se vino (brief-24.7.2-b, D-3): el panel del listado manda su propia dirección, con los
+// filtros y la página puestos, para que «Conservar recibo» devuelva **al listado donde estaba** y no
+// a un listado limpio. Se acepta **solo** una dirección de esta aplicación que empiece por
+// `/caja/cobros`: lo que llega por la URL no decide a dónde se va.
+function backFrom(raw: string, receiptId: string) {
+  return /^\/caja\/cobros(\?|$)/.test(raw)
+    ? { href: raw, label: "Volver a los cobros" }
+    : { href: `/cobros/${receiptId}`, label: "Volver al recibo" };
+}
+
 // Pantalla 32: la anulación de un cobro (brief-21.5, D-9; ADR 0022, punto 7), solo admin: el motivo
 // de la lista y la confirmación, con lo que pasa con la caja. Corrige un cobro mal registrado;
-// después se registra el correcto. Un cobro ya anulado no ofrece el formulario.
+// después se registra el correcto. Un cobro ya anulado no ofrece el formulario. Desde la 24.7.2-b
+// tiene la forma de la tarjeta «¿Anular R-000183?» de la lámina 09 (D-4).
 export default async function VoidReceiptPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ receiptId: string }>;
+  searchParams: Promise<{ volver?: string | string[] }>;
 }) {
   const context = await requireSession();
   const { receiptId } = await params;
-  const back = { href: `/cobros/${receiptId}`, label: "Volver al recibo" };
+  const { volver } = await searchParams;
+  const back = backFrom(
+    (Array.isArray(volver) ? volver[0] : volver) ?? "",
+    receiptId,
+  );
   if (context.role !== "admin") {
     return (
       <PageNotice
@@ -60,30 +76,46 @@ export default async function VoidReceiptPage({
     );
   }
   const receipt = found.receipt;
-  // Lo aplicado, y lo que entró si fue en otra moneda: la caja devuelve eso (brief-29.4, D-7).
-  const amount = receipt.tender
-    ? `${formatMoney(receipt.amount, receipt.currency)} (${tenderNote(receipt.tender).toLowerCase()})`
-    : formatMoney(receipt.amount, receipt.currency);
+  const applied = formatMoney(receipt.amount, receipt.currency);
   const destination = receipt.sale
-    ? `de la venta ${receipt.sale.displayNumber}`
+    ? `para la venta ${receipt.sale.displayNumber}`
     : receipt.order
-      ? `de la seña del pedido ${receipt.order.displayNumber}`
-      : "";
+      ? `para la seña del pedido ${receipt.order.displayNumber}`
+      : "a cuenta del cliente";
+  const session = receipt.session?.displayNumber ?? "sin sesión";
   // Qué pasa con la caja (ADR 0022, punto 7): sale de lo esperado de la sesión abierta, o el arqueo
   // guardado no cambia.
   const cash = !receipt.isCash
-    ? "No es efectivo: no mueve la caja."
+    ? "no mueve la caja, porque no es efectivo"
     : receipt.sessionOpen
-      ? `Es efectivo de la sesión ${receipt.session?.displayNumber ?? ""}, que sigue abierta: sale de lo esperado.`
-      : `Es efectivo de la sesión ${receipt.session?.displayNumber ?? ""}, que ya se cerró: su arqueo no cambia y va a mostrar esta anulación como explicación de su diferencia. La caja abierta no se toca.`;
+      ? `resta ${receipt.tender ? formatMoney(receipt.tender.amount, receipt.tender.currency) : applied} de la sesión ${session}, que sigue abierta`
+      : `no cambia el arqueo de la sesión ${session}, que ya se cerró, y va a aparecer ahí como explicación de su diferencia`;
+  // Los tres datos de la tarjeta de la lámina 09.
+  const details = [
+    { label: "Aplicado", value: applied },
+    ...(receipt.tender
+      ? [
+          {
+            label: "Recibido",
+            value: formatMoney(receipt.tender.amount, receipt.tender.currency),
+          },
+        ]
+      : []),
+    {
+      label: receipt.isCash ? "Efectivo" : "Medio",
+      value: receipt.isCash
+        ? `${session} ${receipt.sessionOpen ? "abierta" : "cerrada"}`
+        : receipt.paymentMethodName,
+    },
+  ];
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8">
+    <main className="mx-auto max-w-2xl px-4 py-8 lg:px-8">
       <BackLink href={back.href} label={back.label} />
       <div className="mt-4">
         <PageHeader
-          title={`Anular el recibo ${receipt.displayNumber}`}
-          subtitle={`${amount} en ${receipt.paymentMethodName} ${destination}.`}
+          title={TITLE}
+          subtitle={`Del recibo ${receipt.displayNumber}, ${destination}.`}
         />
       </div>
       <div className={`mt-6 ${cardClass} p-5 sm:p-6`}>
@@ -100,11 +132,13 @@ export default async function VoidReceiptPage({
             action={voidReceiptAction}
             field="receiptId"
             id={receipt.id}
-            question={`¿Anular el recibo ${receipt.displayNumber} por ${amount}?`}
-            explanation={`La anulación es otro comprobante, con su propio número, y anula el cobro entero: deja de contar en lo que falta cobrar. ${cash} Una anulación no se deshace; después podés registrar el cobro correcto.`}
+            question={`¿Anular ${receipt.displayNumber}?`}
+            details={details}
+            explanation={`Deja de contar ${applied} ${destination} y ${cash}. No devuelve dinero: la anulación es otro comprobante, con su propio número, y no se deshace. Después podés registrar el cobro correcto.`}
             reasons={REASONS}
             cancelHref={back.href}
-            submitLabel="Sí, anular el cobro"
+            cancelLabel="Conservar recibo"
+            submitLabel="Anular recibo"
           />
         )}
       </div>

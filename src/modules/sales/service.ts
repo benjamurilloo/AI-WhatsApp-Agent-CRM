@@ -1542,20 +1542,26 @@ export type SaleForReceipt = {
   // La fecha de emisión: el orden de la imputación (ADR 0022, punto 9).
   createdAt: Date;
   voided: boolean;
-  // Su anulación, para el estado de cuenta (brief-21.6, D-6 y H-7).
-  voidRef: { displayNumber: string; createdAt: Date } | null;
+  // Su anulación, para el estado de cuenta (brief-21.6, D-6 y H-7). Desde la 24.7.2-b, con su
+  // motivo, que la tarjeta de contexto de «Registrar devolución» muestra (H-5).
+  voidRef: {
+    displayNumber: string;
+    createdAt: Date;
+    reason: SaleVoidReason;
+  } | null;
 };
 
 function saleForReceipt(row: repository.SaleForReceiptRow): SaleForReceipt {
-  const { voidNumber, voidedAt, ...rest } = row;
+  const { voidNumber, voidedAt, voidReason, ...rest } = row;
   return {
     ...rest,
     displayNumber: formatSaleNumber(row.number),
     voidRef:
-      voidNumber !== null && voidedAt !== null
+      voidNumber !== null && voidedAt !== null && voidReason !== null
         ? {
             displayNumber: formatSaleVoidNumber(voidNumber),
             createdAt: voidedAt,
+            reason: voidReason,
           }
         : null,
   };

@@ -547,6 +547,9 @@ export type SaleForReceiptRow = {
   // El número y la fecha de su anulación, para el estado de cuenta (brief-21.6, D-6 y H-7).
   voidNumber: number | null;
   voidedAt: Date | null;
+  // Su motivo (brief-24.7.2-b, H-5): lo pide la tarjeta de contexto de «Registrar devolución».
+  // **Una columna más del `JOIN` que ya estaba**, no una consulta más.
+  voidReason: SaleVoidReason | null;
 };
 
 const saleForReceiptColumns = {
@@ -562,6 +565,7 @@ const saleForReceiptColumns = {
   voided: sql<boolean>`${saleVoids.id} is not null`,
   voidNumber: saleVoids.number,
   voidedAt: saleVoids.createdAt,
+  voidReason: saleVoids.reason,
 };
 
 const saleVoidJoin = and(

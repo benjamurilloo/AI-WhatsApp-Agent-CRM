@@ -9,6 +9,7 @@
 // pago de un usado (brief-29.7.2).
 export {
   CASH_MOVEMENT_REASONS,
+  CASH_CLIENT_FILTER_LIMIT,
   CASH_RECEIPTS_PAGE_SIZE,
   CASH_SESSIONS_PAGE_SIZE,
   closeCashSession,
@@ -33,6 +34,7 @@ export {
   listCashSessionAudit,
   listCashSessions,
   listPaymentMethods,
+  listReceiptClientOptions,
   listReceipts,
   MAX_ACTIVE_PAYMENT_METHODS,
   MAX_CASH_CURRENCIES,
@@ -44,6 +46,8 @@ export {
   recordCashMovement,
   renamePaymentMethod,
   type CashAmountInput,
+  type CashClientFilter,
+  type CashClientOptions,
   type CashClosingPreviewRow,
   type CashCurrencyTotals,
   type CashMovementField,
@@ -85,6 +89,7 @@ export {
   getClientRefundForm,
   getRefund,
   getSaleRefundForm,
+  listRefundClientOptions,
   listRefunds,
   parseRefundNumberSearch,
   RECEIPT_VOID_REASONS,

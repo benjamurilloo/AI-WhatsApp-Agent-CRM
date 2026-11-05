@@ -214,23 +214,30 @@ test("un admin anula con el teclado un cobro en efectivo de la sesión abierta y
 
   // El cobro de la sesión abierta: sale de lo esperado.
   await page.goto(`/cobros/${late}`);
-  await page.getByRole("link", { name: "Anular cobro" }).click();
+  await page.getByRole("link", { name: "Anular recibo" }).click();
   await expect(page).toHaveURL(new RegExp(`/cobros/${late}/anular$`));
+  // AC-4: la forma de la tarjeta «¿Anular R-000183?» de la lámina 09 (D-4): la pregunta corta, los
+  // tres datos, el motivo de su lista cerrada y los dos botones.
   await expect(
-    page.getByText(/que sigue abierta: sale de lo esperado/),
+    page.getByText("¿Anular R-000002?", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/que sigue abierta/)).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Conservar recibo" }),
   ).toBeVisible();
   await expectAccessible(page, "anulación de un cobro");
-  const reason = page.getByRole("radio", { name: "Otro monto" });
+  const reason = page.getByLabel("Motivo *");
   await reason.focus();
-  await reason.press("Space");
-  await expect(reason).toBeChecked();
-  await page.getByRole("button", { name: "Sí, anular el cobro" }).click();
+  await reason.selectOption({ label: "Otro monto" });
+  await page.getByRole("button", { name: "Anular recibo" }).click();
   await expect(page).toHaveURL(new RegExp(`/cobros/${late}\\?anulado=1`));
   await expect(page.getByText("Cobro anulado.")).toBeVisible();
   await expect(page.locator("[data-comprobante]")).toContainText(
     "Anulado por AR-000001",
   );
-  await expect(page.getByRole("link", { name: "Anular cobro" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Anular recibo" })).toHaveCount(
+    0,
+  );
   await expectAccessible(page, "recibo anulado");
 
   await page.goto("/caja");
@@ -257,11 +264,11 @@ test("un admin anula con el teclado un cobro en efectivo de la sesión abierta y
 
   // El cobro de la sesión cerrada: su arqueo no cambia y la muestra como posterior.
   await page.goto(`/cobros/${early}/anular`);
-  await expect(
-    page.getByText(/que ya se cerró: su arqueo no cambia/),
-  ).toBeVisible();
-  await page.getByRole("radio", { name: "La plata no entró" }).check();
-  await page.getByRole("button", { name: "Sí, anular el cobro" }).click();
+  await expect(page.getByText(/que ya se cerró/)).toBeVisible();
+  await page
+    .getByLabel("Motivo *")
+    .selectOption({ label: "La plata no entró" });
+  await page.getByRole("button", { name: "Anular recibo" }).click();
   await expect(page.getByText("Cobro anulado.")).toBeVisible();
   await page.goto(`/caja/sesiones/${closed}`);
   await expect(
@@ -310,13 +317,38 @@ test("un admin devuelve en efectivo lo cobrado de una venta sin cliente anulada,
   await expect(page.getByText(/A devolver: \$\s2\.000,00/)).toBeVisible();
   await page.getByRole("link", { name: "Devolver", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/ventas/${counter}/devolver$`));
-  const amount = page.getByLabel(/Monto en/);
+  const amount = page.getByLabel(/Importe en/);
   await expect(amount).toHaveValue("2000.00");
+  // AC-6, la forma de la lámina 07 desde la entrada de la venta: el aviso de previsión, las dos
+  // tarjetas de contexto —con el motivo de la anulación, que es lo único que H-5 tuvo que agregar
+  // al `select`— y la revisión de importes.
+  await expect(
+    page.getByText("La devolución aún no se registró."),
+  ).toBeVisible();
+  const contexto = page.getByRole("region", {
+    name: "La venta y su anulación",
+  });
+  await expect(contexto).toContainText("V-000001");
+  await expect(contexto).toContainText("Anulada");
+  await expect(contexto).toContainText("A-000001");
+  await expect(contexto).toContainText("Error de carga");
+  await expect(contexto).toContainText("Importe cobrado:");
+  const revision = page.getByRole("complementary", {
+    name: "Revisión de importes",
+  });
+  await expect(revision).toContainText("A devolver actual");
+  await expect(revision).toContainText("Quedará por devolver");
+  await expect(
+    page.getByText("Confirmá que el dinero fue entregado."),
+  ).toBeVisible();
   await expectAccessible(page, "formulario de la devolución");
 
-  // Una devolución de más se rechaza con lo disponible, y conserva lo escrito.
-  await page.getByRole("radio", { name: /Efectivo/ }).check();
+  // AC-7: la revisión sigue lo que se escribe, y un importe de más **lo rechaza el servidor**.
+  await page
+    .getByLabel("Medio de pago *")
+    .selectOption({ label: "Efectivo (sale de la caja)" });
   await amount.fill("2500");
+  await expect(revision).toContainText("el registro lo rechaza");
   await page.getByRole("button", { name: "Registrar devolución" }).click();
   await expect(
     page.getByText(/La devolución supera lo disponible: \$\s2\.000,00/),
@@ -325,10 +357,11 @@ test("un admin devuelve en efectivo lo cobrado de una venta sin cliente anulada,
   await expectAccessible(page, "devolución rechazada");
 
   // En efectivo, con el teclado.
-  const cash = page.getByRole("radio", { name: /Efectivo/ });
+  const cash = page.getByLabel("Medio de pago *");
   await cash.focus();
-  await cash.press("Space");
+  await cash.selectOption({ label: "Efectivo (sale de la caja)" });
   await amount.fill("500");
+  await expect(revision).toContainText("$ 1.500,00");
   await amount.press("Enter");
   await expect(page).toHaveURL(/\/devoluciones\/[^/]+\?registrada=1$/);
   await expect(page.getByText("Devolución registrada.")).toBeVisible();
@@ -339,16 +372,29 @@ test("un admin devuelve en efectivo lo cobrado de una venta sin cliente anulada,
   await expectAccessible(page, "comprobante de la devolución");
 
   // La anulación de la devolución, y otra vez a devolver.
+  // AC-4: la misma tarjeta, en la anulación de la devolución. `Screens.md` §36 dice que usa «la
+  // confirmación de la pantalla 32»: son la misma pantalla con otro sustantivo.
   await page.getByRole("link", { name: "Anular devolución" }).click();
-  await page.getByRole("radio", { name: "La plata no salió" }).check();
-  await page.getByRole("button", { name: "Sí, anular la devolución" }).click();
+  await expect(
+    page.getByText("¿Anular D-000001?", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Conservar devolución" }),
+  ).toBeVisible();
+  await expectAccessible(page, "anulación de una devolución");
+  await page
+    .getByLabel("Motivo *")
+    .selectOption({ label: "La plata no salió" });
+  await page.getByRole("button", { name: "Anular devolución" }).click();
   await expect(page.getByText("Devolución anulada.")).toBeVisible();
   await expect(comprobante).toContainText("Anulada por AD-000001");
   // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
   await page.goto(`/ventas/${counter}?pestana=cobros`);
   await expect(page.getByText(/A devolver: \$\s2\.000,00/)).toBeVisible();
   await page.getByRole("link", { name: "Devolver", exact: true }).click();
-  await page.getByRole("radio", { name: "Transferencia" }).check();
+  await page
+    .getByLabel("Medio de pago *")
+    .selectOption({ label: "Transferencia" });
   await page.getByRole("button", { name: "Registrar devolución" }).click();
   await expect(page.getByText("Devolución registrada.")).toBeVisible();
   // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
@@ -365,9 +411,27 @@ test("un admin devuelve en efectivo lo cobrado de una venta sin cliente anulada,
   await page.goto(`/ventas/${withClient}?pestana=cobros`);
   await page.getByRole("link", { name: "Devolver saldo a favor" }).click();
   await expect(page).toHaveURL(new RegExp(`/clientes/${clientId}/devolver$`));
-  await expect(page.getByText(/A favor: \$\s1\.500,00/)).toBeVisible();
+  await expect(
+    page.getByText(/Lucía Gómez tiene a favor \$\s1\.500,00/),
+  ).toBeVisible();
+  // **AC-6: la otra entrada del mismo formulario tiene la misma forma.** Es lo que la 24.7.2 no
+  // hizo con su lámina 02, y le costó su hallazgo bloqueante B-1.
+  await expect(
+    page.getByText("La devolución aún no se registró."),
+  ).toBeVisible();
+  const revisionCuenta = page.getByRole("complementary", {
+    name: "Revisión de importes",
+  });
+  await expect(revisionCuenta).toContainText("A favor actual");
+  await expect(revisionCuenta).toContainText("Quedará a favor");
+  await expect(page.getByLabel(/Importe en/)).toBeVisible();
+  await expect(
+    page.getByText("Confirmá que el dinero fue entregado."),
+  ).toBeVisible();
   await expectAccessible(page, "devolución desde la cuenta");
-  await page.getByRole("radio", { name: "Transferencia" }).check();
+  await page
+    .getByLabel("Medio de pago *")
+    .selectOption({ label: "Transferencia" });
   await page.getByRole("button", { name: "Registrar devolución" }).click();
   await expect(page.getByText("Devolución registrada.")).toBeVisible();
   await expect(page.locator("[data-comprobante]")).toContainText(
@@ -378,7 +442,28 @@ test("un admin devuelve en efectivo lo cobrado de una venta sin cliente anulada,
   const list = page.getByRole("region", { name: "Devoluciones" });
   await expect(list).toContainText("D-000003");
   await expect(list).toContainText("Anulada");
+  await expect(list).toContainText("Vigente");
+  for (const header of [
+    "Número D",
+    "Cliente",
+    "Desde",
+    "Medio",
+    "Importe",
+    "Estado",
+  ]) {
+    await expect(
+      list.getByRole("columnheader", { name: header, exact: true }),
+    ).toBeVisible();
+  }
   await expectAccessible(page, "lista de devoluciones");
+  // AC-2: el filtro por cliente deja **solo** las devoluciones de ese cliente. El `<select>` trae
+  // los que tienen devoluciones, no todos los de la organización.
+  const cliente = page.getByLabel("Cliente");
+  await expect(cliente.locator("option")).toHaveCount(2);
+  await cliente.selectOption({ label: "Lucía Gómez" });
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(list).toContainText("D-000003");
+  await expect(list).not.toContainText("D-000002");
   expect(await counts()).toEqual({ voids: 0, refunds: 3, refund_voids: 1 });
 });
 
@@ -415,7 +500,9 @@ test("un viewer ve el cobro anulado, la devolución y la lista sin ninguna acci�
   ).toHaveCount(0);
 
   await page.goto(`/cobros/${receiptId}`);
-  await expect(page.getByRole("link", { name: "Anular cobro" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Anular recibo" })).toHaveCount(
+    0,
+  );
   await page.goto(`/devoluciones/${refundId}`);
   await expect(page.locator("[data-comprobante]")).toContainText(
     "Devolución D-000001",
@@ -470,19 +557,133 @@ test.describe("sin JavaScript", () => {
     await voidSale(1, counter);
     await login(page, ADMIN);
 
+    // AC-9: el filtro y el panel **también andan sin JavaScript**, porque son un formulario GET
+    // y un parámetro de la URL. El panel de la lámina no es un diálogo que abre un script.
+    await page.goto("/caja/cobros");
+    await page.getByRole("link", { name: "R-000001" }).click();
+    await expect(
+      page.getByRole("complementary", { name: "Recibo R-000001" }),
+    ).toBeVisible();
+    await page
+      .getByRole("complementary", { name: "Recibo R-000001" })
+      .getByRole("link", { name: "Cerrar el recibo" })
+      .click();
+    await expect(
+      page.getByRole("complementary", { name: /^Recibo/ }),
+    ).toHaveCount(0);
+    await page.getByLabel("Número R").fill("2");
+    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await expect(page).toHaveURL(/numero=2/);
+    await expect(
+      page.getByRole("region", { name: "Cobros" }),
+    ).not.toContainText("R-000001");
+
     await page.goto(`/cobros/${receiptId}/anular`);
-    await page.getByRole("radio", { name: "Otro medio de pago" }).check();
-    await page.getByRole("button", { name: "Sí, anular el cobro" }).click();
+    await page
+      .getByLabel("Motivo *")
+      .selectOption({ label: "Otro medio de pago" });
+    await page.getByRole("button", { name: "Anular recibo" }).click();
     await expect(page).toHaveURL(
       new RegExp(`/cobros/${receiptId}\\?anulado=1`),
     );
     await expect(page.getByText("Cobro anulado.")).toBeVisible();
 
     await page.goto(`/ventas/${counter}/devolver`);
-    await page.getByRole("radio", { name: "Transferencia" }).check();
+    // Sin JavaScript la revisión **no sigue lo que se escribe**, y muestra lo propuesto: es
+    // inherente al no-JavaScript y está declarado (H-4), no es un defecto que apareció al final.
+    await expect(
+      page.getByRole("complementary", { name: "Revisión de importes" }),
+    ).toContainText("A devolver actual");
+    await page
+      .getByLabel("Medio de pago *")
+      .selectOption({ label: "Transferencia" });
     await page.getByRole("button", { name: "Registrar devolución" }).click();
     await expect(page).toHaveURL(/\/devoluciones\/[^/]+\?registrada=1$/);
     await expect(page.getByText("Devolución registrada.")).toBeVisible();
     expect(await counts()).toEqual({ voids: 1, refunds: 1, refund_voids: 0 });
   });
+});
+
+// AC-10, la otra mitad: el barrido de anchos de las pantallas de devolución. Va acá y no en
+// `receipts.spec.ts` porque este archivo ya sabe dejar una venta anulada con algo a devolver y un
+// cliente con saldo a favor, que es lo que hace falta para que las pantallas **tengan datos**. Un
+// `<select>` vacío no mide nada, y una pantalla bloqueada tampoco dibuja el formulario.
+const anchoDesbordado = (page: Page) =>
+  page.evaluate(
+    () => document.documentElement.scrollWidth - document.body.clientWidth,
+  );
+
+test("sin desbordamiento horizontal de 320 a 1440 px en las devoluciones y en «Registrar devolución»", async ({
+  page,
+}) => {
+  test.slow();
+  const methods = await insertMethods();
+  // Una venta sin cliente anulada y cobrada: deja algo a devolver sobre la venta.
+  const counter = await insertSale(1, "2000.00");
+  await insertReceipt({
+    number: 1,
+    saleId: counter,
+    methodId: methods.transfer,
+    sessionId: null,
+    amount: "2000.00",
+  });
+  await voidSale(1, counter);
+  // Un cliente con una venta anulada cobrada: deja saldo a favor en su cuenta, con un nombre largo
+  // para que el `<select>` del filtro se mida con su peor opción.
+  const clientId = await db.execute<{ id: string }>(
+    sql`insert into clients (organization_id, display_name, phone_e164)
+        values (${SEED_ORGANIZATION_ID},
+                'María Fernanda Etcheverría Villanueva de la Torre',
+                '+5491155550009')
+        returning id`,
+  );
+  const largo = clientId.rows[0]!.id;
+  const withClient = await insertSale(2, "1500.00", largo);
+  await insertReceipt({
+    number: 2,
+    saleId: withClient,
+    methodId: methods.transfer,
+    sessionId: null,
+    amount: "1500.00",
+  });
+  await voidSale(2, withClient);
+  // Y una devolución ya registrada, para que el listado tenga filas, su filtro tenga opciones y
+  // exista una anulación que dibujar.
+  const refund = await db.execute<{ id: string }>(
+    sql`insert into refunds (organization_id, number, target, client_id, payment_method_id,
+                             currency, amount, created_by)
+        values (${SEED_ORGANIZATION_ID}, 1, 'account', ${largo}, ${methods.transfer}, 'ARS',
+                '500.00', ${ADMIN_SEED.id})
+        returning id`,
+  );
+  const refundId = refund.rows[0]!.id;
+  await login(page, ADMIN);
+
+  for (const width of [320, 390, 640, 1082, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const ruta of [
+      "/caja/devoluciones",
+      `/devoluciones/${refundId}/anular`,
+      `/ventas/${counter}/devolver`,
+      `/clientes/${largo}/devolver`,
+    ]) {
+      await page.goto(ruta);
+      expect(
+        await anchoDesbordado(page),
+        `${ruta} desborda a ${width} px`,
+      ).toBeLessThanOrEqual(0);
+    }
+  }
+
+  // Y el `<select>` del filtro de Devoluciones, poblado, entra a 320 px: es la misma medición que
+  // M-2 hace en Cobros, sobre el otro listado.
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto("/caja/devoluciones");
+  const ancho = await page
+    .getByLabel("Cliente")
+    .evaluate((node) => node.getBoundingClientRect().width);
+  expect(
+    ancho,
+    "el select de clientes de Devoluciones no entra a 320 px",
+  ).toBeLessThanOrEqual(320);
 });

@@ -367,10 +367,17 @@ test("un admin cobra en pesos una venta en dólares, la caja suma pesos y la anu
 
   await page.goto("/caja/cobros");
   await page.getByRole("link", { name: "R-000001" }).click();
-  await expect(page.getByText(/Entraron \$\s156\.500,00/)).toBeVisible();
-  await page.getByRole("link", { name: "Anular cobro" }).click();
-  await page.getByRole("radio", { name: "Otro monto" }).check();
-  await page.getByRole("button", { name: "Sí, anular el cobro" }).click();
+  const panel = page.getByRole("complementary", { name: "Recibo R-000001" });
+  await expect(panel).toContainText("Recibido físicamente:");
+  await expect(panel).toContainText(/\$\s156\.500,00/);
+  await expect(panel).toContainText("Cotización usada");
+  await expect(panel).toContainText("copiada al registrar");
+  await expect(panel).toContainText(
+    "La deuda baja en USD; la caja recibe ARS.",
+  );
+  await panel.getByRole("link", { name: "Anular recibo" }).click();
+  await page.getByLabel("Motivo *").selectOption({ label: "Otro monto" });
+  await page.getByRole("button", { name: "Anular recibo" }).click();
   await expect(page).not.toHaveURL(/\/anular/);
   await page.goto("/caja");
   await expect(page.getByText(/Equivalente orientativo/)).toHaveCount(0);
@@ -557,7 +564,9 @@ test("un admin devuelve en pesos lo que está a favor en dólares, la caja resta
   await expectAccessible(page, "devolución en pesos");
 
   // En efectivo, de la caja: quedan ARS 43.000, US$ 27,39 a 1.570 (revisión R1-5).
-  await page.getByLabel(/Efectivo/).check();
+  await page
+    .getByLabel("Medio de pago *")
+    .selectOption({ label: "Efectivo (sale de la caja)" });
   await page.getByRole("button", { name: "Registrar devolución" }).click();
   await expect(page).toHaveURL(/\/devoluciones\/.+\?registrada=1$/);
   await expect(

@@ -265,15 +265,15 @@ test("un admin busca un recibo en «Cobros» y cierra la caja con el cobro en ef
   await expect(list).toContainText("R-000002");
   await expect(list).toContainText("R-000001");
   await expectAccessible(page, "lista de cobros");
-  await page.getByLabel("Número").fill("2");
-  await page.getByLabel("Número").press("Enter");
-  await expect(page).toHaveURL(/\/caja\/cobros\?numero=2$/);
+  await page.getByLabel("Número R").fill("2");
+  await page.getByLabel("Número R").press("Enter");
+  await expect(page).toHaveURL(/\/caja\/cobros\?numero=2/);
   await expect(list).toContainText("R-000002");
   await expect(list).not.toContainText("R-000001");
-  await page.getByLabel("Número").fill("R-000099");
-  await page.getByLabel("Número").press("Enter");
+  await page.getByLabel("Número R").fill("R-000099");
+  await page.getByLabel("Número R").press("Enter");
   await expect(
-    page.getByText("Ningún cobro coincide con ese número."),
+    page.getByText("Ningún cobro coincide con ese filtro."),
   ).toBeVisible();
 
   // La caja suma solo el cobro en efectivo: 1.000 + 2.500.
@@ -343,8 +343,15 @@ test("un viewer ve los cobros de una venta, el recibo y la lista sin ninguna acc
     page.getByRole("region", { name: "Cobros de la venta V-000001" }),
   ).toBeVisible();
 
+  // Desde la 24.7.2-b el número abre el **panel** del listado (D-0b), no la pantalla suelta; el
+  // comprobante imprimible sigue estando, a un enlace de distancia, y **un viewer no ve «Anular»**.
   await page.goto("/caja/cobros");
   await page.getByRole("link", { name: "R-000001" }).click();
+  const panel = page.getByRole("complementary", { name: "Recibo R-000001" });
+  await expect(panel).toContainText("Vigente");
+  await expect(panel.getByRole("link", { name: /Anular/ })).toHaveCount(0);
+  await expectAccessible(page, "panel del recibo para un viewer");
+  await panel.getByRole("link", { name: /Imprimir/ }).click();
   await expect(page.locator("[data-comprobante]")).toContainText(
     "Recibo R-000001",
   );
@@ -368,4 +375,329 @@ test.describe("sin JavaScript", () => {
     await expect(page.getByText("Se registró el cobro")).toBeVisible();
     expect(await receiptCount()).toBe(1);
   });
+});
+
+// --- 24.7.2-b: la lámina 06, el filtro por cliente y el recibo en un panel por URL ---
+
+// Un cliente, para el filtro: el `<select>` de la lámina trae **los que tienen cobros**, no todos.
+async function insertClient(name: string, phone: string) {
+  const result = await db.execute<{ id: string }>(
+    sql`insert into clients (organization_id, display_name, phone_e164)
+        values (${SEED_ORGANIZATION_ID}, ${name}, ${phone})
+        returning id`,
+  );
+  return result.rows[0]!.id;
+}
+
+// AC-1, AC-2 y AC-3: la forma de la lámina 06, el filtro por cliente que filtra de verdad y el
+// panel que abre y cierra por la URL conservando los filtros (D-3).
+test("un admin filtra los cobros por cliente y abre el recibo en el panel sin perder el filtro", async ({
+  page,
+}) => {
+  const methods = await insertMethods();
+  const paula = await insertClient("Paula Méndez", "+5491155550001");
+  const mateo = await insertClient("Mateo Salas", "+5491155550002");
+  const first = await insertSale(1, "3000.00", paula);
+  const second = await insertSale(2, "2000.00", mateo);
+  const third = await insertSale(3, "1000.00");
+  // Sin efectivo: un cobro en efectivo necesita una sesión abierta, y acá la caja no es el tema.
+  await insertReceipt({
+    number: 1,
+    saleId: first,
+    methodId: methods.get("Transferencia")!,
+    sessionId: null,
+    amount: "3000.00",
+  });
+  await insertReceipt({
+    number: 2,
+    saleId: second,
+    methodId: methods.get("Transferencia")!,
+    sessionId: null,
+    amount: "2000.00",
+  });
+  await insertReceipt({
+    number: 3,
+    saleId: third,
+    methodId: methods.get("Tarjeta de débito")!,
+    sessionId: null,
+    amount: "1000.00",
+  });
+  await login(page, ADMIN);
+  await page.goto("/caja/cobros");
+
+  // AC-1: las seis columnas de la lámina, «Consumidor final» donde no hay cliente y el estado.
+  const list = page.getByRole("region", { name: "Cobros" });
+  for (const header of [
+    "Número R",
+    "Cliente",
+    "Destino",
+    "Medio",
+    "Importe",
+    "Estado",
+  ]) {
+    await expect(
+      list.getByRole("columnheader", { name: header, exact: true }),
+    ).toBeVisible();
+  }
+  await expect(list).toContainText("Consumidor final");
+  await expect(list).toContainText("Vigente");
+  // H-6: «Registrar cobro» se dibuja deshabilitado, como la lámina, y dice por qué.
+  const registrar = page.getByRole("button", { name: "Registrar cobro" });
+  await expect(registrar).toBeDisabled();
+
+  // AC-2: el filtro por cliente deja **solo** los cobros de ese cliente.
+  const cliente = page.getByLabel("Cliente");
+  await expect(cliente.locator("option")).toHaveCount(3);
+  await cliente.selectOption({ label: "Paula Méndez" });
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(list).toContainText("R-000001");
+  await expect(list).not.toContainText("R-000002");
+  await expect(list).not.toContainText("R-000003");
+
+  // AC-3: el panel abre por la URL y **conserva el filtro** (D-3).
+  await page.getByRole("link", { name: "R-000001" }).click();
+  await expect(page).toHaveURL(/cliente=/);
+  const panel = page.getByRole("complementary", { name: "Recibo R-000001" });
+  await expect(panel).toContainText("Paula Méndez");
+  await expect(panel).toContainText(LEGEND);
+  await expect(panel).toContainText("Aplicado a la venta:");
+  await expectAccessible(page, "cobros con el panel abierto");
+
+  // Y cierra devolviendo al listado **donde estaba**, con el filtro puesto.
+  await panel.getByRole("link", { name: "Cerrar el recibo" }).click();
+  await expect(page).toHaveURL(/cliente=/);
+  await expect(
+    page.getByRole("complementary", { name: /^Recibo/ }),
+  ).toHaveCount(0);
+  await expect(list).toContainText("R-000001");
+  await expect(list).not.toContainText("R-000002");
+
+  // N-6: los dos filtros conviven. Un número de otro cliente, con el cliente puesto, no trae
+  // nada: el `where` lleva los dos, y elegir un cliente no borra el número.
+  await page.goto(`/caja/cobros?cliente=${paula}&numero=2`);
+  await expect(
+    page.getByText("Ningún cobro coincide con ese filtro."),
+  ).toBeVisible();
+  await page.goto(`/caja/cobros?cliente=${paula}&numero=1`);
+  await expect(list).toContainText("R-000001");
+  await expect(list).not.toContainText("R-000002");
+
+  // El filtro que no alcanza a nadie **deja la lista vacía**, no la deja entera.
+  await page.goto("/caja/cobros?cliente=00000000-0000-4000-8000-000000000000");
+  await expect(
+    page.getByText("Ningún cobro coincide con ese filtro."),
+  ).toBeVisible();
+
+  // AC-3, la dirección escrita a mano: el panel **no se dibuja fuera de su listado**, y un id que
+  // no existe no lo dibuja tampoco ni rompe el listado.
+  await page.goto("/caja/cobros?recibo=00000000-0000-4000-8000-000000000000");
+  await expect(
+    page.getByRole("complementary", { name: /^Recibo/ }),
+  ).toHaveCount(0);
+  await expect(list).toContainText("R-000003");
+  await page.goto(
+    "/caja/devoluciones?recibo=00000000-0000-4000-8000-000000000000",
+  );
+  await expect(
+    page.getByRole("complementary", { name: /^Recibo/ }),
+  ).toHaveCount(0);
+});
+
+// AC-10: sin desbordamiento horizontal de 320 a 1440 px, **con el `<select>` de clientes poblado**.
+// Un `<select>` vacío no mide nada: la 24.7.2 declaró este criterio en verde sin que existiera un
+// solo `setViewportSize`, y al escribirlo apareció un desbordamiento de 338 px. Los nombres son
+// largos a propósito: el ancho mínimo de un `<select>` es el de su opción más larga (24.7.1).
+const anchoDesbordado = (page: Page) =>
+  page.evaluate(
+    () => document.documentElement.scrollWidth - document.body.clientWidth,
+  );
+
+test("sin desbordamiento horizontal de 320 a 1440 px en los cobros, con el select de clientes poblado", async ({
+  page,
+}) => {
+  const methods = await insertMethods();
+  const largo = await insertClient(
+    "María Fernanda Etcheverría Villanueva de la Torre",
+    "+5491155550003",
+  );
+  const sale = await insertSale(1, "3000.00", largo);
+  await insertReceipt({
+    number: 1,
+    saleId: sale,
+    methodId: methods.get("Transferencia")!,
+    sessionId: null,
+    amount: "3000.00",
+  });
+  const receiptId = await db.execute<{ id: string }>(
+    sql`select id from receipts where number = 1`,
+  );
+  const open = receiptId.rows[0]!.id;
+  await login(page, ADMIN);
+
+  for (const width of [320, 390, 640, 1082, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    // **Las rutas de esta subfase, y con datos.** La primera versión de este barrido incluía
+    // `/cobros/[id]`, que acá solo cambió una etiqueta, y dejaba afuera las pantallas que estrenan
+    // el layout nuevo; además barría `/caja/devoluciones` **sin ninguna devolución**, o sea con el
+    // `<select>` vacío, que es exactamente lo que AC-10 prohíbe. Lo encontró la revisión
+    // independiente (B-2). Las de devoluciones y «Registrar devolución» las barre
+    // `refunds.spec.ts`, que ya tiene con qué cargarlas.
+    for (const ruta of [
+      "/caja/cobros",
+      `/caja/cobros?recibo=${open}`,
+      `/cobros/${open}/anular`,
+    ]) {
+      await page.goto(ruta);
+      expect(
+        await anchoDesbordado(page),
+        `${ruta} desborda a ${width} px`,
+      ).toBeLessThanOrEqual(0);
+    }
+  }
+
+  // M-2: el ancho mínimo del `<select>` de clientes, medido como lo midió la 24.7.1. Es la
+  // medición que faltaba desde entonces en «cobrar a cuenta» y «pagos a proveedores», y acá no se
+  // podía diferir porque el control es nuevo. Con `w-full min-w-0` el control se encoge con su
+  // columna en vez de empujar la página.
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto("/caja/cobros");
+  const ancho = await page
+    .getByLabel("Cliente")
+    .evaluate((node) => node.getBoundingClientRect().width);
+  const minimo = await page.getByLabel("Cliente").evaluate((node) => {
+    const previo = (node as HTMLElement).style.width;
+    (node as HTMLElement).style.width = "min-content";
+    const medido = node.getBoundingClientRect().width;
+    (node as HTMLElement).style.width = previo;
+    return medido;
+  });
+  console.log(
+    `M-2 · select de clientes: ${Math.round(ancho)} px dibujado · ${Math.round(minimo)} px de min-content a 320 px de ventana`,
+  );
+  expect(ancho, "el select de clientes no entra a 320 px").toBeLessThanOrEqual(
+    320,
+  );
+});
+
+// M-1: el costo del filtro por cliente, con un fixture de **200 cobros repartidos entre 20
+// clientes**, que es lo que el brief fija. Lo que se mide acá es el **tiempo**; el **recuento de
+// consultas** queda *verificado por camino de código y no medido*, porque el contador de sentencias
+// no alcanza a Next, que corre en otro proceso —como en la 24.6.2-b, la 24.6.2-d, la 24.7.1 y la
+// 24.7.2—. **Son dos cosas con dos nombres y ninguna hereda la salvedad de la otra**: el tiempo
+// está medido de verdad, acá abajo.
+//
+// Lo que el camino de código dice, archivo por archivo, **entero** (la primera versión dejaba
+// dos afuera, y lo encontró la revisión independiente, N-4): con filtro o sin él, la página hace
+// `getOrganizationTimezone` (1), `listReceiptClientOptions` (1 consulta de ids + 1 de nombres a
+// `crm`), `countReceipts` (1), `findReceipts` (1) y `getClientsByIds` de la página (1). **El
+// filtro no agrega ninguna**: entra en el `where` de las dos que ya estaban, que es lo que
+// conserva la paginación en SQL. Con el filtro por **nombre** —pasado el tope de 50— se suma una
+// de `crm` (`listClientOrderKeys`), y ese camino **no está medido**. Y **cuando el panel está
+// abierto el listado suma `getReceipt` y `getAppFrame`**: son las dos que la pantalla 29 ya
+// hacía, pero ahora las hace esta pantalla, que antes no las hacía.
+test("M-1: el filtro por cliente no cambia el orden del costo con 200 cobros y 20 clientes", async ({
+  page,
+}) => {
+  test.slow();
+  const methods = await insertMethods();
+  const transfer = methods.get("Transferencia")!;
+  const clients: string[] = [];
+  for (let i = 0; i < 20; i += 1) {
+    clients.push(
+      await insertClient(
+        `Cliente ${String(i).padStart(2, "0")}`,
+        `+54911555${String(10000 + i)}`,
+      ),
+    );
+  }
+  for (let i = 0; i < 200; i += 1) {
+    const saleId = await insertSale(i + 1, "100.00", clients[i % 20]);
+    await insertReceipt({
+      number: i + 1,
+      saleId,
+      methodId: transfer,
+      sessionId: null,
+      amount: "100.00",
+    });
+  }
+  await login(page, ADMIN);
+
+  const medir = async (ruta: string) => {
+    const empezo = Date.now();
+    await page.goto(ruta);
+    await expect(page.getByRole("region", { name: "Cobros" })).toBeVisible();
+    return Date.now() - empezo;
+  };
+
+  const sinFiltro = await medir("/caja/cobros");
+  const conFiltro = await medir(`/caja/cobros?cliente=${clients[3]}`);
+  const segundaPagina = await medir(
+    `/caja/cobros?cliente=${clients[3]}&pagina=2`,
+  );
+  console.log(
+    `M-1 · sin filtro ${sinFiltro} ms · con filtro ${conFiltro} ms · filtrada p.2 ${segundaPagina} ms`,
+  );
+
+  // Lo que el filtro tiene que hacer: 200 cobros entre 20 clientes son 10 por cliente, así que la
+  // lista filtrada entra en una página y **la paginación sigue siendo de la consulta**, no de un
+  // recorte en memoria.
+  await page.goto(`/caja/cobros?cliente=${clients[3]}`);
+  await expect(page.getByText(/Mostrando 1 a 10 de 10 cobros/)).toBeVisible();
+  await page.goto("/caja/cobros");
+  await expect(page.getByText(/Mostrando 1 a 25 de 200 cobros/)).toBeVisible();
+  // Con 20 clientes el `<select>` **sí se dibuja**: 20 está por debajo del tope de 50. Lo que se
+  // comprueba es que estén los veinte, más «Todos».
+  await expect(page.getByLabel("Cliente").locator("option")).toHaveCount(21);
+});
+
+// N-3, de la revisión independiente: **la segunda forma del control de D-1 no tenía ni un test**.
+// D-1 dice que se implementan las dos y que la que se dibuja la decide el dato; una forma sin
+// prueba está *implementada*, no *validada*, que es la distinción que el vocabulario de este
+// proyecto existe para no borrar. Pasado el tope de 50 clientes con cobros, el `<select>` deja
+// lugar al cuadro de texto, y el filtro pasa a resolverse por nombre en `crm`.
+test("pasado el tope de 50 clientes con cobros, el filtro es un cuadro de texto y filtra por nombre", async ({
+  page,
+}) => {
+  test.slow();
+  const methods = await insertMethods();
+  const transfer = methods.get("Transferencia")!;
+  // Cincuenta y un clientes con un cobro **a cuenta** cada uno: no hace falta una venta por
+  // cliente, y el cobro a cuenta es un destino válido desde la 21.6.
+  await db.execute(
+    sql`insert into clients (organization_id, display_name, phone_e164)
+        select ${SEED_ORGANIZATION_ID},
+               'Cliente ' || lpad(i::text, 2, '0'),
+               '+54911' || lpad((5550100 + i)::text, 7, '0')
+        from generate_series(1, 51) as i`,
+  );
+  await db.execute(
+    sql`insert into receipts (organization_id, number, target, client_id, payment_method_id,
+                              currency, amount, created_by)
+        select ${SEED_ORGANIZATION_ID}, row_number() over (order by display_name), 'account', id,
+               ${transfer}, 'ARS', '100.00', ${ADMIN_SEED.id}
+        from clients where organization_id = ${SEED_ORGANIZATION_ID}`,
+  );
+  await login(page, ADMIN);
+  await page.goto("/caja/cobros");
+
+  // El control cambió de forma: ya no hay `<option>` que elegir.
+  const cliente = page.getByLabel("Cliente");
+  await expect(cliente.locator("option")).toHaveCount(0);
+  await expect(cliente).toHaveAttribute("type", "search");
+  await expectAccessible(page, "cobros con el filtro por nombre");
+
+  // Y filtra por nombre, resolviendo nombre → ids en `crm` y filtrando por id en `cash`.
+  await cliente.fill("Cliente 07");
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(page.getByText(/Mostrando 1 a 1 de 1 cobro$/)).toBeVisible();
+  await cliente.fill("Cliente 0");
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  // «Cliente 01» a «Cliente 09»: nueve.
+  await expect(page.getByText(/Mostrando 1 a 9 de 9 cobros/)).toBeVisible();
+  // Un nombre que no existe deja la lista vacía, **no la deja entera**.
+  await cliente.fill("Nadie");
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(
+    page.getByText("Ningún cobro coincide con ese filtro."),
+  ).toBeVisible();
 });

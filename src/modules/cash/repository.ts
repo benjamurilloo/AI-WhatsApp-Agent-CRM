@@ -864,19 +864,36 @@ export async function findReceipt(
   return rows[0];
 }
 
+// El filtro del listado de cobros: el número y el cliente (brief-24.7.2-b, D-0a). El cliente filtra
+// **por id y en SQL, sobre `receipts`, que es una tabla de `cash`**: no cruza ninguna frontera
+// (Overview.md:49) y **conserva la paginación en SQL**, que es lo que hace que el costo no crezca
+// con la organización. El recuento y la página comparten este `where`, así que no pueden
+// discrepar.
+// `clientIds` es **una lista** y no un id porque el control tiene dos formas (D-1): el
+// `<select>` manda uno, y el cuadro de texto del tope manda los que coinciden con el nombre. Quien
+// llama nunca pasa una lista vacía: eso es «ningún cliente coincide», y el servicio lo resuelve sin
+// consultar.
+function receiptFilter(
+  organizationId: string,
+  number: number | null,
+  clientIds: string[] | null,
+) {
+  return and(
+    eq(receipts.organizationId, organizationId),
+    number !== null ? eq(receipts.number, number) : undefined,
+    clientIds !== null ? inArray(receipts.clientId, clientIds) : undefined,
+  );
+}
+
 export async function countReceipts(
   organizationId: string,
   number: number | null,
+  clientIds: string[] | null = null,
 ): Promise<number> {
   const rows = await getDb()
     .select({ total: count() })
     .from(receipts)
-    .where(
-      and(
-        eq(receipts.organizationId, organizationId),
-        number !== null ? eq(receipts.number, number) : undefined,
-      ),
-    );
+    .where(receiptFilter(organizationId, number, clientIds));
   return rows[0]!.total;
 }
 
@@ -886,20 +903,35 @@ export function findReceipts(
   number: number | null,
   limit: number,
   offset: number,
+  clientIds: string[] | null = null,
 ): Promise<ReceiptRow[]> {
   return getDb()
     .select(receiptColumns)
     .from(receipts)
     .leftJoin(receiptVoids, receiptVoidJoin)
-    .where(
-      and(
-        eq(receipts.organizationId, organizationId),
-        number !== null ? eq(receipts.number, number) : undefined,
-      ),
-    )
+    .where(receiptFilter(organizationId, number, clientIds))
     .orderBy(desc(receipts.number))
     .limit(limit)
     .offset(offset);
+}
+
+// Los clientes que tienen algún cobro (brief-24.7.2-b, D-1): **solo sus ids**, que es todo lo que
+// `cash` sabe de un cliente. Los nombres los pide después `crm` por `getClientsByIds`, como ya
+// hace el listado. Trae uno más que el tope para saber si lo pasa **sin contar la tabla entera**.
+export function findReceiptClientIds(
+  organizationId: string,
+  limit: number,
+): Promise<{ clientId: string }[]> {
+  return getDb()
+    .selectDistinct({ clientId: receipts.clientId })
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        isNotNull(receipts.clientId),
+      ),
+    )
+    .limit(limit) as Promise<{ clientId: string }[]>;
 }
 
 // La anulación de un cobro, la devolución y su anulación (ADR 0022, punto 7; brief-21.5, D-1 a D-3).
@@ -1159,19 +1191,28 @@ export async function findRefund(
   return rows[0];
 }
 
+// El gemelo de `receiptFilter` para las devoluciones (brief-24.7.2-b, D-0a).
+function refundFilter(
+  organizationId: string,
+  number: number | null,
+  clientIds: string[] | null,
+) {
+  return and(
+    eq(refunds.organizationId, organizationId),
+    number !== null ? eq(refunds.number, number) : undefined,
+    clientIds !== null ? inArray(refunds.clientId, clientIds) : undefined,
+  );
+}
+
 export async function countRefunds(
   organizationId: string,
   number: number | null,
+  clientIds: string[] | null = null,
 ): Promise<number> {
   const rows = await getDb()
     .select({ total: count() })
     .from(refunds)
-    .where(
-      and(
-        eq(refunds.organizationId, organizationId),
-        number !== null ? eq(refunds.number, number) : undefined,
-      ),
-    );
+    .where(refundFilter(organizationId, number, clientIds));
   return rows[0]!.total;
 }
 
@@ -1181,17 +1222,30 @@ export function findRefunds(
   number: number | null,
   limit: number,
   offset: number,
+  clientIds: string[] | null = null,
 ): Promise<RefundRow[]> {
   return selectRefunds(getDb())
-    .where(
-      and(
-        eq(refunds.organizationId, organizationId),
-        number !== null ? eq(refunds.number, number) : undefined,
-      ),
-    )
+    .where(refundFilter(organizationId, number, clientIds))
     .orderBy(desc(refunds.number))
     .limit(limit)
     .offset(offset);
+}
+
+// Los clientes que tienen alguna devolución (brief-24.7.2-b, D-1), como en los cobros.
+export function findRefundClientIds(
+  organizationId: string,
+  limit: number,
+): Promise<{ clientId: string }[]> {
+  return getDb()
+    .selectDistinct({ clientId: refunds.clientId })
+    .from(refunds)
+    .where(
+      and(
+        eq(refunds.organizationId, organizationId),
+        isNotNull(refunds.clientId),
+      ),
+    )
+    .limit(limit) as Promise<{ clientId: string }[]>;
 }
 
 // Lo anulado mientras la sesión estaba abierta (D-6): las anulaciones que impactaron en ella. Lo

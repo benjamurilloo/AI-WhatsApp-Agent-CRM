@@ -297,7 +297,10 @@ test("un admin abre el estado de cuenta desde la ficha, cobra a cuenta con la vi
   await page.goto(`/clientes/${clientId}?pestana=cuenta`);
   await expect(card).toContainText(/A favor\s*\$\s1\.000,00/);
   await card.getByRole("link", { name: "Devolver saldo a favor" }).click();
-  await page.getByRole("radio", { name: "Transferencia" }).check();
+  // Desde la 24.7.2-b el medio de la devolución es un `<select>` (lámina 07).
+  await page
+    .getByLabel("Medio de pago *")
+    .selectOption({ label: "Transferencia" });
   await page.getByRole("button", { name: "Registrar devolución" }).click();
   await expect(page.getByText("Devolución registrada.")).toBeVisible();
   await page.goto(`/clientes/${clientId}?pestana=cuenta`);

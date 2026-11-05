@@ -22,14 +22,17 @@ import {
   NOTHING_IN_FAVOR_TITLE,
   REFUND_ADMIN_ONLY_MESSAGE,
 } from "@/app/(autenticado)/devoluciones/messages";
-import { RefundForm } from "@/app/(autenticado)/devoluciones/refund-form";
+import {
+  RefundForm,
+  RefundPreviewNotice,
+} from "@/app/(autenticado)/devoluciones/refund-form";
 import { receiptExchange } from "@/app/(autenticado)/caja/exchange";
 
 export const metadata: Metadata = {
   title: "Devolver saldo a favor — AI WhatsApp Agent CRM",
 };
 
-const TITLE = "Devolver saldo a favor";
+const TITLE = "Registrar devolución";
 
 // Pantalla 35: la devolución desde la cuenta de un cliente (brief-21.5, D-9; ADR 0022, punto 7),
 // solo admin. Muestra solo lo que está a favor por moneda, que es lo único que se devuelve (H-2):
@@ -37,6 +40,12 @@ const TITLE = "Devolver saldo a favor";
 // donde se ve que algo pasó a la cuenta. Desde la 21.6 (brief-21.6, D-7), también desde la ficha, y
 // enlaza el estado de cuenta. Desde la 29.4.3, lo que está a favor en la moneda principal se devuelve
 // también en la otra (brief-29.4.3, D-7), con ?moneda= como el cobro.
+//
+// **Es la otra entrada del mismo formulario** que `/ventas/[id]/devolver` (`Screens.md` §35), y desde
+// la 24.7.2-b las dos tienen la forma de la lámina 07 (AC-6): el aviso de previsión, «Datos de la
+// devolución» y «Revisión de importes». Lo que cambia es el contexto de arriba, porque es distinto:
+// allá la venta anulada y su anulación, acá el cliente y lo que tiene a favor. **Rediseñar una sola
+// de las dos entradas es el defecto bloqueante que la 24.7.2 cometió con su lámina 02.**
 export default async function ClientRefundPage({
   params,
   searchParams,
@@ -98,18 +107,18 @@ export default async function ClientRefundPage({
       : null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8">
+    <main className="mx-auto max-w-5xl px-4 py-8 lg:px-8">
       <BackLink href={back.href} label={back.label} />
       <div className="mt-4">
         <PageHeader
-          title={`Devolver saldo a favor de ${name}`}
+          title={TITLE}
           // Sin saldo a favor **no se dice dos veces**: lo explica la tarjeta de abajo, con su
           // motivo. Repetirlo acá es el defecto que la 24.6.2-e corrigió en el listado de ventas,
           // donde una venta anulada decía «Anulada» en dos lugares.
           subtitle={
             form.inFavor.length === 0
-              ? "Acá se devuelve lo que quedó a favor en la cuenta."
-              : `A favor: ${form.inFavor
+              ? `Acá se devuelve lo que quedó a favor en la cuenta de ${name}.`
+              : `${name} tiene a favor ${form.inFavor
                   .map((row) => formatMoney(row.amount, row.currency))
                   .join(" y ")}.`
           }
@@ -145,34 +154,58 @@ export default async function ClientRefundPage({
           </p>
         </section>
       ) : (
-        <div className={`mt-6 ${cardClass} p-5 sm:p-6`}>
-          <p className="mb-4 text-sm text-muted">
-            Lo que está a favor es lo cobrado que no se imputa a ninguna venta
-            con saldo: lo de ventas anuladas, señas de pedidos cancelados y
-            excedentes. Lo que cubre una venta con saldo no se devuelve.{" "}
-            <Link href={`/clientes/${clientId}/cuenta`} className={linkClass}>
-              Ver estado de cuenta
-            </Link>
-          </p>
-          {blocked ? (
-            <p>
-              {blocked}{" "}
-              <Link href="/caja/medios-de-pago" className={linkClass}>
-                Ir a los medios de pago
+        <>
+          {blocked ? null : (
+            <div className="mt-6">
+              <RefundPreviewNotice />
+            </div>
+          )}
+          {/* La tarjeta de contexto, hermana de las dos de la lámina 07: allá son la venta y su
+              anulación, acá es de dónde sale lo que está a favor. */}
+          <section
+            aria-label="De dónde sale lo que está a favor"
+            className={`mt-4 ${cardClass} flex gap-3 p-5`}
+          >
+            <Icon
+              name="fileText"
+              className="mt-0.5 size-5 shrink-0 text-muted"
+            />
+            <p className="min-w-0 text-sm text-muted">
+              Lo que está a favor es lo cobrado que no se imputa a ninguna venta
+              con saldo: lo de ventas anuladas, señas de pedidos cancelados y
+              excedentes. Lo que cubre una venta con saldo no se devuelve.{" "}
+              <Link href={`/clientes/${clientId}/cuenta`} className={linkClass}>
+                Ver estado de cuenta
               </Link>
             </p>
+          </section>
+          {blocked ? (
+            <div className={`mt-6 ${cardClass} p-5 sm:p-6`}>
+              <p>
+                {blocked}{" "}
+                <Link href="/caja/medios-de-pago" className={linkClass}>
+                  Ir a los medios de pago
+                </Link>
+              </p>
+            </div>
           ) : (
-            <RefundForm
-              action={createAccountRefundAction}
-              target={{ field: "clientId", id: form.client.id }}
-              cancelHref={back.href}
-              available={form.inFavor}
-              paymentMethods={form.paymentMethods}
-              hasOpenSession={form.openSession !== null}
-              exchange={exchange}
-            />
+            <div className="mt-6">
+              <RefundForm
+                action={createAccountRefundAction}
+                target={{ field: "clientId", id: form.client.id }}
+                cancelHref={back.href}
+                available={form.inFavor}
+                paymentMethods={form.paymentMethods}
+                hasOpenSession={form.openSession !== null}
+                exchange={exchange}
+                reviewLabels={{
+                  current: "A favor actual",
+                  remaining: "Quedará a favor",
+                }}
+              />
+            </div>
           )}
-        </div>
+        </>
       )}
     </main>
   );

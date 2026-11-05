@@ -8,6 +8,7 @@ import {
 } from "@/modules/audit";
 import {
   getClientsByIds,
+  listClientOrderKeys,
   lockClientForOrder,
   lockClientForRefund,
   type Client,
@@ -54,6 +55,7 @@ import {
   listClientSalesForAccount,
   listSalesForAccounts,
   type SaleForReceipt,
+  type SaleVoidReason,
 } from "@/modules/sales";
 import type { DbTransaction } from "@/shared/db";
 import {
@@ -4120,6 +4122,117 @@ export async function getReceipt(
   };
 }
 
+// --- El filtro por cliente de Cobros y Devoluciones (brief-24.7.2-b, D-0a y D-1) ---
+
+// El tope de opciones del `<select>` de clientes (D-1). Pasado el tope, el control **cambia de
+// forma**: deja de ser un `<select>` y pasa a ser el cuadro de texto por nombre. No es cosmético:
+// es lo que impide que una organización grande reciba mil `<option>`, y el mismo orden de magnitud
+// que `CLIENT_SUGGEST_LIMIT`.
+export const CASH_CLIENT_FILTER_LIMIT = 50;
+
+// Lo que la página pide filtrar. **Son dos cosas distintas con dos nombres**, y no una cadena que
+// el servicio adivine: el `<select>` manda el id que eligió, y el cuadro de texto manda lo que se
+// escribió. Quien dibuja el control sabe en cuál de las dos formas está.
+export type CashClientFilter =
+  { kind: "id"; id: string } | { kind: "name"; text: string };
+
+// Qué control dibujar, decidido **por el dato** y no por el rol ni por una preferencia: hasta el
+// tope, el `<select>` de la lámina con los clientes que tienen comprobantes; pasado el tope, el
+// cuadro de texto. Los nombres los pide `crm` por `getClientsByIds`, que ya es dependencia de
+// `cash` (Overview.md:36): acá no hay ningún `JOIN` entre módulos.
+export type CashClientOptions =
+  | { kind: "select"; clients: { id: string; displayName: string | null }[] }
+  | { kind: "text" };
+
+async function clientOptionsFrom(
+  context: AuthContext,
+  rows: { clientId: string }[],
+): Promise<CashClientOptions> {
+  // Se pidió uno más que el tope: si llegaron más que el tope, el `<select>` no va.
+  if (rows.length > CASH_CLIENT_FILTER_LIMIT) return { kind: "text" };
+  const ids = rows.map((row) => row.clientId);
+  if (ids.length === 0) return { kind: "select", clients: [] };
+  const clients = await getClientsByIds(context, ids);
+  // Si los nombres no llegan, **no se dibuja un `<select>` vacío**, que diría «este cliente no
+  // tiene comprobantes» sobre todos: se cae al cuadro de texto, que no miente.
+  if (!clients.ok) return { kind: "text" };
+  const sorted = [...clients.clients].sort((a, b) =>
+    (a.displayName ?? "").localeCompare(b.displayName ?? "", "es"),
+  );
+  return {
+    kind: "select",
+    clients: sorted.map((client) => ({
+      id: client.id,
+      displayName: client.displayName,
+    })),
+  };
+}
+
+// Los clientes del filtro de Cobros: los que tienen algún cobro, no todos los de la organización.
+export async function listReceiptClientOptions(
+  context: AuthContext,
+): Promise<{ ok: true; options: CashClientOptions } | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  return {
+    ok: true,
+    options: await clientOptionsFrom(
+      context,
+      await repository.findReceiptClientIds(
+        context.organizationId,
+        CASH_CLIENT_FILTER_LIMIT + 1,
+      ),
+    ),
+  };
+}
+
+// Los del filtro de Devoluciones, igual.
+export async function listRefundClientOptions(
+  context: AuthContext,
+): Promise<{ ok: true; options: CashClientOptions } | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  return {
+    ok: true,
+    options: await clientOptionsFrom(
+      context,
+      await repository.findRefundClientIds(
+        context.organizationId,
+        CASH_CLIENT_FILTER_LIMIT + 1,
+      ),
+    ),
+  };
+}
+
+// El filtro, resuelto a ids de cliente para el `where` en SQL. Devuelve `null` cuando no hay filtro
+// y **una lista vacía cuando el filtro no alcanza a nadie**, que no es lo mismo: la lista vacía
+// deja el listado vacío, y el `null` lo deja entero.
+//
+// Por nombre lo resuelve `crm` **en SQL**, con `listClientOrderKeys`, que devuelve **todos** los
+// ids que coinciden y no los de una página. Es la corrección que la 24.7.2 tuvo que hacer sobre su
+// D-5: filtrar contra las primeras veinticinco coincidencias habría recortado el resultado **y en
+// silencio**.
+async function resolveClientFilter(
+  context: AuthContext,
+  filter: CashClientFilter | null,
+): Promise<{ ok: true; clientIds: string[] | null } | Failure<"FORBIDDEN">> {
+  if (filter === null) return { ok: true, clientIds: null };
+  if (filter.kind === "id") {
+    if (!idSchema.safeParse(filter.id).success) {
+      return { ok: true, clientIds: [] };
+    }
+    return { ok: true, clientIds: [filter.id.toLowerCase()] };
+  }
+  const text = filter.text.trim();
+  if (text === "") return { ok: true, clientIds: null };
+  const keys = await listClientOrderKeys(context, {
+    text,
+    activity: "all",
+  });
+  if (!keys.ok) return keys;
+  return { ok: true, clientIds: keys.clientIds };
+}
+
 export const CASH_RECEIPTS_PAGE_SIZE = 25;
 
 export type ReceiptSummary = ReceiptListItem & {
@@ -4135,10 +4248,16 @@ export type ReceiptPage = {
   pageCount: number;
 };
 
-// La lista de cobros, del más nuevo al más viejo, con la búsqueda por número (D-8).
+// La lista de cobros, del más nuevo al más viejo, con la búsqueda por número (D-8). Desde la
+// 24.7.2-b, también con el filtro por cliente (D-0a): **los dos filtran en SQL y los dos conviven**,
+// así que elegir un cliente no borra el número ni al revés.
 export async function listReceipts(
   context: AuthContext,
-  filters: { number: string; page: number },
+  filters: {
+    number: string;
+    page: number;
+    client?: CashClientFilter | null;
+  },
 ): Promise<ReceiptPage | Failure<"FORBIDDEN">> {
   const authorized = authorize(context);
   if (!authorized.ok) return authorized;
@@ -4148,8 +4267,19 @@ export async function listReceipts(
   if (text !== "" && number === null) {
     return { ok: true, receipts: [], total: 0, page: 1, pageCount: 1 };
   }
+  const resolved = await resolveClientFilter(context, filters.client ?? null);
+  if (!resolved.ok) return resolved;
+  // Un filtro que no alcanza a ningún cliente deja la lista vacía. **No es lo mismo que no
+  // filtrar**: sin esto, una lista vacía de ids llegaría al `where` y la pantalla mostraría todo.
+  if (resolved.clientIds !== null && resolved.clientIds.length === 0) {
+    return { ok: true, receipts: [], total: 0, page: 1, pageCount: 1 };
+  }
   const { organizationId } = context;
-  const total = await repository.countReceipts(organizationId, number);
+  const total = await repository.countReceipts(
+    organizationId,
+    number,
+    resolved.clientIds,
+  );
   const pageCount = Math.max(1, Math.ceil(total / CASH_RECEIPTS_PAGE_SIZE));
   const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
   const rows =
@@ -4160,6 +4290,7 @@ export async function listReceipts(
           number,
           CASH_RECEIPTS_PAGE_SIZE,
           (page - 1) * CASH_RECEIPTS_PAGE_SIZE,
+          resolved.clientIds,
         );
   const clientIds = [
     ...new Set(
@@ -4331,7 +4462,11 @@ export type RefundPage = {
 // los cobros (D-9).
 export async function listRefunds(
   context: AuthContext,
-  filters: { number: string; page: number },
+  filters: {
+    number: string;
+    page: number;
+    client?: CashClientFilter | null;
+  },
 ): Promise<RefundPage | Failure<"FORBIDDEN">> {
   const authorized = authorize(context);
   if (!authorized.ok) return authorized;
@@ -4340,8 +4475,17 @@ export async function listRefunds(
   if (text !== "" && number === null) {
     return { ok: true, refunds: [], total: 0, page: 1, pageCount: 1 };
   }
+  const resolved = await resolveClientFilter(context, filters.client ?? null);
+  if (!resolved.ok) return resolved;
+  if (resolved.clientIds !== null && resolved.clientIds.length === 0) {
+    return { ok: true, refunds: [], total: 0, page: 1, pageCount: 1 };
+  }
   const { organizationId } = context;
-  const total = await repository.countRefunds(organizationId, number);
+  const total = await repository.countRefunds(
+    organizationId,
+    number,
+    resolved.clientIds,
+  );
   const pageCount = Math.max(1, Math.ceil(total / CASH_REFUNDS_PAGE_SIZE));
   const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
   const rows =
@@ -4352,6 +4496,7 @@ export async function listRefunds(
           number,
           CASH_REFUNDS_PAGE_SIZE,
           (page - 1) * CASH_REFUNDS_PAGE_SIZE,
+          resolved.clientIds,
         );
   const clientIds = [
     ...new Set(
@@ -4457,7 +4602,25 @@ export async function getClientRefundForm(
 
 export type SaleRefundForm = {
   ok: true;
-  sale: { id: string; displayNumber: string; currency: string };
+  sale: {
+    id: string;
+    displayNumber: string;
+    currency: string;
+    // Las tarjetas de contexto de la lámina 07 (brief-24.7.2-b, H-5): la fecha de emisión, lo
+    // cobrado y con qué medio, y la anulación con su fecha y su motivo. **Ninguna es una lectura
+    // nueva**: la venta y su anulación vienen del `LEFT JOIN` que `getSaleForReceipt` ya hacía,
+    // lo cobrado sale de `saleStanding`, y los nombres de los medios, de `findPaymentMethods`,
+    // que esta función ya llamaba. Lo único que se agregó al `select` es el motivo.
+    issuedAt: Date;
+    collected: string;
+    // Los medios con los que se cobró, sin repetir y sin los cobros anulados. Vacío si no se cobró.
+    collectedMethods: string[];
+    voidRef: {
+      displayNumber: string;
+      createdAt: Date;
+      reason: SaleVoidReason;
+    } | null;
+  };
   // Una venta sin cliente y anulada; si no, no se devuelve desde ella.
   refundable: boolean;
   toRefund: RefundableAmount;
@@ -4485,12 +4648,25 @@ export async function getSaleRefundForm(
     repository.findLastSession(organizationId),
     getExchangeSetup(organizationId),
   ]);
+  const methodNames = new Map(
+    methods.map((method) => [method.id, method.name]),
+  );
   return {
     ok: true,
     sale: {
       id: found.sale.id,
       displayNumber: found.sale.displayNumber,
       currency: found.sale.currency,
+      issuedAt: found.sale.createdAt,
+      collected: moneyToDatabase(found.standing.collected),
+      collectedMethods: [
+        ...new Set(
+          current(found.standing.receipts).map(
+            (receipt) => methodNames.get(receipt.paymentMethodId) ?? "",
+          ),
+        ),
+      ].filter((name) => name !== ""),
+      voidRef: found.sale.voidRef,
     },
     refundable: found.sale.clientId === null && found.sale.voided,
     toRefund: refundable(found.sale.currency, found.standing.toRefund),
