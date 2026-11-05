@@ -15,6 +15,7 @@ import {
 import { ActionNotice } from "@/app/_components/action-notice";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatFullDateTime } from "@/app/_format/date-time";
+import { formatMoney } from "@/shared/money";
 import { PrintButton } from "@/app/(autenticado)/cobros/[receiptId]/print-button";
 import { NOT_AN_INVOICE_LEGEND } from "@/app/(autenticado)/devoluciones/messages";
 import {
@@ -26,6 +27,12 @@ import {
 } from "./messages";
 import { ACCOUNT_RECEIPT_NOTICE } from "../cobrar/messages";
 import { StatementBody } from "../account-statement";
+import {
+  statementTabHref,
+  STATEMENT_TAB_LABEL,
+  STATEMENT_TABS,
+  type StatementTab,
+} from "./statement-tabs";
 
 // Pantalla 37 (brief-21.6, D-4; ADR 0022, puntos 9 y 11): el estado de cuenta de un cliente,
 // imprimible como los comprobantes. Por moneda, el resumen (debe, haber, saldo, a favor y las señas
@@ -46,6 +53,8 @@ export async function ClientStatementView({
   receiptParam,
   back,
   cobrarHref,
+  baseHref,
+  tab,
 }: {
   clientId: string;
   receiptParam: string;
@@ -53,6 +62,9 @@ export async function ClientStatementView({
   // A dónde lleva «Cobrar a cuenta». Lo arma cada entrada, para que el volver del cobro traiga de
   // vuelta a la que se usó (brief-24.7.2, D-3).
   cobrarHref: string;
+  // La ruta de esta entrada, para que los enlaces de las pestañas vuelvan a ella y no a la otra.
+  baseHref: string;
+  tab: StatementTab;
 }) {
   const context = await requireSession();
   const found = await getClientStatement(context, clientId);
@@ -135,7 +147,91 @@ export async function ClientStatementView({
           </div>
         </header>
 
-        <StatementBody statement={statement} timeZone={timeZone} />
+        {/* Las tarjetas por moneda de la lámina 02: lo que debe o tiene a favor en cada una, a la
+            vista antes de cualquier detalle, más el equivalente orientativo. **No reemplazan al
+            detalle**: el resumen por moneda sigue abajo, con su debe, su haber y sus señas. */}
+        {statement.currencies.length > 0 ? (
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {statement.currencies.map((account) => (
+              <div
+                key={account.currency}
+                className="rounded-xl border border-border px-4 py-3"
+              >
+                <p className="text-sm text-muted">
+                  {account.balance.side === "debt"
+                    ? `Debe ${account.currency}`
+                    : account.balance.side === "favor"
+                      ? `A favor ${account.currency}`
+                      : `Al día en ${account.currency}`}
+                </p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {formatMoney(
+                    account.balance.side === "zero"
+                      ? "0.00"
+                      : account.balance.amount,
+                    account.currency,
+                  )}
+                </p>
+              </div>
+            ))}
+            {statement.references.owed ? (
+              <div className="rounded-xl border border-border px-4 py-3">
+                <p className="text-sm text-muted">Equivalente orientativo</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {formatMoney(
+                    statement.references.owed.total,
+                    statement.references.owed.currency,
+                  )}
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  Las deudas conservan su moneda.
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Las dos pestañas de la lámina. Al imprimir se ven las dos: la pantalla 37 es un
+            comprobante y sale entera, elija lo que elija quien la mira. */}
+        <nav
+          aria-label="Secciones del estado de cuenta"
+          className="print:hidden"
+        >
+          <ul className="mt-6 flex gap-1 border-b border-border">
+            {STATEMENT_TABS.map((item) => (
+              <li key={item}>
+                <Link
+                  href={statementTabHref(baseHref, item)}
+                  aria-current={item === tab ? "page" : undefined}
+                  className={`inline-flex min-h-11 items-center border-b-2 px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus ${
+                    item === tab
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted hover:text-foreground"
+                  }`}
+                >
+                  {STATEMENT_TAB_LABEL[item]}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className={tab === "resumen" ? undefined : "hidden print:block"}>
+          <StatementBody
+            statement={statement}
+            timeZone={timeZone}
+            show="resumen"
+          />
+        </div>
+        <div
+          className={tab === "comprobantes" ? undefined : "hidden print:block"}
+        >
+          <StatementBody
+            statement={statement}
+            timeZone={timeZone}
+            show="comprobantes"
+          />
+        </div>
 
         <p className="mt-6 text-xs text-muted">{IMPUTATION_NOTE}</p>
         <p className="mt-2 text-center text-sm font-semibold uppercase">

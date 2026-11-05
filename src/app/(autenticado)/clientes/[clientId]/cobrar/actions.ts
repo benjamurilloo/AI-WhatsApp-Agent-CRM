@@ -50,6 +50,11 @@ export async function accountReceiptAction(
       error,
     });
   const clientId = String(formData.get("clientId") ?? "").slice(0, 64);
+  // De dónde se vino, para volver a la misma entrada del estado de cuenta (brief-24.7.2, D-3).
+  // **Se compara contra un literal y la ruta la arma esta acción**: el campo no es un destino,
+  // así que no hay redirección abierta. `Screens.md` §37 afirma esta conducta; la revisión
+  // independiente encontró que el texto la prometía y el código volvía siempre a la ficha.
+  const fromFinance = String(formData.get("desde") ?? "") === "finanzas";
   const values: AccountReceiptFormValues = {
     currency: String(formData.get("currency") ?? "")
       .trim()
@@ -147,5 +152,12 @@ export async function accountReceiptAction(
   revalidatePath("/pedidos", "layout");
   revalidatePath("/clientes", "layout");
   revalidatePath("/caja", "layout");
-  redirect(`/clientes/${clientId}/cuenta?cobro=${receiptId}`);
+  // Las cuentas de clientes dejaron de vivir bajo /caja en la 24.7.2 (D-2): antes esta
+  // misma línea las cubría por ser hijas del layout. Sin esto, la lista queda vieja.
+  revalidatePath("/cuentas", "layout");
+  redirect(
+    fromFinance
+      ? `/cuentas/${clientId}?cobro=${receiptId}`
+      : `/clientes/${clientId}/cuenta?cobro=${receiptId}`,
+  );
 }

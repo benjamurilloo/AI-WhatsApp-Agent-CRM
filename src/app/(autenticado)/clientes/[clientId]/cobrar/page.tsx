@@ -174,6 +174,7 @@ export default async function AccountReceiptPage({
           <AccountReceiptForm
             clientId={form.client.id}
             clientName={name}
+            fromFinance={query.desde === "finanzas"}
             // Lo que debe por moneda, que esta página ya leyó para su encabezado: la revisión lo
             // muestra como contexto y avisa qué queda pendiente en otra moneda. Sin lectura nueva.
             debts={form.currencies.map((row) => ({

@@ -121,6 +121,9 @@ async function refund(
   revalidatePath("/pedidos", "layout");
   revalidatePath("/clientes", "layout");
   revalidatePath("/caja", "layout");
+  // Las cuentas de clientes dejaron de vivir bajo /caja en la 24.7.2 (D-2): antes esta
+  // misma línea las cubría por ser hijas del layout. Sin esto, la lista queda vieja.
+  revalidatePath("/cuentas", "layout");
   redirect(`/devoluciones/${refundId}?registrada=1`);
 }
 
@@ -169,5 +172,8 @@ export async function voidRefundAction(
   revalidatePath("/pedidos", "layout");
   revalidatePath("/clientes", "layout");
   revalidatePath("/caja", "layout");
+  // Las cuentas de clientes dejaron de vivir bajo /caja en la 24.7.2 (D-2): antes esta
+  // misma línea las cubría por ser hijas del layout. Sin esto, la lista queda vieja.
+  revalidatePath("/cuentas", "layout");
   redirect(`/devoluciones/${refundId}?anulada=1`);
 }

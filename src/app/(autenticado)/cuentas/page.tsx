@@ -97,7 +97,7 @@ export default async function ClientAccountsPage({
             current: true,
           },
           {
-            href: "/clientes",
+            href: "/clientes#q",
             label: "Buscar cliente",
             icon: "search",
             current: false,
@@ -106,7 +106,11 @@ export default async function ClientAccountsPage({
       />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.7fr_1fr]">
-        <div>
+        {/* `min-w-0`: un ítem de grilla trae `min-width: auto` y **no se encoge por debajo de su
+            contenido**, así que sin esto el `overflow-x-auto` de la tabla no alcanza y la página
+            entera desborda. Lo midió el barrido de anchos: 338 px de más a 320. Es la misma
+            trampa que la 24.7.1 documentó con el selector de moneda. */}
+        <div className="min-w-0">
           <form
             key={`${currency ?? ""}-${text}`}
             method="get"

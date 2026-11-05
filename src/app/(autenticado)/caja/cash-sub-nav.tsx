@@ -3,8 +3,8 @@ import { requireSession } from "@/app/_auth/session";
 import { SubNav } from "@/app/_components/sub-nav";
 
 // Las pantallas de la caja (brief-21.2, D-10): el estado de hoy, las sesiones, los medios de pago
-// y, desde la 21.3, los cobros (brief-21.3, D-8); desde la 21.5, las devoluciones (brief-21.5, D-9), y
-// Desde la 29.4, la cotización, solo en una organización con moneda principal (brief-29.4, D-4):
+// y, desde la 21.3, los cobros (brief-21.3, D-8), y desde la 21.5, las devoluciones (brief-21.5,
+// D-9). Desde la 29.4, la cotización, solo en una organización con moneda principal (brief-29.4, D-4):
 // sin ella, la sección no existe.
 //
 // **Los deudores ya no están acá** (brief-24.7.2, D-2). Hasta la 24.7.1 eran una sección de la

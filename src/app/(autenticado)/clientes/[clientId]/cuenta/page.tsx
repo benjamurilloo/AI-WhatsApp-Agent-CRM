@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ClientStatementView } from "./statement-view";
+import { parseStatementTab } from "./statement-tabs";
 
 export const metadata: Metadata = {
   title: "Estado de cuenta — AI WhatsApp Agent CRM",
@@ -23,6 +24,8 @@ export default async function ClientStatementPage({
       receiptParam={typeof query.cobro === "string" ? query.cobro : ""}
       back={{ href: `/clientes/${clientId}`, label: "Volver al cliente" }}
       cobrarHref={`/clientes/${clientId}/cobrar`}
+      baseHref={`/clientes/${clientId}/cuenta`}
+      tab={parseStatementTab(query.pestana)}
     />
   );
 }

@@ -234,7 +234,9 @@ filtran en memoria por esos ids. Sin `JOIN` y sin que `cash` conozca `crm`.
 
 **Por qué (a)**: es el patrón de la 24.4.2 y la 24.4.3, ya aceptado y medido. **Límite que se
 declara**: el costo crece con la cantidad de deudores, porque `listDebtors` ya lee la organización
-entera para contar el total del filtro. Lo mide M-2.
+entera para contar el total del filtro. **Lo mide M-1** (*corregido el 2026-11-05*: decía «lo
+mide M-2», y M-2 quedó fuera de esta subfase, así que el puntero mandaba a una medición diferida.
+Lo encontró la revisión independiente).
 
 ### D-6 · La pestaña «Buscar cliente» de la lámina 01 — CERRADA en (a)
 
@@ -400,12 +402,20 @@ código las tiraba:
 
 ### Mediciones
 
-- **M-1 · El costo con y sin búsqueda.** **Medido**, no declarado: contra PostgreSQL real, llamando
-  al servicio, con **200 clientes con deuda**. Mediana de tres corridas tras una en frío:
-  **18 ms sin búsqueda**, **15 ms con «añez»** y **17 ms con «anez»**. Las dos búsquedas devuelven
-  **100 de 200**, y dan lo mismo con y sin tilde. **Buscar no sale más caro**: la llamada extra trae
-  los doscientos nombres de un saque y el conjunto filtrado después es más chico. El arnés fue una
-  prueba de integración descartable, corrida y borrada.
+- **M-1 · El costo con y sin búsqueda.** M-1 pide dos cosas y hay que decirlas con nombres
+  distintos, porque se obtuvieron de formas distintas:
+  - **El tiempo: medido.** Contra PostgreSQL real, llamando al servicio, con **200 clientes con
+    deuda**. Mediana de tres corridas tras una en frío: **18 ms sin búsqueda**, **15 ms con
+    «añez»** y **17 ms con «anez»**. Las dos búsquedas devuelven **100 de 200** y dan lo mismo con
+    y sin tilde. El arnés fue una prueba de integración descartable, corrida y borrada.
+  - **El número de consultas: contado por camino de código, no instrumentado.** Sin búsqueda, la
+    pantalla ejecuta **exactamente las mismas** que antes: el `await` nuevo está detrás de
+    `if (text !== "")`. Con búsqueda agrega **dos**, no una: `getClientsByIds` hace
+    `findClientsByIds` y además `findTagsByClient`, y **las etiquetas que trae se descartan**.
+  *Corregido el 2026-11-05*: la primera versión de esta medición reportaba solo los tres tiempos y
+  se titulaba «Medido», cuando M-1 pide el recuento **y** el tiempo; y escribía que «la llamada
+  extra trae los doscientos nombres de un saque», que es cierto como llamada y engañoso como
+  costo. Lo encontró la revisión independiente, que además vio la segunda consulta.
 - **M-2 · El filtro por cliente en Cobros.** **No corresponde a esta subfase**: D-4 lo mandó a la
   **24.7.2-b** junto con las láminas 06 y 07. Se mide allá, y este brief no lo da por medido.
 - **M-3 · El estado de cuenta con muchos comprobantes.** **Verificado sin trabajo nuevo**:
@@ -434,11 +444,18 @@ Las diferencias están todas acá.
 | Fechas «26 oct. 2026» | ✘ menor: el proyecto formatea `31/10/2026` con `formatDate` en todas sus pantallas |
 | Menú lateral: Finanzas → Caja · Cuentas de clientes · Tipo de cambio | ✔, y ya era así antes de esta subfase |
 
-**Lámina 02 · Estado de cuenta**: la pantalla es la de la 21.6, que esta subfase **no rediseñó**;
-lo que agregó es su segunda entrada (D-3). Las tarjetas por moneda, el equivalente, las pestañas
-Resumen y Comprobantes, la imputación y los cobros aplicados ya existían y coinciden. La miga de la
-lámina dice «Finanzas › Cuentas › Paula Méndez»; la nuestra la arma el marco de la 24.1 desde la
-ruta, y las dos entradas se distinguen por el «Volver».
+**Lámina 02 · Estado de cuenta**
+
+| Entrada de la lámina | Qué quedó |
+|---|---|
+| Tarjetas por moneda «Debe USD» / «Debe ARS» | ✔ |
+| Tarjeta «Equivalente orientativo» | ✔ |
+| Pestañas «Resumen | Comprobantes» | ✔, por URL con `?pestana=`, así que andan sin JavaScript. **Al imprimir se ven las dos**: la pantalla 37 es un comprobante y sale entera |
+| Tabla de imputación y cobros aplicados | ✔, ya existían desde la 21.6 |
+| Miga «Finanzas › Cuentas › Paula Méndez» | ✘ menor: la arma el marco de la 24.1 desde la ruta; las dos entradas se distinguen por el «Volver» |
+| Selector de moneda dentro de «Cuenta en USD» | ✘ **V-4 corregida el 2026-11-05**: decía que «se conserva el selector como filtro de la vista de detalle», y **ese selector no existe en esta pantalla** — el `currency` de `StatementBody` es una prop que usa la pestaña de la ficha. Lo encontró la revisión independiente |
+
+*La primera versión de esta comparación resolvía la lámina 02 en prosa, diciendo que la pantalla «no se rediseñó» y que todo «ya existía y coincidía», cuando el §Alcance pedía su forma y AC-3 la exige. Era una reducción de alcance absorbida en una frase, que es justo lo que AC-15 existe para impedir. Lo encontró la revisión independiente y el usuario eligió rediseñarla en esta subfase.*
 
 **Lámina 03 · Cobrar a cuenta, revisión**
 
@@ -473,3 +490,38 @@ ruta, y las dos entradas se distinguen por el «Volver».
 el paso 2 y el título repetido—. Ninguno rompía nada; los quince casos de extremo a extremo, axe y
 el typecheck estaban en verde con todos ellos adentro. Es la **sexta vez** en esta fase que poner la
 captura al lado de la lámina encuentra algo que no se encuentra de otra forma.
+
+### Revisión independiente (AC-17)
+
+Hecha el 2026-11-05 por un agente que no participó del trabajo, con acceso de solo lectura.
+**Veredicto: R1**, con **doce hallazgos**: 2 bloqueantes, 4 mayores y 6 menores. Verifiqué los doce
+contra el código antes de aceptar ninguno, como manda `CLAUDE.md`. **Los doce eran reales y ninguno
+falso**, que es la primera vez en esta fase. Su veredicto no autorizó nada.
+
+**Lo que cambió respecto de la revisión anterior, y conviene conservar**: el cierre de la 24.7.1
+dejó anotado que su revisor marcó el hallazgo más caro como «una sospecha que no pude confirmar
+leyendo», porque no tenía forma de comparar contra el estado anterior. Esta vez **se le dejó el
+diff del commit escrito en archivos que podía leer**, y su hallazgo más caro llegó **confirmado**.
+Darle el historial, aunque sea como texto, cambia la clase de hallazgo que puede producir.
+
+| | Qué encontró | Qué pasó |
+|---|---|---|
+| **B-1** | La lámina 02 no se cumplió y el §Cierre afirmaba que coincidía | **Real y bloqueante.** El §Alcance pedía «la forma de la lámina 02… **las pestañas Resumen y Comprobantes**» y AC-3 lo repite; yo rediseñé tres pantallas y de la cuarta hice solo la segunda entrada, y lo escribí como «ya existían y coinciden». **Por decisión del usuario se rediseñó en esta subfase**: `StatementBody` gana una prop `show` —por omisión `"all"`, para no cambiar la pestaña de la ficha ni la impresión— y la vista gana las pestañas por URL y las tarjetas por moneda |
+| **B-2** | `Roadmap.md:479` y `Overview.md:69` afirmaban lo contrario del código | **Real y bloqueante.** La columna decía «compuesta en la página», que es lo que D-5 aprobó y lo que **no se pudo implementar**; y `Overview.md` fijaba el límite de costo en «los nombres de la página», que con búsqueda ya no vale. Corregidos los dos con autorización, y el límite nuevo queda registrado con su medición |
+| **B-3** | «El cobro vuelve a esa entrada» era falso, y nada revalidaba `/cuentas` | **Real.** Lo del texto se arregló **haciendo verdadera la afirmación**: el formulario lleva el origen como campo oculto y la acción vuelve a la entrada usada. Lo de la revalidación era un defecto funcional: las cuatro llamadas con `"layout"` cubrían `/caja/deudores` por ser hija, y al mudarla quedó sin cobertura; se restauró en esas cuatro y **solo en esas**, porque las otras diez revalidan la página `/caja` y nunca la cubrieron |
+| **B-4** | La prueba del cobro dejó de fijar el par venta↔importe | **Real.** Seis aserciones sueltas sobre la región: un defecto que intercambiara los importes entre las dos ventas pasaba en verde. Y mi comentario decía lo contrario de lo que el código hacía. Ahora cada fila del `dl` se acota y se exigen las dos cosas juntas |
+| **B-5** | La prueba de la segunda entrada pasaba con el cartel de error | **Real.** `PageNotice` dibuja el mismo enlace de «Volver a cuentas de clientes», así que un `FORBIDDEN` la habría dejado en verde. Ahora afirma el comprobante con su contenido, y de paso ejerce las dos pestañas |
+| **B-6** | M-1 reportaba tiempos y se titulaba «Medido» | **Real.** M-1 pide el **recuento de consultas** y el tiempo. Reescrito con los dos nombres separados, y con el dato que el recuento expone: `getClientsByIds` **son dos consultas**, no una |
+| **H-7** | D-5 manda su límite a M-2, y M-2 se declaró fuera de alcance | **Real.** El puntero quedaba colgado; ahora D-5 apunta a M-1, que es la que lo mide |
+| **H-8** | D-6 pedía el foco en la búsqueda y la pestaña era un enlace pelado | **Real.** Lleva a `/clientes#q`: el buscador es el destino del fragmento, así que el navegador lo enfoca **sin JavaScript** |
+| **H-9** | Dos comentarios de cabecera describían la conducta anterior, uno roto a la mitad | **Real, y el roto lo rompí yo** al sacar los deudores de la barra. Los dos corregidos |
+| **H-10** | AC-10 se declaró en verde y `accounts.spec.ts` no tenía un solo `setViewportSize` | **Real.** Se agregó el barrido de 320 a 1440 px sobre las cinco rutas, **y encontró un desbordamiento de 338 px a 320**: el ítem de grilla no se encogía por debajo de su contenido, la misma trampa que la 24.7.1 documentó. Sin esta prueba, la subfase cerraba con la pantalla rota a 320 px |
+| **H-11** | Un fallo de `getClientsByIds` devolvía «no hay nadie», en silencio | **Real.** Ahora la búsqueda falla en vez de mentir: los dos códigos que puede devolver ya estaban en la unión |
+| **H-12** | Dos textos de `Screens.md` corridos | **Real.** Corregidos |
+
+**Lo que la revisión confirmó, que también es información**: AC-13 se sostiene y lo comprobó más
+allá de lo que el §Cierre afirmaba, revisando las cinco páginas una por una; la corrección de D-5
+es correcta, porque `getClientsByIds` no pagina; los totales por moneda se calculan sobre el
+conjunto filtrado antes de cortar la página; el estado de cuenta es **una sola** implementación;
+la redirección conserva los tres parámetros; **no hay ninguna URL de vuelta aceptada por
+querystring** en toda la entrega; y no hay `JOIN` nuevo ni dependencia nueva entre módulos.

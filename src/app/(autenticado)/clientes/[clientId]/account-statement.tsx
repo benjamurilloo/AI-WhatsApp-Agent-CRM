@@ -29,25 +29,34 @@ export function StatementBody({
   statement,
   timeZone,
   currency = null,
+  show = "all",
 }: {
   statement: ClientStatement;
   timeZone: string;
   currency?: string | null;
+  // Qué parte dibujar (brief-24.7.2, B-1 de la revisión independiente): la lámina 02 separa
+  // «Resumen» de «Comprobantes» en dos pestañas. **Por omisión dibuja todo**, que es lo que
+  // necesitan la pestaña Cuenta de la ficha (24.4.1) y la impresión, así esas dos no cambian.
+  // Se apaga vaciando la lista, no envolviendo el bloque: lo que ya no tiene filas no se dibuja.
+  show?: "all" | "resumen" | "comprobantes";
 }) {
-  const currencies =
+  const resumen = show !== "comprobantes";
+  const porMoneda =
     currency === null
       ? statement.currencies
       : statement.currencies.filter((row) => row.currency === currency);
-  const documents =
+  const currencies = resumen ? porMoneda : [];
+  const todos =
     currency === null
       ? statement.documents
       : statement.documents.filter((row) => row.currency === currency);
+  const documents = show === "resumen" ? [] : todos;
   return (
     <>
-      {statement.currencies.length === 0 ? (
+      {resumen && statement.currencies.length === 0 ? (
         <p className="mt-4 text-sm">{NO_MOVEMENTS_MESSAGE}</p>
       ) : null}
-      {currency === null ? (
+      {resumen && currency === null ? (
         <>
           <ReferenceTotal
             reference={statement.references.owed}

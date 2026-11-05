@@ -253,12 +253,15 @@ test("un admin abre el estado de cuenta desde la ficha, cobra a cuenta con la vi
   const aplicacion = page.getByRole("region", {
     name: /Aplicación en la cuenta/,
   });
-  await expect(aplicacion).toContainText("V-000001");
-  await expect(aplicacion).toContainText(/\$\s3\.000,00/);
-  await expect(aplicacion).toContainText("V-000002");
-  await expect(aplicacion).toContainText(/\$\s2\.000,00/);
-  await expect(aplicacion).toContainText(/Quedará a favor/);
-  await expect(aplicacion).toContainText(/\$\s1\.000,00/);
+  // **El par venta↔importe, no cada cosa por su lado.** La versión anterior de este caso afirmaba
+  // los cuatro valores sueltos sobre la región, y así un defecto que intercambiara los importes
+  // entre las dos ventas pasaba en verde. Lo encontró la revisión independiente. Cada fila del
+  // `dl` es un `div`, así que se puede acotar a la fila y exigir las dos cosas juntas.
+  const fila = (texto: string) =>
+    aplicacion.locator("div").filter({ hasText: texto });
+  await expect(fila("A V-000001")).toContainText(/\$\s3\.000,00/);
+  await expect(fila("A V-000002")).toContainText(/\$\s2\.000,00/);
+  await expect(fila("Quedará a favor")).toContainText(/\$\s1\.000,00/);
   // **La previsión se declara como previsión**, que es lo único que el ADR 0022 garantiza: al
   // registrar se vuelve a calcular con los saldos de ese momento.
   await expect(
@@ -356,9 +359,23 @@ test("la lista de deudores, con el filtro por moneda, y los textos de lo que pas
   // lleva a la entrada de Finanzas, que dibuja la misma vista que la de la ficha (D-3).
   await list.getByRole("link", { name: "Ver cuenta" }).click();
   await expect(page).toHaveURL(new RegExp(`/cuentas/${mario}$`));
-  await expect(
-    page.getByRole("link", { name: "Volver a cuentas de clientes" }),
-  ).toBeVisible();
+  // **Que sea el estado de cuenta, no el cartel de error.** `PageNotice` dibuja el mismo enlace de
+  // «Volver a cuentas de clientes» cuando la lectura falla, así que afirmarlo solo a él dejaba
+  // pasar un FORBIDDEN o un NOT_FOUND. Lo encontró la revisión independiente: se afirma el
+  // comprobante con su contenido, como ya hacía el caso del viewer en la otra ruta.
+  await expect(page.locator("[data-comprobante]")).toContainText("V-000002");
+  // Y las dos pestañas de la lámina 02, con «Resumen» elegida sin parámetro.
+  const pestanas = page.getByRole("navigation", {
+    name: "Secciones del estado de cuenta",
+  });
+  await expect(pestanas.getByRole("link", { name: "Resumen" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await pestanas.getByRole("link", { name: "Comprobantes" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/cuentas/${mario}\\?pestana=comprobantes$`),
+  );
 
   // D-8: la venta anulada no afirma un saldo a favor que se fue a otra venta.
   // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
@@ -517,6 +534,40 @@ test("sin saldo a favor, la devolución lo explica y no ofrece formulario", asyn
   await expectAccessible(page, "devolución sin saldo a favor");
 });
 
+// AC-10: sin desbordamiento horizontal de 320 a 1440 px. La 24.7.1 tenía este barrido y esta
+// subfase lo declaró en verde **sin tenerlo**; lo encontró la revisión independiente. Es el mismo
+// barrido que encontró, en la 24.7.1, un desbordamiento que estaba desde la 21.2.
+const anchoDesbordado = (page: Page) =>
+  page.evaluate(
+    () => document.documentElement.scrollWidth - document.body.clientWidth,
+  );
+
+test("sin desbordamiento horizontal de 320 a 1440 px en las cuentas y el estado de cuenta", async ({
+  page,
+}) => {
+  await insertMethods();
+  const lucia = await insertClient("Lucía Gómez", "+5491155550001");
+  await insertSale(1, "3000.00", lucia, { daysAgo: 2 });
+  await insertSale(2, "300.00", lucia, { currency: "USD" });
+  await login(page, ADMIN);
+
+  for (const width of [320, 390, 640, 1082, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const ruta of [
+      "/cuentas",
+      `/cuentas/${lucia}`,
+      `/cuentas/${lucia}?pestana=comprobantes`,
+      `/clientes/${lucia}/cobrar`,
+      `/clientes/${lucia}/devolver`,
+    ]) {
+      await page.goto(ruta);
+      expect(
+        await anchoDesbordado(page),
+        `${ruta} desborda a ${width} px`,
+      ).toBeLessThanOrEqual(0);
+    }
+  }
+});
 // Sin JavaScript (brief-21.6, AC-8): los dos pasos del cobro a cuenta son formularios comunes.
 test.describe("sin JavaScript", () => {
   test.use({ javaScriptEnabled: false });

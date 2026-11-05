@@ -5216,8 +5216,10 @@ export async function getAccountReceiptForm(
 // La lista de deudores (D-6): una fila por cliente y moneda con saldo deudor. Se lee en cuatro
 // consultas por organización, sin JOIN entre módulos (Overview): las ventas con cliente por sales,
 // los pedidos con señas por orders, y los cobros con cliente y las devoluciones desde la cuenta. Se
-// agrupa por cliente y cada cuenta pasa por imputeAccount. Los nombres, solo los de la página que se
-// muestra. Medida en la 21.6 antes de aceptarla (AC-7).
+// agrupa por cliente y cada cuenta pasa por imputeAccount. Los nombres, solo los de la página que
+// se muestra — **salvo con búsqueda por nombre** (brief-24.7.2, D-5), que necesita los de todo el
+// filtro para poder recortar: ese costo lo paga quien busca, y está medido en M-1. Medida en la
+// 21.6 antes de aceptarla (AC-7).
 export type DebtorRow = {
   clientId: string;
   displayName: string | null;
@@ -5394,10 +5396,13 @@ export async function listDebtors(
       context,
       inCurrency.map((row) => row.clientId),
     );
-    if (all.ok) {
-      for (const client of all.clients) {
-        names.set(client.id, client.displayName);
-      }
+    // **Si los nombres no llegan, la búsqueda falla; no devuelve «no hay nadie».** Tragarse el
+    // error dejaría `names` vacío y la pantalla diría «Ningún cliente con ese nombre debe nada»,
+    // que es un resultado incompleto sin aviso: la misma forma de defecto que obligó a corregir
+    // D-5. Los dos códigos que puede devolver ya están en la unión de esta función.
+    if (!all.ok) return all;
+    for (const client of all.clients) {
+      names.set(client.id, client.displayName);
     }
   }
   const needle = normalizeName(text);

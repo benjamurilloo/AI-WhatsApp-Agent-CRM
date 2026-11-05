@@ -59,5 +59,8 @@ export async function voidReceiptAction(
   revalidatePath("/ventas", "layout");
   revalidatePath("/pedidos", "layout");
   revalidatePath("/caja", "layout");
+  // Las cuentas de clientes dejaron de vivir bajo /caja en la 24.7.2 (D-2): antes esta
+  // misma línea las cubría por ser hijas del layout. Sin esto, la lista queda vieja.
+  revalidatePath("/cuentas", "layout");
   redirect(`/cobros/${receiptId}?anulado=1`);
 }

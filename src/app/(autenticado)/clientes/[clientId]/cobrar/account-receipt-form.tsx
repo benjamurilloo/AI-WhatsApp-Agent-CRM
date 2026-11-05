@@ -88,6 +88,7 @@ export function AccountReceiptForm({
   clientId,
   clientName,
   debts,
+  fromFinance,
   contexto,
   cancelHref,
   defaults,
@@ -102,6 +103,8 @@ export function AccountReceiptForm({
   // revisión lo usa para el contexto y para avisar qué queda pendiente en otra moneda. No agrega
   // ninguna lectura (brief-24.7.2, AC-13).
   debts: { currency: string; owed: string }[];
+  // Viaja como campo oculto en los dos pasos, para que la acción sepa a qué entrada volver.
+  fromFinance: boolean;
   // El contexto del paso 1 —las ventas con saldo y la ayuda—, que la página arma y este
   // componente dibuja **solo mientras se cargan los datos**: en la revisión la lámina 03 muestra
   // solo las dos columnas (brief-24.7.2).
@@ -153,6 +156,11 @@ export function AccountReceiptForm({
     return (
       <form action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="clientId" value={clientId} />
+        <input
+          type="hidden"
+          name="desde"
+          value={fromFinance ? "finanzas" : ""}
+        />
         <input type="hidden" name="currency" value={values.currency} />
         <input
           type="hidden"
@@ -344,6 +352,7 @@ export function AccountReceiptForm({
       <Stepper current="datos" />
       {contexto}
       <input type="hidden" name="clientId" value={clientId} />
+      <input type="hidden" name="desde" value={fromFinance ? "finanzas" : ""} />
       <div aria-live="polite" aria-atomic="true">
         {failed ? (
           <p
