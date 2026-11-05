@@ -438,11 +438,16 @@ test("la ficha del cliente suma lo que debe en la moneda principal", async ({
   await expect(
     page.getByText(/Debe en total:\s*US\$\s150,00\s*de referencia/),
   ).toBeVisible();
-  await page.goto("/caja/deudores");
-  await expect(
-    page.getByText(/Deben en total:\s*US\$\s150,00\s*de referencia/),
-  ).toBeVisible();
-  await expectAccessible(page, "deudores con total de referencia");
+  // El resumen lateral de la lámina 01 (brief-24.7.2): la deuda de cada moneda y, debajo, el
+  // equivalente del total. El equivalente no convierte la cuenta ni compensa una moneda con otra.
+  await page.goto("/cuentas");
+  const resumen = page.getByRole("complementary");
+  // El encabezado dice el **código** de la moneda, como la lámina; el importe lleva el símbolo,
+  // que es lo que formatMoney emite en todo el proyecto.
+  await expect(resumen).toContainText("Total (equivalente en USD)");
+  await expect(resumen).toContainText("Deuda en USD");
+  await expect(resumen).toContainText(/US\$\s150,00/);
+  await expectAccessible(page, "cuentas con total de referencia");
 });
 
 test("sin moneda principal no hay cotización: ni pestaña ni página", async ({

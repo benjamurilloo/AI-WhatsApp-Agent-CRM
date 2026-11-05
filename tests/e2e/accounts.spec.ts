@@ -242,18 +242,29 @@ test("un admin abre el estado de cuenta desde la ficha, cobra a cuenta con la vi
   await transfer.press("Space");
   await amount.fill("6000");
   await amount.press("Enter");
-  const preview = page.getByRole("heading", { name: /Cómo se aplica/ });
+  // La revisión con la forma de la lámina 03 (brief-24.7.2): el foco cae en su título, y la
+  // aplicación vive en una región con nombre, porque el destino y su importe son celdas distintas
+  // y por separado no afirman nada.
+  const preview = page.getByRole("heading", {
+    name: "Revisión de la aplicación",
+  });
   await expect(preview).toBeFocused();
+  await expect(page.getByText("Paso 2 de 2: Revisión")).toBeVisible();
+  const aplicacion = page.getByRole("region", {
+    name: /Aplicación en la cuenta/,
+  });
+  await expect(aplicacion).toContainText("V-000001");
+  await expect(aplicacion).toContainText(/\$\s3\.000,00/);
+  await expect(aplicacion).toContainText("V-000002");
+  await expect(aplicacion).toContainText(/\$\s2\.000,00/);
+  await expect(aplicacion).toContainText(/Quedará a favor/);
+  await expect(aplicacion).toContainText(/\$\s1\.000,00/);
+  // **La previsión se declara como previsión**, que es lo único que el ADR 0022 garantiza: al
+  // registrar se vuelve a calcular con los saldos de ese momento.
   await expect(
-    page.getByText(/A la venta V-000001: \$\s3\.000,00/),
+    page.getByText("Es una previsión de la cuenta actual."),
   ).toBeVisible();
-  await expect(
-    page.getByText(/A la venta V-000002: \$\s2\.000,00/),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/Queda a favor del cliente: \$\s1\.000,00/),
-  ).toBeVisible();
-  await expectAccessible(page, "vista previa del cobro a cuenta");
+  await expectAccessible(page, "revisión del cobro a cuenta");
   expect(await accountReceipts()).toBe(0);
   await page.getByRole("button", { name: "Registrar cobro" }).click();
 
@@ -324,21 +335,30 @@ test("la lista de deudores, con el filtro por moneda, y los textos de lo que pas
   );
   await login(page, ADMIN);
 
-  await page.goto("/caja/deudores");
-  const list = page.getByRole("region", { name: "Deudores" });
+  // Las cuentas dejaron de vivir bajo la caja (brief-24.7.2, D-2): son «Cuentas de clientes»,
+  // un destino propio de Finanzas, y `/caja/deudores` redirige acá.
+  await page.goto("/cuentas");
+  const list = page.getByRole("region", { name: "Cuentas de clientes" });
   await expect(list.getByRole("row")).toHaveCount(4);
   await expect(list.getByRole("row").nth(1)).toContainText("Lucía Gómez");
   await expect(list.getByRole("row").nth(1)).toContainText(/\$\s2\.000,00/);
   await expect(list.getByRole("row").nth(2)).toContainText("Mario Paz");
   await expect(list.getByRole("row").nth(3)).toContainText("USD");
-  await expectAccessible(page, "lista de deudores");
+  await expectAccessible(page, "cuentas de clientes");
   await page.getByLabel("Moneda").selectOption("USD");
   await page.getByRole("button", { name: "Filtrar" }).click();
-  await expect(page).toHaveURL(/\/caja\/deudores\?moneda=USD$/);
+  // El formulario manda los dos campos, también el buscador vacío: es lo que hace un formulario
+  // con método GET sin JavaScript, y esta pantalla tiene que andar sin él.
+  await expect(page).toHaveURL(/\/cuentas\?moneda=USD(&cliente=)?$/);
   await expect(list.getByRole("row")).toHaveCount(2);
   await expect(list).toContainText("Mario Paz");
-  await list.getByRole("link", { name: "Mario Paz" }).click();
-  await expect(page).toHaveURL(new RegExp(`/clientes/${mario}/cuenta$`));
+  // **El nombre ya no es el enlace**: la lámina 01 pone la acción en su columna, «Ver cuenta», y
+  // lleva a la entrada de Finanzas, que dibuja la misma vista que la de la ficha (D-3).
+  await list.getByRole("link", { name: "Ver cuenta" }).click();
+  await expect(page).toHaveURL(new RegExp(`/cuentas/${mario}$`));
+  await expect(
+    page.getByRole("link", { name: "Volver a cuentas de clientes" }),
+  ).toBeVisible();
 
   // D-8: la venta anulada no afirma un saldo a favor que se fue a otra venta.
   // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
@@ -396,11 +416,105 @@ test("un viewer ve la cuenta y los deudores sin ninguna acción", async ({
   await expect(
     page.getByText("Solo un administrador puede registrar cobros."),
   ).toBeVisible();
-  await page.goto("/caja/deudores");
-  await expect(page.getByRole("region", { name: "Deudores" })).toContainText(
-    "Lucía Gómez",
-  );
+  await page.goto("/cuentas");
+  await expect(
+    page.getByRole("region", { name: "Cuentas de clientes" }),
+  ).toContainText("Lucía Gómez");
   expect(await accountReceipts()).toBe(0);
+});
+
+// La lista de cuentas con la forma de la lámina 01 (brief-24.7.2, AC-1 y AC-2): la venta con saldo
+// más vieja **con su número**, la búsqueda por nombre y el resumen por moneda, que suma el filtro
+// entero y no la página.
+test("las cuentas muestran la venta más antigua con su número, buscan por nombre y suman por moneda", async ({
+  page,
+}) => {
+  const lucia = await insertClient("Lucía Gómez", "+5491155550001");
+  const mario = await insertClient("Mario Paz", "+5491155550002");
+  // La más vieja primero, para que el número que se muestra no sea el último insertado por azar.
+  await insertSale(1, "3000.00", lucia, { daysAgo: 5 });
+  await insertSale(2, "2000.00", lucia, { daysAgo: 1 });
+  await insertSale(3, "300.00", mario, { currency: "USD" });
+  await login(page, ADMIN);
+
+  await page.goto("/cuentas");
+  const lista = page.getByRole("region", { name: "Cuentas de clientes" });
+  // **El número, no solo la fecha**: la columna «Más antigua» de la lámina dice «V-000001».
+  const filaLucia = lista.getByRole("row").filter({ hasText: "Lucía Gómez" });
+  await expect(filaLucia).toContainText("V-000001");
+  await expect(filaLucia).not.toContainText("V-000002");
+  await expect(filaLucia).toContainText(/\$\s5\.000,00/);
+
+  // El resumen lateral: una línea por moneda, sobre todos los deudores del filtro.
+  const resumen = page.getByRole("complementary");
+  await expect(resumen).toContainText("Deuda en ARS");
+  await expect(resumen).toContainText(/\$\s5\.000,00/);
+  await expect(resumen).toContainText("Deuda en USD");
+  await expect(resumen).toContainText(/US\$\s300,00/);
+  await expectAccessible(page, "cuentas de clientes con dos monedas");
+
+  // La búsqueda por nombre **sin tildes y sin distinguir mayúsculas**, y sobre todos los deudores:
+  // no filtra contra una página de resultados.
+  await page.getByLabel("Buscar cliente (opcional)").fill("lucia");
+  await page.getByRole("button", { name: "Filtrar" }).click();
+  await expect(lista).toContainText("Lucía Gómez");
+  await expect(lista).not.toContainText("Mario Paz");
+  // Y el resumen sigue al filtro: la deuda en USD ya no está, porque ese cliente no está.
+  await expect(resumen).toContainText("Deuda en ARS");
+  await expect(resumen).not.toContainText("Deuda en USD");
+
+  // La búsqueda conserva el filtro de moneda, y juntos pueden no dar nada.
+  await page.getByLabel("Moneda").selectOption("USD");
+  await page.getByRole("button", { name: "Filtrar" }).click();
+  await expect(
+    page.getByText("Nadie con ese nombre debe en USD."),
+  ).toBeVisible();
+});
+
+// La ruta vieja no se rompe (brief-24.7.2, D-2): los deudores dejaron de estar bajo la caja, y un
+// enlace guardado tiene que seguir llegando, con su filtro puesto.
+test("la ruta vieja de deudores redirige a cuentas y conserva el filtro", async ({
+  page,
+}) => {
+  const mario = await insertClient("Mario Paz", "+5491155550002");
+  await insertSale(3, "300.00", mario, { currency: "USD" });
+  await login(page, ADMIN);
+
+  await page.goto("/caja/deudores?moneda=USD");
+  await expect(page).toHaveURL(/\/cuentas\?moneda=USD$/);
+  await expect(
+    page.getByRole("region", { name: "Cuentas de clientes" }),
+  ).toContainText("Mario Paz");
+  // Y la barra de la caja ya no ofrece «Deudores», porque dejó de ser una sección suya.
+  await page.goto("/caja");
+  const barra = page.getByRole("navigation", { name: "Secciones de la caja" });
+  await expect(barra.getByRole("link", { name: "Deudores" })).toHaveCount(0);
+});
+
+// Sin saldo a favor no hay nada que devolver, y la pantalla lo explica en vez de solo negarlo
+// (brief-24.7.2, AC-6; lámina 09). Quien llega acá suele estar mirando una deuda y creyendo que es
+// plata disponible.
+test("sin saldo a favor, la devolución lo explica y no ofrece formulario", async ({
+  page,
+}) => {
+  await insertMethods();
+  const lucia = await insertClient("Lucía Gómez", "+5491155550001");
+  await insertSale(1, "3000.00", lucia);
+  await login(page, ADMIN);
+
+  await page.goto(`/clientes/${lucia}/devolver`);
+  await expect(page.getByText("No hay saldo a favor")).toBeVisible();
+  await expect(
+    page.getByText(
+      "La deuda y las señas retenidas no son importes disponibles para devolver.",
+    ),
+  ).toBeVisible();
+  // No hay formulario: ni importe ni botón de registrar.
+  await expect(
+    page.getByRole("button", { name: /Registrar devolución/ }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Ver cuenta" })).toBeVisible();
+  await expectAccessible(page, "devolución sin saldo a favor");
 });
 
 // Sin JavaScript (brief-21.6, AC-8): los dos pasos del cobro a cuenta son formularios comunes.
@@ -417,9 +531,11 @@ test.describe("sin JavaScript", () => {
     await page.getByRole("radio", { name: "Transferencia" }).check();
     await page.getByLabel("Monto *").fill("1000");
     await page.getByRole("button", { name: "Ver cómo se aplica" }).click();
-    await expect(
-      page.getByText(/A la venta V-000001: \$\s1\.000,00/),
-    ).toBeVisible();
+    const aplicacion = page.getByRole("region", {
+      name: /Aplicación en la cuenta/,
+    });
+    await expect(aplicacion).toContainText("V-000001");
+    await expect(aplicacion).toContainText(/\$\s1\.000,00/);
     await page.getByRole("button", { name: "Registrar cobro" }).click();
     await expect(page).toHaveURL(
       new RegExp(`/clientes/${clientId}/cuenta\\?cobro=`),

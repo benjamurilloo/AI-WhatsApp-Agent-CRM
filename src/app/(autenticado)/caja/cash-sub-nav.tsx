@@ -4,19 +4,19 @@ import { SubNav } from "@/app/_components/sub-nav";
 
 // Las pantallas de la caja (brief-21.2, D-10): el estado de hoy, las sesiones, los medios de pago
 // y, desde la 21.3, los cobros (brief-21.3, D-8); desde la 21.5, las devoluciones (brief-21.5, D-9), y
-// desde la 21.6, los deudores (brief-21.6, D-6). Desde la 29.4, la cotización, solo en una
-// organización con moneda principal (brief-29.4, D-4): sin ella, la sección no existe.
+// Desde la 29.4, la cotización, solo en una organización con moneda principal (brief-29.4, D-4):
+// sin ella, la sección no existe.
+//
+// **Los deudores ya no están acá** (brief-24.7.2, D-2). Hasta la 24.7.1 eran una sección de la
+// caja, por historia: la 21.6 los puso ahí. Las láminas del lote V2-10 los dibujan como «Cuentas
+// de clientes», un ítem propio de Finanzas y hermano de Caja, y tienen razón: la cuenta de un
+// cliente no es caja. La caja es el efectivo de una sesión; la cuenta existe aunque la caja esté
+// cerrada. Esto enmienda la D-3 de la 24.7.1, que los había devuelto a esta barra.
 export async function CashSubNav({
   current,
 }: {
   current:
-    | "caja"
-    | "sesiones"
-    | "cobros"
-    | "devoluciones"
-    | "deudores"
-    | "cotizacion"
-    | "medios";
+    "caja" | "sesiones" | "cobros" | "devoluciones" | "cotizacion" | "medios";
 }) {
   const context = await requireSession();
   const mainCurrency = await getMainCurrency(context.organizationId);
@@ -47,15 +47,6 @@ export async function CashSubNav({
           label: "Devoluciones",
           icon: "undo",
           current: current === "devoluciones",
-        },
-        // **«Deudores» se queda a la vista.** La primera versión lo mandó al menú, y D-3 (a) nombra
-        // solo «Medios de pago» y «Cotización»: mover un destino que la decisión no mencionó es
-        // cambiar la navegación por mi cuenta. Lo encontró la revisión independiente.
-        {
-          href: "/caja/deudores",
-          label: "Deudores",
-          icon: "users",
-          current: current === "deudores",
         },
       ]}
       // Los destinos secundarios de la lámina 01 (brief-24.7.1, D-3): se consultan y se configuran,

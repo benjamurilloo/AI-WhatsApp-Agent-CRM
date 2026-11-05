@@ -47,8 +47,15 @@ export const RECEIPT_NOT_FOUND_MESSAGE = "Este recibo no existe.";
 export const REFUND_NOT_FOUND_MESSAGE = "Esta devolución no existe.";
 export const CLIENT_NOT_FOUND_MESSAGE = "Este cliente no existe.";
 export const SALE_NOT_FOUND_MESSAGE = "Esta venta no existe.";
-export const NOTHING_IN_FAVOR_MESSAGE =
-  "Este cliente no tiene saldo a favor para devolver.";
+
+// El estado vacío de la lámina 09 del lote V2-10 (brief-24.7.2): no alcanza con decir que no hay
+// saldo a favor, porque quien llega acá suele estar mirando una deuda o una seña y creer que eso
+// es plata disponible. No lo es, y la pantalla lo dice.
+export const NOTHING_IN_FAVOR_TITLE = "No hay saldo a favor";
+export const NOTHING_IN_FAVOR_DETAIL =
+  "La deuda y las señas retenidas no son importes disponibles para devolver.";
+export const ACCOUNT_KEEPS_CURRENCY_NOTE =
+  "La cuenta conserva su moneda: un saldo a favor en una no cubre una deuda en otra.";
 export const SALE_NOT_REFUNDABLE_MESSAGE =
   "Solo se devuelve desde una venta sin cliente y anulada. Con cliente, lo cobrado pasó a su cuenta y se devuelve desde ahí.";
 export const NOTHING_TO_REFUND_MESSAGE =

@@ -25,6 +25,37 @@ export function unexpectedAccountReceiptMessage(requestId: string): string {
 
 // Desde la 29.4, la moneda que entra, la cotización acordada y la vigente que se mostró (brief-29.4,
 // D-6): viajan también en la confirmación.
+// Los textos de la revisión, con la forma de la lámina 03 del lote V2-10 (brief-24.7.2).
+
+export const STEP_DATA_LABEL = "Paso 1 de 2: Datos del cobro";
+export const STEP_REVIEW_LABEL = "Paso 2 de 2: Revisión";
+
+export const REVIEW_TITLE = "Revisión de la aplicación";
+export const REVIEW_SUBTITLE =
+  "Verificá cómo se va a aplicar este cobro en la cuenta del cliente.";
+
+// La imputación **se deriva**, no se elige. Decirlo acá evita que alguien busque las casillas que
+// la lámina a propósito no tiene (README del lote V2-10, §Saldo e imputación).
+export const REVIEW_AUTOMATIC_NOTE =
+  "No es una selección manual de ventas: se aplica de la más antigua a la más reciente.";
+
+// El aviso que la lámina pinta en ámbar. Es la misma garantía que el ADR 0022 da y no más: lo que
+// se ve es la cuenta de ahora, y al registrar se vuelve a calcular con los saldos de ese momento.
+export const REVIEW_FORECAST_TITLE = "Es una previsión de la cuenta actual.";
+export const REVIEW_FORECAST_DETAIL =
+  "La aplicación se vuelve a calcular al registrar, y una anulación posterior puede cambiarla.";
+
+export const REVIEW_CONTEXT_TITLE = "Contexto de la cuenta";
+export const REVIEW_ENTERED_TITLE = "Datos del cobro (ingresados)";
+
+// Transferencia registra un ingreso recibido; no mueve plata (README del lote, §Cobrar a cuenta).
+export const REVIEW_NO_TRANSFER_NOTE =
+  "Registrar no ejecuta una transferencia.";
+
+// Una deuda en otra moneda no se toca: el cobro no cruza monedas y el equivalente no compensa.
+export function otherCurrenciesNote(parts: string[]): string {
+  return `${parts.join(" y ")} siguen pendientes; este cobro no cruza monedas.`;
+}
 export type AccountReceiptFormValues = {
   currency: string;
   paymentMethodId: string;

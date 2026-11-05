@@ -4519,6 +4519,9 @@ export type AccountCurrencySummary = {
   salesWithBalance: number;
   // La emisión de la venta con saldo más vieja.
   oldestOutstandingAt: Date | null;
+  // Su número, ya formateado (brief-24.7.2, H-1). **No es una lectura nueva**: sale del mismo
+  // objeto del que ya salía la fecha, que la imputación tenía cargado y esto tiraba.
+  oldestOutstandingNumber: string | null;
 };
 
 function summarize(account: CurrencyAccount): AccountCurrencySummary {
@@ -4532,6 +4535,10 @@ function summarize(account: CurrencyAccount): AccountCurrencySummary {
     retained: moneyToDatabase(account.retained),
     salesWithBalance: withBalance.length,
     oldestOutstandingAt: withBalance[0]?.issuedAt ?? null,
+    oldestOutstandingNumber:
+      withBalance[0] === undefined
+        ? null
+        : formatDocumentNumber("sale", withBalance[0].number),
   };
 }
 
@@ -5217,6 +5224,10 @@ export type DebtorRow = {
   currency: string;
   owed: string;
   oldestOutstandingAt: Date;
+  // El número de esa venta (brief-24.7.2, AC-1): la lámina 01 muestra «V-000218 / 26 oct. 2026»,
+  // no solo la fecha. Una fila de esta lista siempre tiene al menos una venta con saldo —si no,
+  // readDebts la descarta—, así que acá no es opcional.
+  oldestOutstandingNumber: string;
   salesWithBalance: number;
 };
 
@@ -5227,6 +5238,12 @@ export type DebtorPage = {
   pageSize: number;
   // Las monedas con algún deudor, para el filtro.
   currencies: string[];
+  // Lo que se debe en cada moneda, sobre el conjunto filtrado **entero** y no sobre la página
+  // (brief-24.7.2, AC-1): el resumen lateral de la lámina 01 dice «Deuda en ARS 780.000,00», que
+  // es la suma de todos los deudores del filtro. La página no podría calcularlo, porque solo
+  // recibe su tajada. Es un pliegue en memoria sobre lo que listDebtors ya tenía cargado: **no
+  // abre ninguna consulta**. Mismo caso que sumByModel en la 24.5.1.
+  totals: { currency: string; owed: string }[];
   // Lo que deben todos los de la lista, filtrada, en la moneda principal (brief-29.4, D-8).
   reference: ReferenceView | null;
 };
@@ -5321,6 +5338,7 @@ async function readDebts(organizationId: string): Promise<Debt[]> {
         owed: summary.owed,
         owedAmount: moneyFromDatabase(summary.owed),
         oldestOutstandingAt: summary.oldestOutstandingAt!,
+        oldestOutstandingNumber: summary.oldestOutstandingNumber!,
         salesWithBalance: summary.salesWithBalance,
       });
     }
@@ -5335,9 +5353,20 @@ function byDebt(a: Debt, b: Debt): number {
   return a.clientId < b.clientId ? -1 : a.clientId > b.clientId ? 1 : 0;
 }
 
+// Compara nombres como los lee una persona: sin tildes y sin distinguir mayúsculas. No usa la
+// búsqueda de crm porque esa devuelve **de a 25** y acá hace falta el conjunto entero: filtrar
+// contra una página daría un resultado incompleto sin avisar (brief-24.7.2, D-5, corregida al
+// implementar).
+function normalizeName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
 export async function listDebtors(
   context: AuthContext,
-  query: { currency: string | null; page: number },
+  query: { currency: string | null; page: number; text?: string },
 ): Promise<
   { ok: true; debtors: DebtorPage } | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
 > {
@@ -5350,20 +5379,61 @@ export async function listDebtors(
   ) {
     return failure("VALIDATION_ERROR");
   }
+  const text = (query.text ?? "").trim();
   const debts = await readDebts(context.organizationId);
   const currencies = [...new Set(debts.map((row) => row.currency))].sort();
   // Por moneda, y dentro de cada una, de la deuda mayor a la menor.
-  const filtered = debts
-    .filter((row) => query.currency === null || row.currency === query.currency)
+  const inCurrency = debts
+    .filter((row) => query.currency === null || query.currency === row.currency)
     .sort(byDebt);
+  // Los nombres ya conocidos. **Sin búsqueda esto queda vacío** y más abajo se piden solo los de
+  // la página, como siempre: el costo de buscar lo paga quien busca.
+  const names = new Map<string, string | null>();
+  if (text !== "" && inCurrency.length > 0) {
+    const all = await getClientsByIds(
+      context,
+      inCurrency.map((row) => row.clientId),
+    );
+    if (all.ok) {
+      for (const client of all.clients) {
+        names.set(client.id, client.displayName);
+      }
+    }
+  }
+  const needle = normalizeName(text);
+  // Un cliente sin nombre nunca coincide con una búsqueda por nombre.
+  const filtered =
+    text === ""
+      ? inCurrency
+      : inCurrency.filter((row) => {
+          const name = names.get(row.clientId);
+          return (
+            name !== null &&
+            name !== undefined &&
+            normalizeName(name).includes(needle)
+          );
+        });
   const start = (query.page - 1) * DEBTORS_PAGE_SIZE;
   const page = filtered.slice(start, start + DEBTORS_PAGE_SIZE);
   const reference = referenceView(
     await getExchangeSetup(context.organizationId),
     filtered.map((row) => ({ currency: row.currency, amount: row.owedAmount })),
   );
-  const names = new Map<string, string | null>();
-  if (page.length > 0) {
+  // Sobre `filtered`, no sobre `page`: es el total del filtro, no el de lo que se ve.
+  const byCurrency = new Map<string, Money>();
+  for (const row of filtered) {
+    byCurrency.set(
+      row.currency,
+      (byCurrency.get(row.currency) ?? 0n) + row.owedAmount,
+    );
+  }
+  const totals = [...byCurrency]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([currency, amount]) => ({
+      currency,
+      owed: moneyToDatabase(amount),
+    }));
+  if (text === "" && page.length > 0) {
     const clients = await getClientsByIds(
       context,
       page.map((row) => row.clientId),
@@ -5383,12 +5453,14 @@ export async function listDebtors(
         currency: row.currency,
         owed: row.owed,
         oldestOutstandingAt: row.oldestOutstandingAt,
+        oldestOutstandingNumber: row.oldestOutstandingNumber,
         salesWithBalance: row.salesWithBalance,
       })),
       total: filtered.length,
       page: query.page,
       pageSize: DEBTORS_PAGE_SIZE,
       currencies,
+      totals,
       reference,
     },
   };

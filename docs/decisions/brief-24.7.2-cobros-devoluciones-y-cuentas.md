@@ -171,6 +171,7 @@ Paula Méndez › Cobrar a cuenta». Son la misma sección con dos nombres. Se a
   seleccionado y un resumen por ambas monedas; no elimina el detalle ARS»).
 - **V-5 · La mitad de caja de la lámina 09 ya está implementada** por la 24.7.1. De esta lámina
   entran acá **solo dos tarjetas**: «¿Anular R-000183?» y «No hay saldo a favor».
+- **V-7 · El resumen lateral de la lámina 01 muestra un «Equivalente en {principal}» por cada moneda.** No entra: calcularlo en la página sería reimplementar la regla de conversión, y exponerlo desde `referenceView` toca una función que también usan las cuentas de proveedores. Se muestra la deuda de cada moneda y el equivalente del **total**. *Agregado el 2026-11-04, al comparar contra la lámina.*
 - **V-6 · El listado de la lámina 01 no muestra datos de contacto** y la ficha del cliente sí. No
   es una diferencia a resolver: es la regla del README, y se mantiene.
 
@@ -362,3 +363,113 @@ abrió. Después queda la **24.7.3** (cotización y medios de pago) y con eso ci
 **Requisito antes de producción**: nada que esta subfase agregue.
 **Mejora posterior**: el objetivo táctil de 44 px, el desbordamiento del `<select>` en las dos
 pantallas que la 24.7.1 no barrió, y —si D-1 sale (a)— la 24.7.2-b.
+
+## Cierre
+
+*Implementado el 2026-11-04.* **Validado localmente**: AC-1 a AC-15 en verde contra un build hecho
+en la misma corrida, con la guarda de frescura confirmándolo («Build de la corrida»). Falta AC-16
+(la batería completa en una corrida de CI sobre el SHA exacto), AC-17 (revisión independiente) y
+AC-18 (tu recorrido en producción).
+
+### Lo que cambió respecto de lo aprobado, y por qué
+
+- **La ruta.** El brief no fijaba dónde vivía «Cuentas de clientes». Al implementar apareció que el
+  **menú ya la listaba** en Finanzas, apuntando a `/caja/deudores`: la posición y la etiqueta ya
+  coincidían con la lámina, y lo que no coincidía era la ruta y que la pantalla se dibujaba con la
+  barra de la caja. Se preguntó antes de tocar nada y el usuario eligió **mudarla a `/cuentas`**,
+  con redirección permanente desde la vieja, que conserva `moneda`, `cliente` y `pagina`.
+- **D-5 estaba mal y se corrigió antes de escribirla.** Decía que la página compusiera la búsqueda
+  con `searchClients`. Al ir a implementarla se midió que **`CLIENTS_PAGE_SIZE` es 25**: ese
+  mecanismo habría filtrado los deudores contra las primeras veinticinco coincidencias **y en
+  silencio**, que es la peor clase de defecto. Se elevó en vez de parchearlo, y por decisión del
+  usuario el filtro vive dentro de `listDebtors`, que con búsqueda pide los nombres de **todos** los
+  deudores del filtro. Es un defecto de mi propia decisión, visible solo al implementar.
+
+### AC-13 · Ninguna lectura nueva salvo la aprobada, verificado contra `HEAD`
+
+Verificado con `git diff` sobre `src/modules/cash/service.ts`, línea por línea y no de memoria:
+**el único `await` agregado en todo el módulo es `getClientsByIds`, y está detrás de
+`if (text !== "")`**. Sin búsqueda, la pantalla ejecuta exactamente lo que ejecutaba antes.
+
+Dos cosas que la lámina pide y que **no cuestan una consulta**, porque ya estaban cargadas y el
+código las tiraba:
+
+- el **número** de la venta con saldo más vieja, que vivía en `SaleImputation.number`;
+- los **totales por moneda**, un pliegue en memoria sobre el conjunto filtrado que `listDebtors` ya
+  tenía, calculado **antes de cortar la página** porque el resumen suma el filtro entero.
+
+### Mediciones
+
+- **M-1 · El costo con y sin búsqueda.** **Medido**, no declarado: contra PostgreSQL real, llamando
+  al servicio, con **200 clientes con deuda**. Mediana de tres corridas tras una en frío:
+  **18 ms sin búsqueda**, **15 ms con «añez»** y **17 ms con «anez»**. Las dos búsquedas devuelven
+  **100 de 200**, y dan lo mismo con y sin tilde. **Buscar no sale más caro**: la llamada extra trae
+  los doscientos nombres de un saque y el conjunto filtrado después es más chico. El arnés fue una
+  prueba de integración descartable, corrida y borrada.
+- **M-2 · El filtro por cliente en Cobros.** **No corresponde a esta subfase**: D-4 lo mandó a la
+  **24.7.2-b** junto con las láminas 06 y 07. Se mide allá, y este brief no lo da por medido.
+- **M-3 · El estado de cuenta con muchos comprobantes.** **Verificado sin trabajo nuevo**:
+  `getClientStatement` **no se tocó** —el diff lo muestra— y sus pruebas de integración, con el
+  tope de 500 y su aviso, siguen en verde.
+
+### AC-15 · Comparación visual contra las láminas, entrada por entrada
+
+Cada pantalla se capturó del build de producción y se miró **al lado** de su lámina, no de memoria.
+Las diferencias están todas acá.
+
+**Lámina 01 · Cuentas de clientes**
+
+| Entrada de la lámina | Qué quedó |
+|---|---|
+| Título, subtítulo y pestañas «Con deudas / Buscar cliente» | ✔ |
+| Filtros: Moneda y «Buscar cliente (opcional)» con su marcador | ✔ |
+| Línea de conteo «3 saldos · 2 clientes» | ✔ con diferencia menor: dice «2 clientes en esta página», porque el recuento de clientes es el de la página y afirmar el del filtro entero exigiría contarlos aparte |
+| Tabla: Cliente · Moneda · Debe · Ventas con saldo · Más antigua · Acción | ✔ |
+| «Más antigua» con número y fecha | ✔ |
+| «1 venta» / «2 ventas» con la palabra | ✔ *(primera versión mostraba el número solo; lo encontró esta comparación)* |
+| «Ver cuenta» como botón con borde | ✔ *(primera versión era un enlace de texto, y se partía en dos renglones; lo encontró esta comparación)* |
+| Nombre del cliente en un renglón | ✔ *(primera versión lo partía; lo encontró esta comparación)* |
+| Resumen lateral con la nota de que el equivalente no convierte | ✔ |
+| **«Equivalente en USD» por cada moneda** | ✘ **V-7**: calcularlo en la página sería reimplementar la regla de conversión, y exponerlo desde `referenceView` toca una función que **también usan las cuentas de proveedores**. Se muestra la deuda de cada moneda y el equivalente del **total** |
+| Fechas «26 oct. 2026» | ✘ menor: el proyecto formatea `31/10/2026` con `formatDate` en todas sus pantallas |
+| Menú lateral: Finanzas → Caja · Cuentas de clientes · Tipo de cambio | ✔, y ya era así antes de esta subfase |
+
+**Lámina 02 · Estado de cuenta**: la pantalla es la de la 21.6, que esta subfase **no rediseñó**;
+lo que agregó es su segunda entrada (D-3). Las tarjetas por moneda, el equivalente, las pestañas
+Resumen y Comprobantes, la imputación y los cobros aplicados ya existían y coinciden. La miga de la
+lámina dice «Finanzas › Cuentas › Paula Méndez»; la nuestra la arma el marco de la 24.1 desde la
+ruta, y las dos entradas se distinguen por el «Volver».
+
+**Lámina 03 · Cobrar a cuenta, revisión**
+
+| Entrada de la lámina | Qué quedó |
+|---|---|
+| Los dos pasos nombrados, con el segundo activo | ✔ con diferencia de forma: son texto con `aria-current="step"`, no círculos numerados unidos por una línea |
+| «Revisión de la aplicación» con su subtítulo | ✔ |
+| «No es una selección manual de ventas» | ✔ |
+| «Aplicación en la cuenta ({moneda})» con sus destinos e importes | ✔, en una región con nombre |
+| «Quedará a favor en {moneda}» cuando sobra | ✔ |
+| Aviso ámbar «Es una previsión de la cuenta actual» | ✔ |
+| «{otra moneda} siguen pendientes; este cobro no cruza monedas» | ✔ |
+| «Contexto de la cuenta» y «Datos del cobro (ingresados)» | ✔ |
+| «Registrar no ejecuta una transferencia» | ✔ |
+| «Cambiar datos» y «Registrar cobro» | ✔ |
+| **En el paso 2 se ve solo la revisión** | ✔ *(primera versión dejaba arriba las tablas de ventas con saldo y la ayuda del paso 1, que la lámina no muestra y que repetían el aviso de la imputación; lo encontró esta comparación, y se resolvió pasando ese contexto al formulario, que lo dibuja solo en el paso 1)* |
+| Miga «Finanzas › Cuentas de clientes › Paula Méndez › Cobrar a cuenta» | ✘ menor: la arma el marco de la 24.1 desde la ruta, que es `/clientes/…`; cambiarla es tocar el marco |
+
+**Lámina 09 · «No hay saldo a favor»**
+
+| Entrada de la lámina | Qué quedó |
+|---|---|
+| Ícono en círculo y título «No hay saldo a favor» | ✔ |
+| «La deuda y las señas retenidas no son importes disponibles para devolver» | ✔ |
+| Nota «La cuenta conserva su moneda. Consultá el estado actualizado» | ✔ |
+| «Ver cuenta» | ✔ |
+| El título no se repite | ✔ *(primera versión decía «No tiene saldo a favor» en el subtítulo y «No hay saldo a favor» en la tarjeta; es el defecto que la 24.6.2-e corrigió en el listado de ventas, y lo encontró esta comparación)* |
+| «Consulta: sin acciones de gestión» | ✘ declarado: esa línea de la lámina es del caso `viewer`, y esta pantalla es solo de `admin` |
+
+**El saldo de la comparación**: encontró **cinco defectos de forma** que ninguna prueba podía ver
+—el número sin la palabra, el enlace en vez del botón, dos textos partidos, el ruido del paso 1 en
+el paso 2 y el título repetido—. Ninguno rompía nada; los quince casos de extremo a extremo, axe y
+el typecheck estaban en verde con todos ellos adentro. Es la **sexta vez** en esta fase que poner la
+captura al lado de la lámina encuentra algo que no se encuentra de otra forma.

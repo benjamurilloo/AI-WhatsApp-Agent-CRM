@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import type { PaymentMethod } from "@/modules/cash";
 import {
+  cardClass,
   fieldErrorClass,
   formMessageClass,
   inlineButtonClass,
@@ -14,6 +15,7 @@ import {
   secondaryButtonClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import {
   exchangeRateFromDatabase,
   formatExchangeRate,
@@ -29,10 +31,44 @@ import {
   CurrencySelect,
 } from "@/app/(autenticado)/caja/money-fields";
 import { accountReceiptAction } from "./actions";
-import type {
-  AccountReceiptFormState,
-  AccountReceiptFormValues,
+import {
+  otherCurrenciesNote,
+  REVIEW_AUTOMATIC_NOTE,
+  REVIEW_CONTEXT_TITLE,
+  REVIEW_ENTERED_TITLE,
+  REVIEW_FORECAST_DETAIL,
+  REVIEW_FORECAST_TITLE,
+  REVIEW_NO_TRANSFER_NOTE,
+  REVIEW_SUBTITLE,
+  REVIEW_TITLE,
+  STEP_DATA_LABEL,
+  STEP_REVIEW_LABEL,
+  type AccountReceiptFormState,
+  type AccountReceiptFormValues,
 } from "./messages";
+
+// Los dos pasos, dichos con todas las letras (brief-24.7.2, lámina 03). Es el mismo patrón que el
+// cierre de caja de la 24.7.1: el paso en curso lleva `aria-current`, así que un lector de
+// pantalla dice dónde estás sin depender del color.
+function Stepper({ current }: { current: "datos" | "revision" }) {
+  const steps = [
+    { id: "datos" as const, label: STEP_DATA_LABEL },
+    { id: "revision" as const, label: STEP_REVIEW_LABEL },
+  ];
+  return (
+    <ol className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+      {steps.map((step) => (
+        <li
+          key={step.id}
+          aria-current={step.id === current ? "step" : undefined}
+          className={step.id === current ? "font-semibold" : "text-muted"}
+        >
+          {step.label}
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 // El cobro a cuenta (brief-21.6, D-5): la moneda, propuesta en la de la venta con saldo más vieja; el
 // medio, como grupo de opciones con los activos; y el monto, con su lectura como en la caja. Antes de
@@ -50,6 +86,9 @@ export type AccountExchangeProps = {
 
 export function AccountReceiptForm({
   clientId,
+  clientName,
+  debts,
+  contexto,
   cancelHref,
   defaults,
   currencies,
@@ -58,6 +97,15 @@ export function AccountReceiptForm({
   exchange,
 }: {
   clientId: string;
+  clientName: string;
+  // Lo que el cliente debe en cada moneda, **ya leído por la página** para armar su encabezado: la
+  // revisión lo usa para el contexto y para avisar qué queda pendiente en otra moneda. No agrega
+  // ninguna lectura (brief-24.7.2, AC-13).
+  debts: { currency: string; owed: string }[];
+  // El contexto del paso 1 —las ventas con saldo y la ayuda—, que la página arma y este
+  // componente dibuja **solo mientras se cargan los datos**: en la revisión la lámina 03 muestra
+  // solo las dos columnas (brief-24.7.2).
+  contexto: React.ReactNode;
   cancelHref: string;
   defaults: AccountReceiptFormValues;
   // Las monedas del sistema, para elegir una (desde el recorrido de la 22.7, 2026-10-17; antes eran
@@ -96,6 +144,12 @@ export function AccountReceiptForm({
   if (state.status === "preview") {
     const { preview } = state;
     const money = (value: string) => formatMoney(value, preview.currency);
+    const owedInApplied =
+      debts.find((row) => row.currency === preview.currency)?.owed ?? "0.00";
+    // Las otras monedas con deuda: el cobro no las toca y la pantalla lo dice.
+    const otherDebts = debts.filter(
+      (row) => row.currency !== preview.currency && row.owed !== "0.00",
+    );
     return (
       <form action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="clientId" value={clientId} />
@@ -117,41 +171,146 @@ export function AccountReceiptForm({
           name="exchangeRateId"
           value={values.exchangeRateId}
         />
-        <h2
-          ref={previewRef}
-          tabIndex={-1}
-          className="text-base font-semibold focus:outline-none"
-        >
-          Cómo se aplica {money(preview.amount)} en {state.paymentMethodName}
-        </h2>
-        {preview.tender ? (
-          <p className="text-sm tabular-nums">
-            Entran {formatMoney(preview.tender.amount, preview.tender.currency)}{" "}
-            a{" "}
-            {formatExchangeRate(
-              exchangeRateFromDatabase(preview.tender.exchangeRate),
-            )}{" "}
-            por {exchange?.mainCurrency ?? ""}.
-          </p>
-        ) : null}
-        <ul className="flex flex-col gap-1 text-sm">
-          {preview.applications.map((row) => (
-            <li key={row.saleId}>
-              A la venta <span className="font-mono">{row.displayNumber}</span>:{" "}
-              <span className="tabular-nums">{money(row.amount)}</span>
-            </li>
-          ))}
-          {preview.toFavor !== "0.00" ? (
-            <li>
-              Queda a favor del cliente:{" "}
-              <span className="tabular-nums">{money(preview.toFavor)}</span>
-            </li>
-          ) : null}
-        </ul>
-        <p className="text-sm text-muted">
-          Es la cuenta de hoy: si después se anula un cobro, una venta o una
-          devolución, la imputación cambia.
-        </p>
+        <Stepper current="revision" />
+        <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+          <div className={`${cardClass} p-5 sm:p-6`}>
+            <h2
+              ref={previewRef}
+              tabIndex={-1}
+              className="text-base font-semibold focus:outline-none"
+            >
+              {REVIEW_TITLE}
+            </h2>
+            <p className="mt-1 text-sm text-muted">{REVIEW_SUBTITLE}</p>
+
+            <p className="mt-4 flex items-start gap-2 rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm">
+              <Icon name="info" className="mt-0.5 size-4 shrink-0" />
+              <span>{REVIEW_AUTOMATIC_NOTE}</span>
+            </p>
+
+            {preview.tender ? (
+              <p className="mt-4 text-sm tabular-nums">
+                Entran{" "}
+                {formatMoney(preview.tender.amount, preview.tender.currency)} a{" "}
+                {formatExchangeRate(
+                  exchangeRateFromDatabase(preview.tender.exchangeRate),
+                )}{" "}
+                por {exchange?.mainCurrency ?? ""}.
+              </p>
+            ) : null}
+
+            {/* Con nombre, para que una prueba y un lector de pantalla puedan tomarla entera: el
+                importe y su destino viven en elementos distintos y por separado no dicen nada. */}
+            <div
+              role="region"
+              aria-label={`Aplicación en la cuenta en ${preview.currency}`}
+            >
+              <h3 className="mt-5 text-sm font-semibold">
+                Aplicación en la cuenta ({preview.currency})
+              </h3>
+              <dl className="mt-2 flex flex-col divide-y divide-border rounded-xl border border-border">
+                {preview.applications.map((row) => (
+                  <div
+                    key={row.saleId}
+                    className="flex items-baseline justify-between gap-3 px-3 py-2 text-sm"
+                  >
+                    <dt>
+                      A <span className="font-mono">{row.displayNumber}</span>
+                    </dt>
+                    <dd className="font-semibold tabular-nums">
+                      {money(row.amount)}
+                    </dd>
+                  </div>
+                ))}
+                {preview.toFavor !== "0.00" ? (
+                  <div className="flex items-baseline justify-between gap-3 px-3 py-2 text-sm">
+                    <dt>Quedará a favor en {preview.currency}</dt>
+                    <dd className="font-semibold tabular-nums">
+                      {money(preview.toFavor)}
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+
+            <p className="mt-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-on-warning-soft">
+              <Icon name="alert" className="mt-0.5 size-4 shrink-0" />
+              <span>
+                <span className="font-semibold">{REVIEW_FORECAST_TITLE}</span>{" "}
+                {REVIEW_FORECAST_DETAIL}
+              </span>
+            </p>
+
+            {otherDebts.length > 0 ? (
+              <p className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm">
+                <Icon name="info" className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  {otherCurrenciesNote(
+                    otherDebts.map((row) =>
+                      formatMoney(row.owed, row.currency),
+                    ),
+                  )}
+                </span>
+              </p>
+            ) : null}
+          </div>
+
+          <aside className="flex flex-col gap-6">
+            <div className={`${cardClass} p-5 text-sm sm:p-6`}>
+              <h3 className="text-base font-semibold">
+                {REVIEW_CONTEXT_TITLE}
+              </h3>
+              <dl className="mt-3 flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted">Cliente</dt>
+                  <dd className="font-medium">{clientName}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted">
+                    Deuda en {preview.currency} actual
+                  </dt>
+                  <dd className="font-semibold tabular-nums">
+                    {money(owedInApplied)}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className={`${cardClass} p-5 text-sm sm:p-6`}>
+              <h3 className="text-base font-semibold">
+                {REVIEW_ENTERED_TITLE}
+              </h3>
+              <dl className="mt-3 flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted">Moneda aplicada</dt>
+                  <dd className="font-mono">{preview.currency}</dd>
+                </div>
+                {preview.tender ? (
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted">Moneda recibida</dt>
+                    <dd className="font-mono">{preview.tender.currency}</dd>
+                  </div>
+                ) : null}
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted">Medio de cobro</dt>
+                  <dd className="font-medium">{state.paymentMethodName}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted">Importe</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {money(preview.amount)}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <p className="flex items-start gap-2 text-sm text-muted">
+              <Icon name="info" className="mt-0.5 size-4 shrink-0" />
+              <span>{REVIEW_NO_TRANSFER_NOTE}</span>
+            </p>
+          </aside>
+        </div>
+
         <div className="flex flex-wrap justify-end gap-3">
           <button
             type="submit"
@@ -160,7 +319,7 @@ export function AccountReceiptForm({
             disabled={pending}
             className={secondaryButtonClass}
           >
-            Cambiar los datos
+            Cambiar datos
           </button>
           <button
             type="submit"
@@ -182,6 +341,8 @@ export function AccountReceiptForm({
       action={formAction}
       className="flex flex-col gap-4"
     >
+      <Stepper current="datos" />
+      {contexto}
       <input type="hidden" name="clientId" value={clientId} />
       <div aria-live="polite" aria-atomic="true">
         {failed ? (

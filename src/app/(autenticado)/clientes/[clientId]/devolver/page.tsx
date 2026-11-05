@@ -4,15 +4,22 @@ import { getClientRefundForm } from "@/modules/cash";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { BackLink } from "@/app/_components/detail-header";
-import { cardClass, linkClass } from "@/app/_components/form-styles";
+import {
+  cardClass,
+  linkClass,
+  primaryLinkClass,
+} from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatMoney } from "@/shared/money";
 import { NO_ACTIVE_METHODS_MESSAGE } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
 import { createAccountRefundAction } from "@/app/(autenticado)/devoluciones/actions";
 import {
+  ACCOUNT_KEEPS_CURRENCY_NOTE,
   CLIENT_NOT_FOUND_MESSAGE,
-  NOTHING_IN_FAVOR_MESSAGE,
+  NOTHING_IN_FAVOR_DETAIL,
+  NOTHING_IN_FAVOR_TITLE,
   REFUND_ADMIN_ONLY_MESSAGE,
 } from "@/app/(autenticado)/devoluciones/messages";
 import { RefundForm } from "@/app/(autenticado)/devoluciones/refund-form";
@@ -81,12 +88,14 @@ export default async function ClientRefundPage({
         outstandingLabel: "A favor",
       })
     : null;
+  // Sin saldo a favor no hay formulario que mostrar, y tampoco un rechazo: no es un error, es que
+  // no hay nada que devolver. Tiene su propia tarjeta (lámina 09), separada del caso «no hay medios
+  // de pago activos», que sí es algo para resolver.
+  const nothingInFavor = form.inFavor.length === 0;
   const blocked =
-    form.inFavor.length === 0
-      ? NOTHING_IN_FAVOR_MESSAGE
-      : form.paymentMethods.length === 0
-        ? NO_ACTIVE_METHODS_MESSAGE
-        : null;
+    !nothingInFavor && form.paymentMethods.length === 0
+      ? NO_ACTIVE_METHODS_MESSAGE
+      : null;
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8">
@@ -94,49 +103,77 @@ export default async function ClientRefundPage({
       <div className="mt-4">
         <PageHeader
           title={`Devolver saldo a favor de ${name}`}
+          // Sin saldo a favor **no se dice dos veces**: lo explica la tarjeta de abajo, con su
+          // motivo. Repetirlo acá es el defecto que la 24.6.2-e corrigió en el listado de ventas,
+          // donde una venta anulada decía «Anulada» en dos lugares.
           subtitle={
             form.inFavor.length === 0
-              ? "No tiene saldo a favor."
+              ? "Acá se devuelve lo que quedó a favor en la cuenta."
               : `A favor: ${form.inFavor
                   .map((row) => formatMoney(row.amount, row.currency))
                   .join(" y ")}.`
           }
         />
       </div>
-      <div className={`mt-6 ${cardClass} p-5 sm:p-6`}>
-        <p className="mb-4 text-sm text-muted">
-          Lo que está a favor es lo cobrado que no se imputa a ninguna venta con
-          saldo: lo de ventas anuladas, señas de pedidos cancelados y
-          excedentes. Lo que cubre una venta con saldo no se devuelve.{" "}
-          <Link href={`/clientes/${clientId}/cuenta`} className={linkClass}>
-            Ver estado de cuenta
-          </Link>
-        </p>
-        {blocked ? (
-          <p>
-            {blocked}{" "}
-            {form.inFavor.length > 0 ? (
+      {nothingInFavor ? (
+        <section
+          aria-labelledby="sin-saldo-titulo"
+          className={`mt-6 ${cardClass} p-5 sm:p-6`}
+        >
+          <p className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-full bg-primary-soft text-primary">
+              <Icon name="info" className="size-5" />
+            </span>
+            <span id="sin-saldo-titulo" className="text-base font-semibold">
+              {NOTHING_IN_FAVOR_TITLE}
+            </span>
+          </p>
+          <p className="mt-3 text-sm">{NOTHING_IN_FAVOR_DETAIL}</p>
+          <p className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm">
+            <Icon name="fileText" className="mt-0.5 size-4 shrink-0" />
+            <span>
+              {ACCOUNT_KEEPS_CURRENCY_NOTE} Consultá el estado actualizado.
+            </span>
+          </p>
+          <p className="mt-4">
+            <Link
+              href={`/clientes/${clientId}/cuenta`}
+              className={primaryLinkClass}
+            >
+              Ver cuenta
+            </Link>
+          </p>
+        </section>
+      ) : (
+        <div className={`mt-6 ${cardClass} p-5 sm:p-6`}>
+          <p className="mb-4 text-sm text-muted">
+            Lo que está a favor es lo cobrado que no se imputa a ninguna venta
+            con saldo: lo de ventas anuladas, señas de pedidos cancelados y
+            excedentes. Lo que cubre una venta con saldo no se devuelve.{" "}
+            <Link href={`/clientes/${clientId}/cuenta`} className={linkClass}>
+              Ver estado de cuenta
+            </Link>
+          </p>
+          {blocked ? (
+            <p>
+              {blocked}{" "}
               <Link href="/caja/medios-de-pago" className={linkClass}>
                 Ir a los medios de pago
               </Link>
-            ) : (
-              <Link href={back.href} className={linkClass}>
-                {back.label}
-              </Link>
-            )}
-          </p>
-        ) : (
-          <RefundForm
-            action={createAccountRefundAction}
-            target={{ field: "clientId", id: form.client.id }}
-            cancelHref={back.href}
-            available={form.inFavor}
-            paymentMethods={form.paymentMethods}
-            hasOpenSession={form.openSession !== null}
-            exchange={exchange}
-          />
-        )}
-      </div>
+            </p>
+          ) : (
+            <RefundForm
+              action={createAccountRefundAction}
+              target={{ field: "clientId", id: form.client.id }}
+              cancelHref={back.href}
+              available={form.inFavor}
+              paymentMethods={form.paymentMethods}
+              hasOpenSession={form.openSession !== null}
+              exchange={exchange}
+            />
+          )}
+        </div>
+      )}
     </main>
   );
 }

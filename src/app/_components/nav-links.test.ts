@@ -49,7 +49,7 @@ const ADMIN: NavGroup[] = [
     label: "Finanzas",
     links: [
       { href: "/caja", label: "Caja", icon: "banknote" },
-      { href: "/caja/deudores", label: "Cuentas de clientes", icon: "users" },
+      { href: "/cuentas", label: "Cuentas de clientes", icon: "users" },
     ],
   },
   {
@@ -94,7 +94,7 @@ describe("currentLink", () => {
       "Recepciones",
     );
     expect(currentLink("/compras/a-pagar", ADMIN)?.link.label).toBe("Compras");
-    expect(currentLink("/caja/deudores", ADMIN)?.link.label).toBe(
+    expect(currentLink("/cuentas", ADMIN)?.link.label).toBe(
       "Cuentas de clientes",
     );
     expect(currentLink("/caja/sesiones/3", ADMIN)?.link.label).toBe("Caja");

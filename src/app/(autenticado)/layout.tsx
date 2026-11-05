@@ -106,13 +106,17 @@ export default async function AuthenticatedLayout({
     {
       id: "finanzas",
       label: "Finanzas",
-      // La caja, los deudores y la cotización, para los dos roles (brief-21.2, D-10): sus
-      // servicios autorizan a cualquier miembro (brief-24.1, H-4). La cotización, solo con moneda
-      // principal.
+      // La caja, las cuentas de clientes y la cotización, para los dos roles (brief-21.2, D-10):
+      // sus servicios autorizan a cualquier miembro (brief-24.1, H-4). La cotización, solo con
+      // moneda principal.
+      //
+      // Desde la 24.7.2 (D-2) las cuentas apuntan a `/cuentas`, su ruta propia: ya figuraban acá
+      // como ítem de Finanzas, pero la ruta vivía bajo la caja y la pantalla se dibujaba con la
+      // barra de la caja. `/caja/deudores` redirige.
       links: [
         { href: "/caja", label: "Caja", icon: "banknote" },
         {
-          href: "/caja/deudores",
+          href: "/cuentas",
           label: "Cuentas de clientes",
           icon: "fileText",
         },
