@@ -240,6 +240,39 @@ test \"\$(sudo -u crm git -C /srv/crm-production rev-parse HEAD)\" = '$SHA' && e
 
 Se despliega un **SHA**, no `origin/main`: lo que se comprobó en el paso 1 es un SHA, y `main` puede haber avanzado entre la comprobación y el despliegue.
 
+**El droplet tiene un swap de 2 GB** (desde la 24.7.2, 2026-11-05). `/swapfile`, `600 root:root`, persistente por `/etc/fstab`. **No está para agregar memoria, está para que el kernel tenga a dónde ceder en el pico del build.** La prueba es que el build que lo estrenó usó **25 MB** de swap y terminó bien, después de que el intento anterior, sin swap, muriera con 1.426 MB de RSS.
+
+Es el **tercer** OOM de build en este droplet: la 29.5 detuvo el servicio, la 29.6 limitó el heap a 1.536 MB y las dos veces la respuesta fue apretar el cinturón. La causa seguía intacta: un droplet de 2 GB **sin swap** haciendo un build de Next que necesita 1,4 GB, donde cualquier pico ajeno —el de la 24.7.2 lo **disparó postgres**, `postgres invoked oom-killer`— decide una carrera por el proceso más grande. Con el servicio detenido quedaban 1.552 MB libres y el build pedía 1.426: entraba con 126 MB de margen, y ese margen es exactamente lo que se perdió.
+
+Si alguna vez hay que rehacerlo en una máquina nueva:
+
+```
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo chown root:root /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab && sudo systemctl daemon-reload
+swapon --show
+```
+
+**El build se lanza desacoplado del `ssh`** (desde la 24.7.2, 2026-11-05). El paso 3 de arriba es un comando de una sola pieza que **detiene el servicio al principio y lo arranca al final**, así que cualquier cosa que corte ese comando deja la producción caída sin nadie que la levante. No es hipotético: ese día el cliente `ssh` del operador murió por falta de memoria **en su máquina**, no en el droplet. El proceso remoto sobrevivió por casualidad —no por diseño—, el build murió después por OOM y nada arrancó el servicio.
+
+Desde entonces el build y el arranque van en un script que corre en el servidor, desprendido de la sesión:
+
+```
+sudo setsid nohup /root/build-<sha>.sh </dev/null >/dev/null 2>&1 &
+```
+
+con su salida en `/var/lib/crm-production/build-<sha>.log`, que se sigue con `tail`. Que la conexión del operador viva deja de ser parte del procedimiento.
+
+**Si el build falla, el servicio NO se arranca, y el arranque se decide por el `BUILD_ID`** (desde la 24.7.2, 2026-11-05). *Esto corrige el paso 3 de arriba*, que arranca el servicio igual cuando el build falla. Ese consejo vale cuando el `.next` anterior está **intacto** y la aplicación vieja sigue sirviendo, que es el caso de la 29.5. No vale cuando el build alcanzó a borrarlo: el 2026-11-05 el `.next` quedó **sin `BUILD_ID`**, `next start` cortó con «Could not find a production build in the '.next' directory» y systemd lo reinició hasta el **contador 42**, un bucle que consume memoria del droplet justo cuando hace falta para rehacer el build.
+
+Y el arranque **no se decide por el código de salida del build** sino por el artefacto:
+
+```
+if [ -f /srv/crm-production/.next/BUILD_ID ]; then systemctl start crm-production; else echo 'sin BUILD_ID - no arranco'; fi
+```
+
+El código de salida dice que el proceso terminó bien; el `BUILD_ID` dice que el artefacto existe, que es lo que `next start` necesita. Con el servicio detenido a propósito, el sitio no responde, y eso es preferible a un bucle de reinicios: un servicio caído se ve de una, y uno que reinicia parece estar intentándolo.
+
 ## Volver atrás
 
 Es el mismo procedimiento de «Desplegar un cambio» con el SHA anterior. **Incluye el paso 1**: ese SHA ya pasó la CI cuando se desplegó, y se vuelve a comprobar igual, porque la comprobación es barata.

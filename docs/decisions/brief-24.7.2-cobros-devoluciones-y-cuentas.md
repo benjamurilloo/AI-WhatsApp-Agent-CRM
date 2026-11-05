@@ -368,10 +368,16 @@ pantallas que la 24.7.1 no barrió, y —si D-1 sale (a)— la 24.7.2-b.
 
 ## Cierre
 
-*Implementado el 2026-11-04.* **Validado localmente**: AC-1 a AC-15 en verde contra un build hecho
-en la misma corrida, con la guarda de frescura confirmándolo («Build de la corrida»). Falta AC-16
-(la batería completa en una corrida de CI sobre el SHA exacto), AC-17 (revisión independiente) y
-AC-18 (tu recorrido en producción).
+*Implementado el 2026-11-04. **CERRADA el 2026-11-05.*** **Nivel alcanzado: validado en staging**, que es el objetivo que este brief fijó, y **no** «preparado para producción».
+
+- **AC-1 a AC-15 · Validado localmente**, contra un build hecho en la misma corrida, con la guarda de frescura confirmándolo («Build de la corrida»). Doce de estos criterios recibieron correcciones después de la revisión independiente.
+- **AC-16 · Cumplido**: la batería completa en **una sola corrida de CI sobre el SHA exacto**, run **42002268951** en `success` sobre `e7d4052`, leída por `headSha` y no por «la última». **920** guardas, **1.305** unitarias, **1.924** de integración y **375** de extremo a extremo.
+- **AC-17 · Cumplido**: revisión independiente **R1**, doce hallazgos, **los doce reales**. Detalle en §Revisión independiente.
+- **AC-18 · Cumplido**: desplegada en **`e7d4052`** el 2026-11-05, con las **siete** verificaciones del runbook pasadas y el recorrido del usuario confirmado. **Para volver atrás: `cad4e60`**, anotado antes de desplegar; entre los dos **no hay migraciones**.
+
+**El despliegue costó una caída de producción de unos 18 minutos, por el procedimiento y no por el código.** El build murió por OOM con el servicio detenido, y el paso 3 del runbook arrancó el servicio sobre un `.next` sin `BUILD_ID`: bucle de reinicio, contador en 42. Se agregó un **swap de 2 GB** —el build siguiente usó 25 MB y terminó bien—, el build pasó a lanzarse **desacoplado del `ssh`** y el arranque pasó a decidirse por el `BUILD_ID` y no por el código de salida. Las tres quedaron escritas en [deploy/production/README.md](../../deploy/production/README.md). Es el tercer OOM de build en ese droplet y el primero en el que se atacó la causa.
+
+**Lo que queda declarado y sin corregir**: el objetivo táctil de 44 px, que es una subfase propia; el desbordamiento del `<select>` en «cobrar a cuenta» y en «pagos a proveedores», declarado por la 24.7.1 y **todavía sin medir**; y la **24.7.2-b**, que necesita su propio brief.
 
 ### Lo que cambió respecto de lo aprobado, y por qué
 
