@@ -345,12 +345,14 @@ por (b) o (c).
 
 ## Cierre
 
-*Implementado el 2026-11-04. Cerrada el 2026-11-04.*
+*Implementado el 2026-11-04. Cerrada el 2026-11-04. Nivel elevado el 2026-11-05.*
 
-**Nivel alcanzado: validado en integración.** Lo fija este mismo brief en §Nivel de validación
-objetivo, sin interpretación: «**Validado en integración** con AC-14. **Validado en staging** solo
-después del despliegue y de tu recorrido (AC-16)». AC-14 está cumplido y AC-16 **no**, así que el
-nivel se queda en integración. **No certifica preparado para producción.**
+**Nivel alcanzado: validado en staging** *(desde el 2026-11-05)*. Lo fija este mismo brief en
+§Nivel de validación objetivo, sin interpretación: «**Validado en integración** con AC-14.
+**Validado en staging** solo después del despliegue y de tu recorrido (AC-16)». Al cerrar, el
+nivel se quedó en integración porque AC-16 no estaba declarado; **el usuario confirmó el recorrido
+el 2026-11-05**, mientras se cerraba la 24.7.2, y con eso el nivel subió **sin tocar código**.
+**No certifica preparado para producción.**
 
 - **AC-1 a AC-13**: en verde contra un build hecho en la misma corrida, con la guarda de frescura
   del build confirmándolo («Build de la corrida»).
@@ -360,11 +362,13 @@ nivel se queda en integración. **No certifica preparado para producción.**
   que en esta máquina falla por `core.autocrlf` y que acá es el único veredicto real.
 - **AC-15 cumplido**: la revisión independiente devolvió **R1**, sus hallazgos se verificaron uno
   por uno y los diez reales están corregidos (§Revisión independiente, más abajo).
-- **AC-16 NO cumplido, y este brief no lo da por hecho.** El criterio pide «tu confirmación», y el
-  usuario autorizó el cierre sin declarar el recorrido. Queda pendiente, no satisfecho por el
-  despliegue: desplegar y verificar no es recorrer, y un nivel superior no se infiere de uno
-  inferior. Si el recorrido se hace después, se anota acá con su fecha y el nivel pasa a
-  **validado en staging**.
+- **AC-16 cumplido el 2026-11-05**, y no antes. Al cerrar, el 2026-11-04, el criterio estaba
+  **pendiente**: pide «tu confirmación» y el usuario autorizó el cierre sin declarar el recorrido,
+  así que no se dio por satisfecho con el despliegue —desplegar y verificar no es recorrer, y un
+  nivel superior no se infiere de uno inferior—. El usuario lo declaró **el 2026-11-05**, sobre
+  las seis pantallas de caja en producción, y el nivel pasó a **validado en staging** tal como
+  este punto preveía. **El día de más que tardó es el precio de no haberlo inferido**, y es el
+  precio correcto.
 
 ### Despliegue y verificación en producción
 

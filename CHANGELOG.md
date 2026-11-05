@@ -54,7 +54,7 @@ Vigésima subfase de la Fase 24 ([brief-24.7.1](docs/decisions/brief-24.7.1-caja
 
 **No certifica:**
 
-- **El recorrido del usuario (AC-16).** **No está hecho.** El usuario autorizó el cierre sin declararlo, y acá no se da por hecho: desplegar y verificar **no es recorrer**. Por eso el nivel se queda en **validado en integración** y no llega a **validado en staging**, que es donde el propio brief pone la línea. Un nivel superior no se infiere de uno inferior.
+- ~~**El recorrido del usuario (AC-16).**~~ **Cumplido el 2026-11-05**, un día después de este cierre: el usuario recorrió las seis pantallas de caja en producción y lo declaró mientras se cerraba la 24.7.2. **Con eso el nivel de esta subfase pasó de validado en integración a validado en staging, sin tocar código.** Al cerrar no estaba hecho y acá no se dio por hecho —desplegar y verificar **no es recorrer**, y un nivel superior no se infiere de uno inferior—, que es exactamente por qué pudo subir después sin reescribir nada más que el nivel.
 - **M-2, el costo de la lista unificada, no se midió con el método que el brief fijó, y eso es un desvío declarado.** M-2 pedía un fixture de cuarenta movimientos **de los cinco tipos** y, a diferencia de M-1, no traía escapatoria. Lo que hay es un caso con **cuarenta y dos movimientos** —todos aportes y retiros— que demuestra lo observable: la tarjeta corta en diez y «Ver todos» los trae completos, sin que el corte dependa del volumen. Los otros cuatro tipos exigen cada uno una venta, un cliente, un proveedor o una recepción, y armarlos es una spec nueva, no un fixture. **La primera versión declaró M-2 con la escapatoria de M-1 sin decir que la estaba extendiendo; lo encontró la revisión independiente.**
 - **M-1 está verificado por camino de código y no medido**, con ese nombre y no con otro: Next corre en otro proceso y el contador de sentencias no lo alcanza, igual que en la 24.6.2-b y la 24.6.2-d.
 - **Que el `<select>` de moneda no desborde en «cobrar a cuenta» ni en «pagos a proveedores».** Esas dos pantallas están fuera del alcance y **no se barrieron**. Queda como candidata a subfase propia, junto con el objetivo táctil de 44 px, que sigue medido y sin corregir.
@@ -69,7 +69,7 @@ Vigésima subfase de la Fase 24 ([brief-24.7.1](docs/decisions/brief-24.7.1-caja
 | Verificación del runbook | **Los siete pasos**, pasados. 18 de 18 archivos de configuración iguales, con la cuenta comprobada; el salto de proxy con la ventana en cero antes del intento y el control negativo en dos claves distintas; HSTS, loopback, el rol que no es dueño, las tres rutas en 401 y «Vixora» en cero por organización |
 | Caída | unos **dos minutos**, la ventana esperada del procedimiento desde la 29.5 |
 
-**Nivel alcanzado: validado en integración.** No certifica validado en staging ni preparado para producción.
+**Nivel alcanzado: validado en staging** *(elevado el 2026-11-05, al declararse el recorrido; al cerrar era **validado en integración**)*. No certifica preparado para producción.
 
 **Dos cosas que este cierre deja anotadas:**
 
