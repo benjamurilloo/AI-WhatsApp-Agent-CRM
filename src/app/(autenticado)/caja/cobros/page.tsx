@@ -55,13 +55,14 @@ const NO_RECEIPTS_MESSAGE = "Todavía no se registró ningún cobro.";
 const NO_RECEIPT_RESULTS_MESSAGE = "Ningún cobro coincide con ese filtro.";
 const CONSUMER_TEXT = "Consumidor final";
 const UNKNOWN_CLIENT_TEXT = "Cliente no disponible";
-// «Registrar cobro» queda deshabilitado (brief-24.7.2-b, H-6; ya declarado por la 24.7.2): un cobro
-// necesita un destino, y hoy se elige desde la venta, el pedido o la cuenta. El botón se dibuja
-// como en la lámina, y **dice por qué**: un control apagado sin motivo es una trampa.
+// Esta pantalla **no tiene «Registrar cobro»**. *Corregido el 2026-11-05*, en el recorrido de la
+// 24.7.3: la lámina lo dibuja y la 24.7.2-b lo dibujó deshabilitado con el motivo al lado (su H-6),
+// razonando que un control apagado sin explicación es una trampa. En uso resultó peor que la
+// trampa: un botón que no se enciende nunca, más un párrafo que ocupa el encabezado para decir que
+// no sirve. Dónde se registra un cobro ya lo dice el estado vacío —que es donde alguien busca cómo
+// empezar— y el encabezado queda como el de «Devoluciones», su pantalla hermana.
 // ADR 0022, punto 11, como en el recibo entero.
 const NOT_AN_INVOICE_LEGEND = "Documento no válido como factura";
-const REGISTER_DISABLED_HINT =
-  "Un cobro se registra desde su venta, su pedido o la cuenta del cliente: acá no hay a qué aplicarlo.";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -203,32 +204,10 @@ export default async function ReceiptsPage({
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 lg:px-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <PageHeader
-            title={TITLE}
-            subtitle="Cada cobro de una venta, con su recibo."
-          />
-        </div>
-        {context.role === "admin" ? (
-          <div className="flex flex-col items-end gap-1">
-            <button
-              type="button"
-              disabled
-              aria-describedby="registrar-cobro-ayuda"
-              className={`${secondaryButtonClass} disabled:cursor-not-allowed disabled:opacity-60`}
-            >
-              Registrar cobro
-            </button>
-            <p
-              id="registrar-cobro-ayuda"
-              className="max-w-xs text-right text-xs text-muted"
-            >
-              {REGISTER_DISABLED_HINT}
-            </p>
-          </div>
-        ) : null}
-      </div>
+      <PageHeader
+        title={TITLE}
+        subtitle="Cada cobro de una venta, con su recibo."
+      />
       <CashSubNav current="cobros" />
 
       <form

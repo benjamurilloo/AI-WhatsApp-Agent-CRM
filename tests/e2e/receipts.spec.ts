@@ -441,9 +441,13 @@ test("un admin filtra los cobros por cliente y abre el recibo en el panel sin pe
   }
   await expect(list).toContainText("Consumidor final");
   await expect(list).toContainText("Vigente");
-  // H-6: «Registrar cobro» se dibuja deshabilitado, como la lámina, y dice por qué.
-  const registrar = page.getByRole("button", { name: "Registrar cobro" });
-  await expect(registrar).toBeDisabled();
+  // **No hay «Registrar cobro»** acá (corrección del recorrido de la 24.7.3). Hasta hoy este caso
+  // afirmaba lo contrario —el H-6 de la 24.7.2-b lo pedía deshabilitado, como la lámina—, y la
+  // aserción queda en negativo a propósito: si alguien lo vuelve a dibujar, apagado o encendido,
+  // este caso se pone rojo. Dónde se registra un cobro lo dice el estado vacío.
+  await expect(
+    page.getByRole("button", { name: "Registrar cobro" }),
+  ).toHaveCount(0);
 
   // AC-2: el filtro por cliente deja **solo** los cobros de ese cliente.
   const cliente = page.getByLabel("Cliente");

@@ -217,7 +217,11 @@ export function referenceTotal(
 
 // --- La pantalla de la cotización (brief-29.4, D-4) ---
 
-export const EXCHANGE_RATE_PAGE_SIZE = 20;
+// Cinco: ni las 25 del resto del CRM ni las 20 que tuvo hasta hoy. *Corregido el 2026-11-05*, en
+// el recorrido de la 24.7.3: con 20 filas el historial era la mitad de la pantalla, y una
+// cotización de hace tres semanas queda tan a la vista como la de ayer. Lo que se busca acá es la
+// vigente y las últimas. **La paginación no se saca**: el resto sigue estando, a un clic.
+export const EXCHANGE_RATE_PAGE_SIZE = 5;
 
 export type ExchangeRateHistoryRow = {
   id: string;

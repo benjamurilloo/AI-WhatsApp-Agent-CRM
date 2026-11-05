@@ -145,6 +145,16 @@ se activó**: no hay ninguna consulta nueva.
 
 ### H-6 · «Registrar cobro» sigue deshabilitado, y eso ya está decidido
 
+> **Superado el 2026-11-05**, en el recorrido de la 24.7.3: el botón **se sacó**. El razonamiento de
+> abajo cierra bien sobre la lámina y falla en uso. Que el control esté apagado *con* su motivo
+> escrito al lado es, en la pantalla real, un botón que no se enciende nunca más un párrafo que
+> ocupa el encabezado para decir que no sirve. La información que el párrafo daba —dónde se registra
+> un cobro— ya la daba el **estado vacío**, que es donde alguien la busca. Lo pidió el usuario
+> mirando la pantalla, que es la única instancia que ve esto; ninguna revisión lo había visto, ni la
+> autoevaluación ni la independiente, porque las dos comprobaron que el botón estuviera como la
+> lámina lo pedía. El detalle y la diferencia con la lámina quedan en la §30 de
+> [Screens.md](../product/Screens.md).
+
 La lámina 06 dibuja «Registrar cobro» **deshabilitado** en el encabezado. El brief de la 24.7.2 ya
 lo declaró como diferencia con la v2: un cobro necesita un destino, y hoy se registra desde su
 venta o desde la cuenta del cliente; agregarlo obligaría a una pantalla de elección de destino que

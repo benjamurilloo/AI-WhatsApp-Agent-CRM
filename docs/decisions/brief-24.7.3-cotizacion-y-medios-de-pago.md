@@ -267,6 +267,25 @@ No hay opción «no documentarla»: `Screens.md` es contrato de producto y hoy t
 Tocar algo fuera de esta lista es un hallazgo bloqueante, no una mejora. **Salirse se pregunta
 antes de implementar**, sin excepción por tamaño.
 
+> **Ampliada el 2026-11-05**, con las dos correcciones que pidió el usuario en el recorrido, que es
+> el paso donde esta subfase se eleva a *validado en staging*. Las dos caen fuera de la lista
+> original y **se preguntaron antes de implementar**; van acá, en la 24.7.3, y no en una subfase
+> nueva, porque son el resultado del recorrido de esta subfase —el mismo precedente que la 24.6.2-d,
+> que así corrigió el menú del encabezado de la venta—:
+>
+> 1. **Se saca «Registrar cobro»** del encabezado de `/caja/cobros`, con su párrafo de ayuda. Era
+>    el H-6 de la [24.7.2-b](brief-24.7.2-b-cobros-y-devoluciones-de-la-caja.md), que queda
+>    superado ahí mismo. Archivos: `src/app/(autenticado)/caja/cobros/page.tsx` y
+>    `tests/e2e/receipts.spec.ts`, cuyo caso afirmaba que el botón estaba deshabilitado y ahora
+>    afirma que **no existe**.
+> 2. **El historial de cotizaciones pasa de 20 filas por página a 5.** Archivos:
+>    `src/modules/fx/service.ts` (`EXCHANGE_RATE_PAGE_SIZE`) y `tests/integration/exchange.test.ts`,
+>    que gana el caso que **fija el valor**: hasta hoy ninguna prueba lo miraba, así que el 20 podía
+>    volver en silencio. El usuario pidió «las últimas 5 o 3»; se tomó 5, el más alto de los dos.
+>
+> Ninguna de las dos toca reglas de dinero, datos ni contratos: son una supresión de UI y una
+> constante de paginación.
+
 **Pantallas**
 
 - `src/app/(autenticado)/caja/cotizacion/page.tsx`
@@ -279,11 +298,20 @@ antes de implementar**, sin excepción por tamaño.
 - `src/app/(autenticado)/caja/medios-de-pago/payment-method-form.tsx`
 - `src/app/(autenticado)/caja/medios-de-pago/payment-method-actions.tsx`
 - `src/app/(autenticado)/caja/cash-sub-nav.tsx` *(sacar «Cotización» del «Más»)*
+- `src/app/(autenticado)/caja/cobros/page.tsx` *(agregado el 2026-11-05: sacar «Registrar cobro»)*
+
+**Módulos**
+
+- `src/modules/fx/service.ts` *(agregado el 2026-11-05: `EXCHANGE_RATE_PAGE_SIZE`, de 20 a 5; nada
+  más de este archivo)*
 
 **Pruebas**
 
 - `tests/e2e/exchange.spec.ts`
 - `tests/e2e/cash.spec.ts`
+- `tests/e2e/receipts.spec.ts` *(agregado el 2026-11-05: el caso del botón pasa a negativo)*
+- `tests/integration/exchange.test.ts` *(agregado el 2026-11-05: el caso que fija el tamaño de
+  página del historial)*
 
 **Documentación**
 

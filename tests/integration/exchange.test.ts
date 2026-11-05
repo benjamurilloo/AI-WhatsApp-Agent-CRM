@@ -471,6 +471,44 @@ describe("la cotización (D-4)", () => {
     });
     expect(await getExchangeSetup(s.orgB)).toBeNull();
   });
+
+  // **El tamaño de página del historial, fijado en un caso.** Hasta hoy `EXCHANGE_RATE_PAGE_SIZE`
+  // valía 20 y ninguna prueba lo miraba: el único caso del historial tenía dos filas, así que
+  // cambiarlo a 5 —o volverlo a 20— no ponía nada en rojo. La corrección del recorrido de la
+  // 24.7.3 lo bajó a 5 y este caso es su guarda.
+  //
+  // Se afirma el **conjunto** de cada página y no su orden: el historial ordena por
+  // `recordedAt desc, id desc`, y seis cargas seguidas pueden compartir el milisegundo, con lo
+  // que el desempate lo decide un uuid. Lo que importa acá es cuántas entran, no cuál primero.
+  it("el historial entra de a cinco y el resto llega paginando", async () => {
+    const s = await seed();
+    await fixCurrency(s.orgA, "admin-a@example.com");
+    const valores = ["1500", "1510", "1520", "1530", "1540", "1550"];
+    for (const valor of valores) await rate(s.adminA, valor);
+
+    const primera = await getExchangeRatePage(s.viewerA);
+    if (!primera.ok) throw new Error("página rechazada");
+    expect(primera.value.pageSize).toBe(5);
+    expect(primera.value.total).toBe(6);
+    expect(primera.value.page).toBe(1);
+    expect(primera.value.history).toHaveLength(5);
+
+    const segunda = await getExchangeRatePage(s.viewerA, 2);
+    if (!segunda.ok) throw new Error("página 2 rechazada");
+    expect(segunda.value.page).toBe(2);
+    expect(segunda.value.history).toHaveLength(1);
+
+    // Las dos páginas, juntas y sin repetir, son las seis cargas.
+    const todas = [...primera.value.history, ...segunda.value.history].map(
+      (row) => row.rate,
+    );
+    expect(new Set(todas).size).toBe(6);
+    // Comparador explícito: el `sort()` de serie ordena por texto, y acá los valores son bigint.
+    const asc = (x: bigint, y: bigint) => (x < y ? -1 : x > y ? 1 : 0);
+    expect([...todas].sort(asc)).toEqual(
+      valores.map((valor) => BigInt(valor) * 1_000_000n).sort(asc),
+    );
+  });
 });
 
 describe("el cobro en la otra moneda (D-6)", () => {
