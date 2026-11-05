@@ -2,6 +2,37 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-11-05 — 24.7.2-b: cobros y devoluciones de la caja
+
+Vigésimo segunda subfase de la Fase 24 ([brief-24.7.2-b](docs/decisions/brief-24.7.2-b-cobros-y-devoluciones-de-la-caja.md)) y tercera del bloque de Finanzas. Completa la mitad que la 24.7.2 dejó pendiente al partirse: el **documento de caja**, frente a la cuenta del cliente. **Sin migraciones, sin tablas y sin contratos nuevos**; siguen **67** migraciones. 23 archivos, +2.653/−533, y de `src/modules/cash/**` tres archivos con +287/−30 entre los dos módulos tocados.
+
+**Certifica:**
+
+- **El listado de Cobros tiene la forma de la lámina 06**, con sus seis columnas y el recibo en un **panel por URL** que abre y cierra con `?recibo=`, anda **sin JavaScript** y no se dibuja fuera de su listado aunque se escriba la dirección a mano.
+- **El filtro por cliente filtra en SQL, por id, y conserva el filtro por número y la página.** `countReceipts` y `findReceipts` comparten un único `receiptFilter`, y sus gemelos en devoluciones: el conteo y la página no pueden discrepar porque leen el mismo `where`. **Cuando la lista de ids resuelta queda vacía, la página se devuelve vacía**, que no es lo mismo que no filtrar.
+- **El control del filtro cambia de forma según los datos**: es un `<select>` mientras haya hasta **50** clientes con comprobantes y un cuadro de texto a partir de ahí, y solo en ese segundo caso se consulta `crm`.
+- **«Registrar devolución» tiene la forma de la lámina 07 desde sus dos entradas, y es el mismo formulario** —desde la venta anulada y desde la cuenta del cliente—, con la tarjeta de contexto reemplazada por la explicación de qué está a favor cuando no hay venta que nombrar.
+- **La anulación tiene la forma de la tarjeta de la lámina 09 en los dos lugares**, el recibo y la devolución, con el mismo componente.
+- **La vuelta atrás no la decide la URL.** `backFrom` acepta únicamente `/^\/caja\/cobros(\?|$)/`: lo que llega por parámetro no elige el destino.
+- **Ninguna regla de dinero cambió.** Lo que `cash` agrega son filtros de lectura y campos que ya estaban en memoria; la imputación, los topes y los rechazos siguen iguales.
+- **H-5 se verificó contra `HEAD` antes de escribir una sola pantalla**, que era la condición de detención 1, y la respuesta fue mejor que la que el brief suponía: el comprobante de anulación **ya se leía** y solo faltaba su motivo, **al costo de cero consultas** —una columna más en un `LEFT JOIN` existente—. Los dos archivos de `src/modules/sales` que eso exigió están **fuera de la lista cerrada** y se pidieron antes de tocarlos.
+- **Las lecturas nuevas son dos, no una, y las dos estaban aprobadas**, verificadas con `git show HEAD:<archivo>`: el filtro por cliente sobre tablas de `cash`, y `listClientOrderKeys` de `crm` **sin `JOIN`**, solo en el modo de texto. Quedó registrada en la fila de `cash` de `Overview.md`.
+- **M-1 · El filtro cuesta 157 ms** sobre un listado de 200 cobros y 20 clientes (675 ms sin filtro, 832 con filtro), y **la página 2 del listado filtrado cuesta lo mismo que la primera sin filtro**: la paginación sigue en SQL. **El recuento de consultas está verificado por camino de código y no medido**, con ese nombre; lo medido es el tiempo, y los dos no se heredan.
+- **M-2 · El `<select>` de clientes mide 403 px de `min-content` y se dibuja en 288 px** a 320 px de ventana, sin desbordar, por `w-full min-w-0`. **Es la medición que faltaba desde la 24.7.1.**
+- **Revisión independiente (AC-16): R1, cuatro hallazgos bloqueantes y nueve no bloqueantes, los cuatro bloqueantes reales** y verificados contra el código antes de aceptarse. **B-1**: la «Revisión de importes» afirmaba en rojo un rechazo inexistente y **restaba dos monedas distintas**; se corrigió **dejando de restar**, porque convertir en la página habría reimplementado una regla de dinero que el brief excluye. **B-2**: el barrido de anchos no cubría dos de las cinco pantallas de la subfase y sí una ajena. **B-3**: un `viewer` veía «Registrar cobro» y la instrucción de cómo registrarlo. **B-4**: la lectura nueva de `cash` sobre `crm` no estaba registrada y **dos documentos decían lo contrario del código**.
+- **N-7 encontró cinco diferencias con las láminas que no estaban declaradas**, y ese es el defecto, no que existan: están ahora en la tabla de diferencias del brief, que es donde el método las exige **antes** de implementar.
+- **AC-15 · La batería completa en una sola corrida de CI sobre el SHA exacto**: run **42055301946** en `success` sobre `3cfd7fc`, leída por `headSha`, 25 min 55 s, con los diecisiete pasos en verde **incluido el end-to-end en Chromium**, que el workflow saltea cuando el cambio es solo `.md`.
+- **Desplegada en `3cfd7fc`**, con las **siete** verificaciones del runbook pasadas y el **recorrido del usuario (AC-17) confirmado**. **Para volver atrás: `e7d4052`**; **entre los dos no hay migraciones**. El build usó **78 MB de swap**, terminó con `rc=0` y el servicio arrancó con **cero reinicios**: las tres correcciones que dejó el despliegue anterior —swap, build desacoplado del `ssh` y arranque decidido por el `BUILD_ID`— funcionaron en su primera prueba real.
+
+**No certifica:**
+
+- **No es «preparado para producción».** El nivel alcanzado es **validado en staging**, con el recorrido hecho.
+- **El objetivo táctil de 44 px sigue sin corregir**, pendiente como subfase propia.
+- **El desbordamiento del `<select>` en «cobrar a cuenta» y en «pagos a proveedores» sigue abierto**, declarado por la 24.7.1 — pero ya **no sin medir**: M-2 dejó hecha la medición del mecanismo.
+- **El menú «…» de la lámina 06 no se implementó**, por decisión registrada: necesita JavaScript, y el no-JavaScript es un invariante medido del proyecto.
+
+**Tres cosas que esta subfase aprendió a costa propia.** **(1) Correr Vitest de integración y Playwright al mismo tiempo contra la misma base inventa fallas**: las dos reponen la base antes de cada caso, y la corrida simultánea produjo nueve fallas de integración y varias e2e que no existían. Por separado: **156 de 156**. **(2) Un recuento hecho con el `grep` equivocado se informa como certeza y es falso**: al pedir autorización para cambiar una spec informé que `exchange.spec.ts` era la única afectada, y `accounts.spec.ts` también lo estaba, porque busqué **por la etiqueta del control** y esa spec localiza **por rol**. Se corrigió el recuento, se volvió a pedir y quedó escrito en el brief. **(3) Tres fallas locales reproducibles pueden no ser del código**: `receipts.spec.ts:148` tarda 46 s en esta máquina contra un límite de 30 y entra holgada en CI. **El límite global no se tocó**, porque taparlo habría escondido el mismo síntoma en toda la batería.
+
 ## 2026-11-05 — 24.7.2: cuentas de clientes
 
 Vigésimo primera subfase de la Fase 24 ([brief-24.7.2](docs/decisions/brief-24.7.2-cobros-devoluciones-y-cuentas.md)) y segunda del bloque de Finanzas, que la 24.7.1 abrió. Cierra el acceso a la cuenta corriente que el Roadmap dejó pendiente desde la 24.4.1. **Sin migraciones, sin tablas y sin contratos nuevos**; siguen **67** migraciones. 25 archivos, +1.584/−522, y de `src/modules/cash/**` **solo `service.ts`**, con +84/−7.

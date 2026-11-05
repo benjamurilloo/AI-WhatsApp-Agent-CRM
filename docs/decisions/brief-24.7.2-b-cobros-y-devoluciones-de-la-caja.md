@@ -7,7 +7,8 @@ generated_at: 2026-11-05
 
 # Brief 24.7.2-b — Cobros y devoluciones de la caja
 
-- **Estado**: **aprobado por el usuario el 2026-11-05 con las recomendaciones**, con D-1 a D-4
+- **Estado**: **cerrada el 2026-11-05**, **validada en staging** (ver §Cierre). Aprobada por el
+  usuario el 2026-11-05 con las recomendaciones, con D-1 a D-4
   cerradas en su opción (a) y el tope de D-1 en 50. **D-4 y D-7 de la 24.7.2
   no se reabren**: las decidió el usuario el 2026-11-04 y acá se conservan tal cual, como D-0a y
   D-0b.
@@ -360,3 +361,184 @@ la **24.7.3** (cotización y medios de pago) y con eso **cierra Finanzas**.
 - **Mejora posterior**: el objetivo táctil de 44 px, y el desbordamiento del `<select>` en «cobrar
   a cuenta» y «pagos a proveedores» — que M-2 vuelve más fácil de atacar, porque deja la medición
   hecha.
+
+## Cierre
+
+**Cerrada el 2026-11-05.** Nivel alcanzado: **validada en staging** — desplegada en producción en
+`3cfd7fc`, verificada con los siete pasos del runbook y recorrida por el usuario. No certifica
+preparado para producción.
+
+### Lo que cambió respecto de lo aprobado, y por qué
+
+| Qué | Por qué | Autorización |
+|---|---|---|
+| `src/modules/sales/{repository,service}.ts`, fuera de la lista cerrada | H-5: la tarjeta «Anulación» de la lámina 07 necesita el **motivo**, y el comprobante de anulación ya se leía. Costó **cero consultas**: una columna más en un `LEFT JOIN` que ya existía | Pedida y concedida antes de implementar (condición de detención 3) |
+| «Medio de pago» pasa a ser un `<select>` y el campo pasa a llamarse «Importe en {moneda}» | Copiar la lámina 07, que dibuja un desplegable | Pedida y concedida; obligó a actualizar `tests/e2e/exchange.spec.ts` |
+| `tests/e2e/accounts.spec.ts` | **El recuento anterior estuvo mal.** Informé que `exchange.spec.ts` era la única spec afectada; `accounts.spec.ts:300` también se rompía, porque mi `grep` buscó **por la etiqueta del control** y esa spec localiza **por rol** | Pedida y concedida después de corregir el recuento |
+| `docs/planning/Roadmap.md` | Hallazgo B-4: la fila de esta subfase afirmaba tres cosas falsas | Pedida y concedida |
+| La columna «Venta» de la lámina 06 se llama **«Destino»** | Un cobro puede aplicarse a una venta, a un pedido o a la cuenta, y la columna muestra los tres | Declarada **antes** de implementarla, en la tabla de diferencias |
+
+### AC-12 · Las lecturas nuevas, verificadas contra `HEAD`
+
+Son **dos, y las dos estaban aprobadas**, leídas de `git show HEAD:<archivo>` y no de memoria:
+
+1. El **filtro por cliente**, que resuelve **por id y en SQL** sobre `receipts` y `refunds`, tablas
+   propias de `cash`.
+2. **`listClientOrderKeys` de `crm`**, que solo se usa cuando los clientes con comprobantes pasan
+   el tope de 50 y el control deja de ser un `<select>`. Resuelve el nombre a ids **sin `JOIN`**,
+   que es lo que exige `Overview.md:49`, y quedó registrada en la fila de `cash`.
+
+La condición de detención 1 **no se activó**: H-5, que era el caso identificado de riesgo, resultó
+no costar ninguna consulta.
+
+### Mediciones
+
+**M-1 · El costo del filtro por cliente.** Fixture de 200 cobros repartidos entre 20 clientes.
+
+| | Tiempo |
+|---|---|
+| Sin filtro | 675 ms |
+| Con filtro | 832 ms |
+| Página 2 del listado filtrado | 676 ms |
+
+El filtro cuesta **157 ms** sobre el listado sin filtrar, y **la segunda página del listado
+filtrado cuesta lo mismo que la primera sin filtro**: la paginación sigue resolviéndose en SQL y no
+en memoria, que es lo que la condición de detención 4 protegía.
+
+**El recuento de consultas queda verificado por camino de código y no medido**, con ese nombre y no
+con otro: el contador de sentencias no alcanza porque Next corre en otro proceso, igual que en la
+24.6.2-b, la 24.6.2-d, la 24.7.1 y la 24.7.2. **Lo medido es el tiempo; el recuento, no.** El
+camino verificado es: `countReceipts` y `findReceipts` comparten un único `receiptFilter`, y el
+filtro por id no agrega ninguna consulta porque el `<select>` ya trae los ids. El hallazgo N-4
+encontró que esta enumeración estaba incompleta y se completó.
+
+**M-2 · El ancho del `<select>` de clientes poblado.** **403 px de `min-content` contra 288 px
+dibujados** a 320 px de ventana. Es la medición que faltaba desde la 24.7.1 y que ahora está hecha:
+el control se dibuja más angosto que su opción más larga, y no desborda porque lleva
+`w-full min-w-0`. El desbordamiento de «cobrar a cuenta» y «pagos a proveedores» sigue abierto,
+ahora con la medición hecha.
+
+### AC-14 · Comparación visual contra las láminas, entrada por entrada
+
+Cada pantalla se capturó del build y se miró **al lado** de su lámina, no de memoria. Las
+diferencias están todas acá.
+
+**Lámina 06 · Cobros, con el recibo en el panel**
+
+| Entrada de la lámina | Qué quedó |
+|---|---|
+| Título «Cobros», pestañas «Caja actual / Sesiones / Cobros / Devoluciones / Más» | ✔ |
+| Filtros «Número R» y «Cliente» en dos columnas | ✔ |
+| Tabla de seis columnas, con la fila abierta resaltada | ✔ (`bg-primary-soft/40` y `aria-current`) |
+| Columna **«Venta»** | ✘ se llama **«Destino»**: un cobro se aplica a una venta, a un pedido o a la cuenta, y la columna muestra los tres. Declarada antes de implementar |
+| «—» para el cobro sin cliente | ✘ dice **«Consumidor final»**, que es lo que AC-1 pide |
+| Estado «● Vigente» | ✔ con diferencia menor: es una píldora con ícono de tilde, no un punto |
+| «Registrar cobro» apagado | ✔ apagado (`disabled:opacity-60`), y **solo lo ve un `admin`** desde B-3. Debajo va un párrafo que dice **por qué** está apagado — declarada |
+| Filtro «Número R» con marcador «Todos» | ✘ el marcador es «R-000123» y lleva botón «Buscar»: es lo que hace que el filtro ande **sin JavaScript**, y es anterior a esta subfase |
+| Panel: título, estado, tarjeta del negocio, «Imprimir» | ✔ |
+| Fila «Sesión de caja» del panel | ✔, y **solo aparece cuando el cobro tiene sesión** |
+| «Recibido físicamente», «Cotización usada» y el aviso de conversión | ✔, y **solo aparecen cuando hubo cambio de moneda** |
+| Fila «Fecha» | ✘ agrega la zona horaria entre paréntesis, y con su nombre IANA completo. La lámina la pone en la barra superior, que acá no la tiene — declarada |
+| «Anular recibo» dentro de un menú «…» | ✘ es un botón visible al lado de «Imprimir»: el menú necesita JavaScript, que es un invariante medido (H-2) — declarada |
+| Encabezado «Buscar en Vixora…» y miga «Finanzas › Caja» | ✘ es el marco de la aplicación, fuera del alcance — declarada |
+| Subtítulo «Cada cobro de una venta, con su recibo.» y «Mostrando 1 a 2 de 2 cobros» | ✘ la lámina no los dibuja; **los dos son anteriores a esta subfase** |
+
+**Lámina 07 · Registrar devolución**
+
+| Entrada de la lámina | Qué quedó |
+|---|---|
+| Título, aviso «Previsión. La devolución aún no se registró.» | ✔ |
+| Tarjetas de contexto: Venta con «Anulada», fecha, importe cobrado, medio | ✔ |
+| Tarjeta «Anulación» con su número enlazado, fecha y motivo | ✔ — es lo que H-5 hizo posible |
+| Aviso «Sin cliente: la devolución se registra sobre la venta anulada.» | ✔ |
+| «Datos de la devolución» con medio, moneda y importe | ✔ |
+| «Revisión de importes»: a devolver actual, por devolver ahora, quedará por devolver | ✔ |
+| Aviso «Confirmá que el dinero fue entregado.» y los dos botones | ✔ |
+| Etiquetas **a la izquierda** del control | ✘ van **arriba** del control, como el resto de los formularios del proyecto |
+| «Medio de pago» con «Transferencia» ya elegido | ✘ arranca en «Elegí un medio de pago»: es un campo obligatorio y preseleccionar un medio de pago elige por quien devuelve |
+| «Importe» | ✘ se llama **«Importe en {moneda}»**, por decisión del usuario al copiar la lámina |
+| Importe escrito «80.000,00» | ✘ el campo trae el número crudo y debajo va «Se lee: $ 80.000,00», que es la lectura compartida de toda la caja, anterior a esta subfase |
+| «Esta venta está emitida en ARS.» | ✘ dice «Sale en ARS, la moneda de lo que hay que devolver», porque **el formulario es uno solo para sus dos entradas** y desde la cuenta no hay venta que nombrar — declarada |
+| Sin texto de ayuda bajo «Medio de pago» | ✘ lleva «Una devolución en efectivo sale de la sesión de caja abierta.», anterior a esta subfase |
+| Sin subtítulo bajo el título | ✘ lleva uno que dice de cuánto se está hablando — declarada |
+| Miga «Finanzas › Caja › Devoluciones › Registrar devolución» | ✘ la arma el marco desde la ruta; **las dos entradas se distinguen por el «Volver»**: «Volver a la venta» y «Volver al cliente» |
+| — | **Desde la cuenta** la tarjeta de contexto se reemplaza por la explicación de qué está a favor, con «Ver estado de cuenta». Es la misma pantalla: AC-6 verificado a la vista desde las dos entradas |
+
+**Lámina 09 · La tarjeta «¿Anular R-000183?»**
+
+| Entrada de la lámina | Qué quedó |
+|---|---|
+| Ícono redondo en rojo suave, pregunta corta con el número | ✔ |
+| Lista «Aplicado / Recibido / Efectivo» | ✔, y **solo se dibujan las filas que existen**: sin cambio de moneda no hay «Recibido», sin sesión no hay «Efectivo» |
+| «Motivo» como desplegable | ✔ |
+| Caja de información que explica qué deja de contar y que no devuelve dinero | ✔ |
+| «Conservar recibo» / «Anular recibo» en rojo | ✔ |
+| Motivo con «La plata no entró» ya elegido | ✘ arranca vacío: es obligatorio y preseleccionar un motivo lo elige por quien anula |
+| Ícono de documento **con cruz** | ✘ el repertorio del proyecto no tiene esa variante — declarada |
+| La tarjeta suelta en una galería de estados | ✘ vive en su propia pantalla, con título, subtítulo y «Volver»; y **la misma tarjeta sirve a la anulación de la devolución** (AC-4) |
+
+**Lo que esta comparación encontró y no se vio antes:** el título de la tarjeta de la lámina 09
+aparecía con un recuadro de foco en la primera captura. **No es un defecto**: se comprobó llegando
+con el mouse, como un usuario, y el recuadro no aparece. Lo pintaba la navegación sintética de
+Playwright, que cuenta como modalidad de teclado; el foco se mueve al título a propósito, para que
+un lector de pantalla anuncie la pregunta.
+
+### Revisión independiente (AC-16)
+
+Un agente que no participó, de solo lectura, con el diff escrito en archivos que pudiera leer.
+**Cuatro hallazgos bloqueantes y nueve no bloqueantes.** Los cuatro bloqueantes se verificaron
+contra el código antes de aceptarse, resultaron **los cuatro reales** y están corregidos:
+
+| | Hallazgo | Cómo quedó |
+|---|---|---|
+| **B-1** | La «Revisión de importes» afirmaba en rojo un rechazo que no existe, y **sumaba dos monedas distintas** | La tarjeta dejó de restar una moneda de la otra y dice que el cálculo con la cotización lo hace el registro. **Convertir en la página habría reimplementado una regla de dinero que el brief excluye** |
+| **B-2** | AC-10: el barrido de anchos no cubría dos de las cinco pantallas de la subfase, y sí cubría una que no es de la subfase | Segundo barrido para las pantallas de devolución |
+| **B-3** | AC-8: un `viewer` veía «Registrar cobro» y la instrucción de cómo registrar un cobro | El botón y su párrafo quedan tras `context.role === "admin"` |
+| **B-4** | La lectura nueva de `cash` sobre `crm` no estaba registrada, y **dos documentos decían lo contrario del código** | `Overview.md` registra `listClientOrderKeys`; la fila del Roadmap se corrigió con autorización |
+
+Los nueve no bloqueantes también están corregidos: el panel cerrado reservaba 22 rem vacíos (N-1),
+por debajo de 1024 px se dibujaba después de toda la tabla (N-2), la segunda forma del control de
+D-1 no tenía ni test ni medición (N-3), el camino de código de M-1 estaba incompleto (N-4), axe no
+corría sobre la anulación de la devolución (N-5), ningún test combinaba los dos filtros (N-6), cinco
+diferencias con las láminas no estaban declaradas (N-7, ahora en la tabla de diferencias), dos
+archivos quedaban fuera de la lista cerrada (N-8, los de `sales`, cuya autorización ya estaba y
+quedó escrita), y el `<select>` de clientes mentía cuando la dirección traía un cliente sin cobros
+(N-9).
+
+**El revisor no otorgó ninguna autorización**, y no la sustituye: cada desvío se pidió al usuario.
+
+### AC-15 · La batería completa en una sola corrida de CI
+
+Corrida **42055301946**, `conclusion: success`, leída por `headSha` sobre
+`3cfd7fcd668d1935c99e86440d531df95f7351f1`, 25 min 55 s. Los diecisiete pasos en verde, **incluido
+el end-to-end completo en Chromium**: el workflow lo saltea cuando el cambio es solo `.md`, y acá no
+se salteó.
+
+**Tres casos que fallaban en la máquina del operador pasaron en CI**, así que eran del entorno local
+y no del código: `sales.spec.ts:474`, `tests/guards/forbidden-references.test.ts` y
+`receipts.spec.ts:148`, que acá tarda 46 s contra un límite de 30 y allá entró holgado. **El límite
+global no se tocó**: taparlo habría escondido el mismo síntoma en toda la batería.
+
+**Lo que esta subfase aprendió de método, a costa propia:** correr Vitest de integración y Playwright
+**al mismo tiempo contra la misma base** produjo nueve fallas de integración y varias e2e que no
+existían. Las dos baterías reponen la base antes de cada caso. Corridas por separado: **156 de 156**
+en los siete archivos de integración de `cash` y `sales`.
+
+### AC-17 · Despliegue y recorrido
+
+Desplegada el 2026-11-05 en `3cfd7fc`, con `e7d4052` anotado como vuelta atrás. Sin migraciones.
+El build corrió **desprendido del `ssh`** y el arranque se decidió **por el `BUILD_ID`**, que son las
+dos correcciones que dejó el despliegue anterior: terminó con `rc=0`, **78 MB de swap** usados en el
+pico y **cero reinicios** del servicio, contra los 42 de aquella vez.
+
+Los siete pasos de verificación, en verde: los **18 de 18** archivos de configuración idénticos al
+repositorio; **un solo salto de proxy**, con dos filas y dos claves distintas en la ventana de quince
+minutos, la del operador coincidiendo con el hash de su IP y ninguna igual al `sha256` de
+`'sin-proxy'`; HSTS presente sobre HTTPS y ausente sobre HTTP; la aplicación solo en `127.0.0.1:3000`;
+`crm_app_login` distinto de `crm_owner`, con `INSERT=t`, `DELETE=f` y `UPDATE=f`; `401` en las tres
+rutas de ingestión y lectura; y la organización real en cero clientes, cero mensajes y cero productos.
+
+**Tercer despliegue consecutivo con la variante del control negativo** —el `curl` desde dentro del
+droplet— en lugar del túnel SOCKS. En la práctica la variante es el camino principal.
+
+El recorrido del usuario llegó el 2026-11-05 y fue conforme.
