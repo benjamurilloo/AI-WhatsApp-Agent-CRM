@@ -1,16 +1,29 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import {
+  type ReactNode,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { formatExchangeRate, parseExchangeRateInput } from "@/shared/money";
 import {
+  buttonClass,
   formMessageClass,
-  inlineButtonClass,
   inputClass,
   labelClass,
   radioClass,
+  secondaryButtonClass,
 } from "@/app/_components/form-styles";
 import { recordExchangeRateAction } from "./actions";
-import { largeChangeMessage, type RateFormState } from "./messages";
+import {
+  BACK_LINK,
+  largeChangeMessage,
+  SAVE_RATE_BUTTON,
+  type RateFormState,
+} from "./messages";
 
 // La carga manual de una cotización (ADR 0025, punto 4; brief-29.4, D-4): el valor, con su lectura
 // («Se lee: 1 USD = ARS 1.565,00»), y si se mueve más de un 10 % contra la vigente, una confirmación
@@ -21,9 +34,15 @@ const initialState: RateFormState = { status: "idle" };
 export function RateForm({
   mainCurrency,
   quoteCurrency,
+  notices,
+  cancelHref,
 }: {
   mainCurrency: string;
   quoteCurrency: string;
+  // Los avisos van **dentro del formulario y antes del botón** (lámina 01 del lote
+  // 23-tipo-cambio): se leen mientras se decide, no después de guardar.
+  notices?: ReactNode;
+  cancelHref?: string;
 }) {
   const [state, formAction, pending] = useActionState(
     recordExchangeRateAction,
@@ -122,10 +141,17 @@ export function RateForm({
         </label>
       ) : null}
 
-      <div className="flex justify-end">
-        <button type="submit" disabled={pending} className={inlineButtonClass}>
-          {pending ? "Cargando…" : "Cargar cotización"}
+      {notices}
+
+      <div className="flex flex-col gap-2">
+        <button type="submit" disabled={pending} className={buttonClass}>
+          {pending ? "Guardando…" : SAVE_RATE_BUTTON}
         </button>
+        {cancelHref ? (
+          <Link href={cancelHref} className={`${secondaryButtonClass} w-full`}>
+            {BACK_LINK}
+          </Link>
+        ) : null}
       </div>
     </form>
   );

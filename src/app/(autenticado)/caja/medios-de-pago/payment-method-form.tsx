@@ -22,6 +22,10 @@ import type {
 
 // Alta y renombre de un medio de pago (brief-21.2, D-6 y D-10). «Es efectivo» se elige solo al
 // crearlo, con dos opciones, y no se edita: un cobro viejo no cambia de caja (ADR 0022, punto 10).
+//
+// *Desde la 24.7.3* (D-3): el formulario vive en un panel, así que **las dos modalidades tienen
+// «Cancelar»**, que lo cierra. Y al renombrar, **el tipo se muestra en solo lectura** en lugar de
+// desaparecer: que no se pueda cambiar no es lo mismo que no estar (README del lote 24-medios-pago).
 
 const initialState: PaymentMethodFormState = { status: "idle" };
 
@@ -92,7 +96,19 @@ export function PaymentMethodForm({
         ) : null}
       </div>
 
-      {mode === "crear" ? (
+      {mode === "editar" ? (
+        <div className="flex flex-col gap-1">
+          <p className={labelClass}>Tipo</p>
+          <p className="rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm">
+            {values.isCash
+              ? "Efectivo: entra a la caja"
+              : "No: no pasa por la caja"}
+          </p>
+          <p className="text-sm text-muted">
+            No se puede cambiar: un cobro anterior no cambia de caja.
+          </p>
+        </div>
+      ) : (
         <fieldset className="flex flex-col gap-2">
           <legend className={`${labelClass} mb-1`}>¿Es efectivo?</legend>
           <label className="flex items-center gap-2 text-sm">
@@ -119,7 +135,7 @@ export function PaymentMethodForm({
             No se puede cambiar después de crearlo.
           </p>
         </fieldset>
-      ) : null}
+      )}
 
       <div aria-live="polite" aria-atomic="true">
         {failed && !state.field ? (
@@ -130,16 +146,14 @@ export function PaymentMethodForm({
       </div>
 
       <div className="flex flex-wrap justify-end gap-3">
-        {mode === "editar" ? (
-          <Link href="/caja/medios-de-pago" className={secondaryLinkClass}>
-            Cancelar
-          </Link>
-        ) : null}
+        <Link href="/caja/medios-de-pago" className={secondaryLinkClass}>
+          Cancelar
+        </Link>
         <button type="submit" disabled={pending} className={inlineButtonClass}>
           {pending
             ? "Guardando…"
             : mode === "crear"
-              ? "Crear medio de pago"
+              ? "Crear medio"
               : "Guardar nombre"}
         </button>
       </div>

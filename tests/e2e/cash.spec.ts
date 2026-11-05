@@ -16,6 +16,19 @@ const ADMIN = ADMIN_SEED.email;
 const VIEWER = VIEWER_SEED.email;
 const LEGEND = "Documento no válido como factura";
 
+// El barrido de anchos de M-1 (brief-24.7.3): **`scrollWidth` contra `clientWidth` del
+// documento**, que es como el brief lo fija. `window.innerWidth` incluye la barra de
+// desplazamiento, así que es más permisivo y puede tapar un desbordamiento de su ancho; lo señaló
+// la revisión independiente (N-5).
+async function expectNoOverflow(page: Page, label: string, width: number) {
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(overflow, `${label} a ${width} px`).toBeLessThanOrEqual(0);
+}
+
 let db: Db;
 
 test.beforeAll(() => {
@@ -91,10 +104,11 @@ test("un admin crea la lista inicial de medios de pago, abre la caja con el tecl
   ).toBeHidden();
   await abrirMas.click();
   await mas.getByRole("link", { name: "Medios de pago" }).click();
-  // **El menú no esconde la sección activa**: parado acá, «Medios de pago» subió a la barra, y como
-  // esta organización no tiene moneda principal —sin ella no hay sección de cotización— el menú se
-  // queda **sin nada que mostrar y no se dibuja**. Nunca hay que abrir un desplegable para saber
-  // dónde estás, y un desplegable vacío no existe.
+  // **El menú no esconde la sección activa**: parado acá, «Medios de pago» subió a la barra, y el
+  // menú se queda **sin nada que mostrar y no se dibuja**. Nunca hay que abrir un desplegable para
+  // saber dónde estás, y un desplegable vacío no existe. *Desde la 24.7.3* esto vale en cualquier
+  // organización: el tipo de cambio salió del menú (brief-24.7.3, D-1), así que «Medios de pago»
+  // es su único destino.
   await expect(
     barra.getByRole("link", { name: "Medios de pago" }),
   ).toHaveAttribute("aria-current", "page");
@@ -353,8 +367,12 @@ test("un viewer ve la caja, las sesiones y los medios sin ninguna acción", asyn
   await expect(
     page.getByRole("region", { name: "Medios de pago" }),
   ).toContainText("Efectivo");
+  // Desde la 24.7.3 el alta es un enlace que abre un panel por la URL: un viewer no tiene el
+  // enlace, y tampoco el panel poniendo el parámetro a mano.
+  await expect(page.getByRole("link", { name: "Nuevo medio" })).toHaveCount(0);
+  await page.goto("/caja/medios-de-pago?nuevo=1");
   await expect(
-    page.getByRole("button", { name: "Crear medio de pago" }),
+    page.getByRole("complementary", { name: "Nuevo medio de pago" }),
   ).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Desactivar/ })).toHaveCount(0);
 
@@ -478,6 +496,92 @@ test("brief-24.7.1: sin desbordamiento de 320 a 1440 px, y las dos vistas de la 
   await expect(movimientos).toBeVisible();
 });
 
+// La pantalla de los medios con la forma de su lámina (brief-24.7.3, AC-4, AC-5 y AC-11): el
+// encabezado propio con su botón primario, la columna «Tipo» de una palabra, el aviso al pie que
+// **nombra solo lo que existe**, y el alta y el renombre en un panel que abre por la URL.
+test("un admin crea y renombra un medio en el panel, y el aviso al pie nombra solo lo que existe", async ({
+  page,
+}) => {
+  await db.execute(
+    sql`insert into payment_methods (organization_id, name, is_cash)
+        values (${SEED_ORGANIZATION_ID}, 'Efectivo', true)`,
+  );
+  await login(page, ADMIN);
+  await page.goto("/caja/medios-de-pago");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Medios de pago" }),
+  ).toBeVisible();
+  const tabla = page.getByRole("region", { name: "Medios de pago" });
+  await expect(tabla.getByRole("columnheader", { name: "Tipo" })).toBeVisible();
+  await expect(tabla.getByRole("columnheader", { name: "Caja" })).toHaveCount(
+    0,
+  );
+  // La frase que estaba en cada fila se dice una sola vez, al pie (D-5).
+  await expect(
+    page.getByText(/Efectivo entra a la caja de la sesión/),
+  ).toBeVisible();
+  // **Sin la fila, sin la línea**: la de «Permuta» espera a que el medio exista, y la de «USDT»
+  // de la lámina no se dibuja nunca, porque USDT es un medio del ejemplo y no una regla.
+  await expect(page.getByText(/Permuta se usa solo en cobros/)).toHaveCount(0);
+  await expect(page.getByText(/USDT/)).toHaveCount(0);
+
+  // El alta, en el panel.
+  await page.getByRole("link", { name: "Nuevo medio" }).click();
+  await expect(page).toHaveURL(/\/caja\/medios-de-pago\?nuevo=1$/);
+  const alta = page.getByRole("complementary", {
+    name: "Nuevo medio de pago",
+  });
+  await alta.getByLabel("Nombre *").fill("Link de pago");
+  await alta.getByRole("radio", { name: "No: no pasa por la caja" }).check();
+  await alta.getByRole("button", { name: "Crear medio" }).click();
+  await expect(page.getByText("Medio de pago creado.")).toBeVisible();
+  // Guardar lo cierra: la acción redirige sin el parámetro.
+  await expect(page).toHaveURL(/\/caja\/medios-de-pago\?aviso=creado$/);
+  await expect(alta).toHaveCount(0);
+  await expect(tabla.getByRole("cell", { name: "No efectivo" })).toBeVisible();
+
+  // El renombre, en el mismo panel, **con el tipo en solo lectura**.
+  await tabla.getByRole("link", { name: "Renombrar Link de pago" }).click();
+  const renombre = page.getByRole("complementary", {
+    name: "Renombrar «Link de pago»",
+  });
+  await expect(renombre).toContainText("No: no pasa por la caja");
+  await expect(renombre.getByRole("radio")).toHaveCount(0);
+  await renombre.getByLabel("Nombre *").fill("Link de pago QR");
+  await renombre.getByRole("button", { name: "Guardar nombre" }).click();
+  await expect(page.getByText("Medio de pago renombrado.")).toBeVisible();
+  await expect(tabla).toContainText("Link de pago QR");
+  await expectAccessible(page, "medios de pago");
+
+  // Con «Permuta», la línea del pie aparece, y su bloqueo tiene nombre, no solo un candado.
+  await db.execute(
+    sql`insert into payment_methods (organization_id, name, is_cash, system_role)
+        values (${SEED_ORGANIZATION_ID}, 'Permuta', false, 'trade_in')`,
+  );
+  await page.reload();
+  await expect(tabla.getByRole("cell", { name: "Del sistema" })).toBeVisible();
+  await expect(
+    page.getByText(/Permuta se usa solo en cobros de ventas/),
+  ).toBeVisible();
+  await expect(tabla).toContainText("Sin edición");
+  await expect(
+    tabla.getByRole("link", { name: /Renombrar Permuta/ }),
+  ).toHaveCount(0);
+  await expectAccessible(page, "medios de pago con permuta");
+
+  // El barrido de anchos (M-1), con el panel abierto y cerrado.
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const path of [
+      "/caja/medios-de-pago",
+      "/caja/medios-de-pago?nuevo=1",
+    ]) {
+      await page.goto(path);
+      await expectNoOverflow(page, path, width);
+    }
+  }
+});
+
 // Sin JavaScript (brief-21.2, AC-7; revisión independiente, R-3): la apertura y el cierre en dos
 // pasos son formularios comunes, y el servidor devuelve cada paso.
 test.describe("sin JavaScript", () => {
@@ -512,6 +616,51 @@ test.describe("sin JavaScript", () => {
     await expect(page.locator("[data-comprobante]")).toContainText(
       "Arqueo de caja C-000001",
     );
+  });
+
+  // El panel de los medios de pago abre y cierra por la URL (brief-24.7.3, D-3), así que es un
+  // enlace y un parámetro: no hay nada que un navegador sin JavaScript no sepa hacer.
+  test("el alta de un medio de pago anda sin JavaScript", async ({ page }) => {
+    await login(page, ADMIN);
+    await page.goto("/caja/medios-de-pago");
+    await page.getByRole("link", { name: "Nuevo medio" }).click();
+    await expect(page).toHaveURL(/\/caja\/medios-de-pago\?nuevo=1$/);
+    const alta = page.getByRole("complementary", {
+      name: "Nuevo medio de pago",
+    });
+    await alta.getByLabel("Nombre *").fill("Cheque");
+    await alta.getByRole("button", { name: "Crear medio" }).click();
+    await expect(page.getByText("Medio de pago creado.")).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Medios de pago" }),
+    ).toContainText("Cheque");
+
+    // Y cerrarlo también: el aspa es un enlace a la pantalla sin el parámetro.
+    await page.getByRole("link", { name: "Nuevo medio" }).click();
+    await page
+      .getByRole("link", { name: "Cerrar el panel del medio de pago" })
+      .click();
+    await expect(page).toHaveURL(/\/caja\/medios-de-pago$/);
+    await expect(alta).toHaveCount(0);
+
+    // **El renombre también** (AC-5, que lo pide con el tipo en solo lectura): sin JavaScript no
+    // hay radios que ocultar, así que es el caso donde el panel podría mostrar de más. Lo pedía el
+    // criterio y no estaba probado (revisión independiente, N-2).
+    await page
+      .getByRole("region", { name: "Medios de pago" })
+      .getByRole("link", { name: "Renombrar Cheque" })
+      .click();
+    const renombre = page.getByRole("complementary", {
+      name: "Renombrar «Cheque»",
+    });
+    await expect(renombre).toContainText("No: no pasa por la caja");
+    await expect(renombre.getByRole("radio")).toHaveCount(0);
+    await renombre.getByLabel("Nombre *").fill("Cheque al día");
+    await renombre.getByRole("button", { name: "Guardar nombre" }).click();
+    await expect(page.getByText("Medio de pago renombrado.")).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Medios de pago" }),
+    ).toContainText("Cheque al día");
   });
 
   // **Las tres piezas que la 24.7.1 agregó** (AC-7). Ninguna es estado de cliente: el menú es un

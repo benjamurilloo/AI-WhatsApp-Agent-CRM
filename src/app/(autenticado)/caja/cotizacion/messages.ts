@@ -4,9 +4,32 @@ import type {
 } from "@/modules/fx";
 import { RATE_TEXT } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
 
-// Textos de la cotización (ADR 0025, punto 4; brief-29.4, D-4).
+// Textos de la cotización (ADR 0025, punto 4; brief-29.4, D-4). *Desde la 24.7.3* (D-1 y D-2), la
+// pantalla se llama «Tipo de cambio», que es como la nombran la navegación y las migas desde que
+// existe, y la carga manual vive en un panel que abre y cierra por la URL.
 
-export const RATE_TITLE = "Cotización";
+export const RATE_TITLE = "Tipo de cambio";
+export const CURRENT_RATE_TITLE = "Cotización actual";
+export const SETTINGS_TITLE = "Configuración de la cotización";
+export const HISTORY_TITLE = "Historial de cotizaciones";
+export const LOAD_RATE_LINK = "Cargar cotización";
+export const LOAD_RATE_PANEL_TITLE = "Cargar cotización manual";
+export const CLOSE_PANEL_LABEL = "Cerrar la carga de cotización";
+// El enlace del encabezado abre el panel y el botón del panel guarda: dos nombres distintos para
+// dos cosas distintas, como la lámina.
+// El nombre corto del estado viejo. La oración entera —`STALE_RATE_TEXT`, 78 caracteres— va
+// debajo, en un recuadro que **envuelve**: adentro de la insignia, que es `whitespace-nowrap`,
+// desbordaba la pantalla en 239 px a 320 (revisión independiente de la 24.7.3, B-1, medido).
+export const STALE_BADGE_TEXT = "Desactualizada";
+export const SAVE_RATE_BUTTON = "Guardar cotización";
+export const BACK_LINK = "Volver";
+// La lámina separa configurar **cómo se obtiene** la cotización de registrar **un valor**: el par
+// es del sistema y acá se lee, no se elige (README del lote 23-tipo-cambio).
+export const SYSTEM_CURRENCIES_TITLE = "Monedas del sistema";
+export const SYSTEM_CURRENCIES_HELP =
+  "No se puede modificar: define el par de cotización del sistema.";
+export const RATE_BECOMES_CURRENT_TEXT =
+  "Pasa a ser la vigente al guardar. Las operaciones anteriores conservan su cotización.";
 export const RATE_FORBIDDEN_MESSAGE =
   "Tenés que cambiar tu contraseña antes de seguir.";
 export const RATE_ADMIN_ONLY_MESSAGE =
@@ -30,6 +53,14 @@ export const RATE_NOTICE: Record<string, string> = {
 // de uso de DolarAPI.
 export const AUTOMATIC_SOURCE_TEXT =
   "DolarAPI, dólar blue, venta, más el ajuste";
+// *Desde la 24.7.3*, el radio de la fuente lleva el nombre corto arriba y la explicación debajo,
+// como la lámina. **Qué lee DolarAPI —dólar blue, venta— no se pierde**: sigue en la fuente de la
+// cotización vigente, que es donde se lee un dato, no donde se elige una opción.
+export const AUTOMATIC_SOURCE_LABEL = "DolarAPI (dolarapi.com)";
+export const AUTOMATIC_SOURCE_HELP =
+  "Lectura automática, más el ajuste de la organización. Toma el dólar blue, venta.";
+export const MANUAL_SOURCE_HELP = "Ingresás vos la cotización.";
+export const SAVE_SETTINGS_BUTTON = "Guardar configuración";
 export const ATTRIBUTION_TEXT =
   "Fuente: DolarApi (dolarapi.com) + ajuste de la organización.";
 export const READING_SCHEDULE_TEXT =

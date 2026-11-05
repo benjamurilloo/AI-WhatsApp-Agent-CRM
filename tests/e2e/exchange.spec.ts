@@ -122,6 +122,20 @@ async function expectAccessible(page: Page, state: string) {
   await page.emulateMedia({ colorScheme: null });
 }
 
+// El barrido de anchos de M-1 (brief-24.7.3): **`scrollWidth` contra `clientWidth` del
+// documento**, que es como el brief lo fija. `window.innerWidth` incluye la barra de
+// desplazamiento, así que es más permisivo y puede tapar un desbordamiento de su ancho; lo señaló
+// la revisión independiente (N-5) y acá se corrige, aunque el resto de la spec venga usando la
+// forma vieja desde antes de esta subfase.
+async function expectNoOverflow(page: Page, label: string, width: number) {
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(overflow, `${label} a ${width} px`).toBeLessThanOrEqual(0);
+}
+
 async function insertRate(value: string) {
   await db.execute(
     sql`insert into exchange_rates (organization_id, base_currency, quote_currency, rate, source,
@@ -197,37 +211,57 @@ test("un admin carga la cotización y un viewer la ve sin el formulario", async 
       .getByRole("navigation", { name: "Principal" })
       .getByRole("link", { name: "Tipo de cambio" }),
   ).toHaveAttribute("href", "/caja/cotizacion");
-  // Desde la 24.7.1 la cotización es un destino secundario y vive en el menú «Más» de la barra de
-  // secciones (brief-24.7.1, D-3): se consulta y se configura, no es el trabajo del día. El menú es
-  // un `<details>`, así que abre sin JavaScript.
+  // Hasta la 24.7.1 la cotización era un destino secundario de la caja y vivía en el menú «Más»
+  // de su barra de secciones (brief-24.7.1, D-3). **Desde la 24.7.3 ya no es una sección de la
+  // caja** (brief-24.7.3, D-1): la barra no la ofrece, y se llega por el menú principal, que la
+  // nombra «Tipo de cambio» desde la 24.1. El menú «Más» sigue siendo un `<details>`, así que
+  // abre sin JavaScript.
   const barraCaja = page.getByRole("navigation", {
     name: "Secciones de la caja",
   });
   await barraCaja.locator("summary").click();
-  await barraCaja.getByRole("link", { name: "Cotización" }).click();
-  await expect(page).toHaveURL(/\/caja\/cotizacion$/);
+  await expect(barraCaja.getByRole("link", { name: "Cotización" })).toHaveCount(
+    0,
+  );
+  await page.goto("/caja/cotizacion");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Tipo de cambio" }),
+  ).toBeVisible();
   await expect(
     page.getByText("Todavía no hay una cotización cargada."),
   ).toBeVisible();
   await expectAccessible(page, "cotización vacía");
 
-  await page.getByLabel("1 USD = ARS *").fill("1.565");
+  // La carga manual es un panel que abre y cierra por la URL (brief-24.7.3, D-2).
+  const panelCarga = page.getByRole("complementary", {
+    name: "Cargar cotización manual",
+  });
+  await page.getByRole("link", { name: "Cargar cotización" }).click();
+  await expect(page).toHaveURL(/\/caja\/cotizacion\?cargar=1$/);
+  await panelCarga.getByLabel("1 USD = ARS *").fill("1.565");
   await expect(page.getByText("Se lee: 1 USD = ARS 1.565,00")).toBeVisible();
-  await page.getByRole("button", { name: "Cargar cotización" }).click();
+  await panelCarga.getByRole("button", { name: "Guardar cotización" }).click();
   await expect(
     page.getByText("Cotización cargada: es la vigente."),
   ).toBeVisible();
+  // Guardar lo cierra: la acción redirige a la pantalla sin `?cargar=1`.
+  await expect(page).toHaveURL(/\/caja\/cotizacion\?aviso=cargada$/);
+  await expect(panelCarga).toHaveCount(0);
   await expect(
     page.getByText("1 USD = ARS 1.565,00", { exact: true }).first(),
   ).toBeVisible();
-  await expect(page.getByText(/Cargada por Admin de la tienda/)).toBeVisible();
+  const vigente = page.getByRole("region", { name: "Cotización actual" });
+  await expect(vigente).toContainText("Cargada por");
+  await expect(vigente).toContainText("Admin de la tienda");
 
-  // Más de un 10 %: pide confirmarla, sin bloquear.
-  await page.getByLabel("1 USD = ARS *").fill("1800");
-  await page.getByRole("button", { name: "Cargar cotización" }).click();
+  // Más de un 10 %: pide confirmarla, sin bloquear, y el panel sigue abierto con el mensaje.
+  await page.getByRole("link", { name: "Cargar cotización" }).click();
+  await panelCarga.getByLabel("1 USD = ARS *").fill("1800");
+  await panelCarga.getByRole("button", { name: "Guardar cotización" }).click();
   await expect(page.getByText(/se mueve más de un 10 %/)).toBeVisible();
+  await expect(page).toHaveURL(/\/caja\/cotizacion\?cargar=1$/);
   await page.getByLabel("Confirmo la cotización nueva").check();
-  await page.getByRole("button", { name: "Cargar cotización" }).click();
+  await panelCarga.getByRole("button", { name: "Guardar cotización" }).click();
   await expect(
     page.getByText("Cotización cargada: es la vigente."),
   ).toBeVisible();
@@ -240,9 +274,12 @@ test("un admin carga la cotización y un viewer la ve sin el formulario", async 
   await expect(
     page.getByText("1 USD = ARS 1.800,00", { exact: true }).first(),
   ).toBeVisible();
+  // Un viewer no tiene el enlace, y tampoco el panel poniendo el parámetro a mano.
   await expect(
-    page.getByRole("heading", { name: "Cargar una cotización" }),
+    page.getByRole("link", { name: "Cargar cotización" }),
   ).toHaveCount(0);
+  await page.goto("/caja/cotizacion?cargar=1");
+  await expect(panelCarga).toHaveCount(0);
 });
 
 // La fuente automática (brief-29.4.2, D-9 y D-13): el admin la elige con su ajuste, una lectura del
@@ -259,21 +296,19 @@ test("un admin elige la fuente automática con su ajuste y la lectura se ve con 
   ).toBeVisible();
 
   // Un ajuste con tres decimales se rechaza y conserva lo escrito.
-  await page
-    .getByRole("radio", { name: "DolarAPI, dólar blue, venta, más el ajuste" })
-    .check();
+  await page.getByRole("radio", { name: /DolarAPI \(dolarapi\.com\)/ }).check();
   await expect(
     page.getByText(/la próxima lectura reemplaza a la vigente/),
   ).toBeVisible();
   await page.getByLabel("Ajuste en ARS *").fill("10,555");
-  await page.getByRole("button", { name: "Guardar fuente y ajuste" }).click();
+  await page.getByRole("button", { name: "Guardar configuración" }).click();
   await expect(
     page.getByText("Ajuste: a lo sumo dos decimales."),
   ).toBeVisible();
   await expect(page.getByLabel("Ajuste en ARS *")).toHaveValue("10,555");
 
   await page.getByLabel("Ajuste en ARS *").fill("10");
-  await page.getByRole("button", { name: "Guardar fuente y ajuste" }).click();
+  await page.getByRole("button", { name: "Guardar configuración" }).click();
   await expect(
     page.getByText(/Fuente automática guardada: la próxima lectura reemplaza/),
   ).toBeVisible();
@@ -287,11 +322,18 @@ test("un admin elige la fuente automática con su ajuste y la lectura se ve con 
       "Fuente: DolarApi (dolarapi.com) + ajuste de la organización.",
     ),
   ).toBeVisible();
+  // El aviso de que una lectura automática reemplaza a una carga manual vive en el panel desde
+  // la 24.7.3, que es donde se carga a mano. Cerrarlo deja la pantalla sin el parámetro.
+  await page.getByRole("link", { name: "Cargar cotización" }).click();
   await expect(
     page.getByText(
       /la próxima lectura que cambie de valor reemplaza a esta carga/,
     ),
   ).toBeVisible();
+  await page
+    .getByRole("link", { name: "Cerrar la carga de cotización" })
+    .click();
+  await expect(page).toHaveURL(/\/caja\/cotizacion$/);
 
   // Una lectura, como la guardaría el lector.
   const reading = await db.execute<{ result: string }>(
@@ -302,22 +344,31 @@ test("un admin elige la fuente automática con su ajuste y la lectura se ve con 
   await expect(
     page.getByText("1 USD = ARS 1.565,00", { exact: true }).first(),
   ).toBeVisible();
-  await expect(
-    page.getByText(
-      /Fuente: DolarAPI 1\.555,00 \+ ajuste 10,00\. Dato de DolarAPI del/,
-    ),
-  ).toBeVisible();
+  // Lo que era una frase suelta ahora son filas de la lista de datos, sin perder ninguna.
+  const vigenteAutomatica = page.getByRole("region", {
+    name: "Cotización actual",
+  });
+  await expect(vigenteAutomatica).toContainText(
+    "DolarAPI, dólar blue, venta, más el ajuste",
+  );
+  await expect(vigenteAutomatica).toContainText(/ARS 1\.555,00, del /);
+  await expect(vigenteAutomatica).toContainText("Ajuste en ARS");
+  await expect(vigenteAutomatica).toContainText("Última confirmación");
   await expect(page.getByRole("cell", { name: "Automática" })).toBeVisible();
+  // El origen de la fila conserva la lectura con su ajuste, que antes estaba en «Fuente».
+  await expect(
+    page.getByRole("cell", { name: "DolarAPI 1.555,00 + ajuste 10,00" }),
+  ).toBeVisible();
   await expectAccessible(page, "cotización automática");
 
   await page.context().clearCookies();
   await login(page, VIEWER.email);
   await page.goto("/caja/cotizacion");
   await expect(
-    page.getByText(/Fuente de la organización: DolarAPI, dólar blue, venta/),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Cotización actual" }),
+  ).toContainText("DolarAPI, dólar blue, venta");
   await expect(
-    page.getByRole("heading", { name: "Fuente y ajuste" }),
+    page.getByRole("heading", { name: "Configuración de la cotización" }),
   ).toHaveCount(0);
 });
 
@@ -462,8 +513,9 @@ test("sin moneda principal no hay cotización: ni pestaña ni página", async ({
 }) => {
   await login(page, ADMIN_BASIC);
   await page.goto("/caja");
-  await expect(page.getByRole("link", { name: "Cotización" })).toHaveCount(0);
-  // Tampoco en el menú (brief-24.1, D-1).
+  // Desde la 24.7.3 la barra de la caja no ofrece la cotización en ninguna organización
+  // (brief-24.7.3, D-1); lo que distingue a esta es que tampoco la ofrece el menú principal
+  // (brief-24.1, D-1) y la ruta no existe.
   await expect(
     page
       .getByRole("navigation", { name: "Principal" })
@@ -475,25 +527,51 @@ test("sin moneda principal no hay cotización: ni pestaña ni página", async ({
   ).toBeVisible();
 });
 
-test("a 375 px la cotización y el cobro en pesos no desbordan", async ({
+// El barrido de anchos (brief-24.7.3, M-1). **A 320 px también**, que es el ancho donde la
+// medición de la 24.7.1 encontró un desbordamiento de 338 px: a 375 no se veía. Y **con el panel
+// abierto**, que es la columna nueva de esta subfase.
+test("a 320 y a 375 px el tipo de cambio y el cobro en pesos no desbordan", async ({
   page,
 }) => {
-  await insertRate("1565");
   await insertMethods();
   const clientId = await insertClient();
   const saleId = await insertSale(1, "100.00", "USD", clientId);
-  await page.setViewportSize({ width: 375, height: 800 });
   await login(page, ADMIN.email);
-  for (const path of [
-    "/caja/cotizacion",
-    `/ventas/${saleId}/cobrar?moneda=ARS`,
-  ]) {
-    await page.goto(path);
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
+
+  // **El aviso de antigüedad es el estado largo** (revisión independiente de la 24.7.3, B-1): son
+  // 78 caracteres en una sola oración, y el barrido no lo veía nunca, porque la cotización que
+  // inserta es de recién. Va primero porque `exchange_rates` es de solo inserción (ADR 0013): la
+  // vigente es la última registrada, así que la vieja solo puede serlo mientras es la única.
+  await db.execute(
+    sql`insert into exchange_rates (organization_id, base_currency, quote_currency, rate, source,
+                                    recorded_by, recorded_at)
+        values (${ORG}, 'USD', 'ARS', '1500', 'manual', ${ADMIN.id},
+                now() - interval '10 days')`,
+  );
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/caja/cotizacion");
+    await expect(page.getByText(/tiene más de 24 horas hábiles/)).toBeVisible();
+    await expectNoOverflow(
+      page,
+      "/caja/cotizacion con la cotización vieja",
+      width,
     );
-    expect(overflow, path).toBeLessThanOrEqual(0);
   }
+
+  await insertRate("1565");
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const path of [
+      "/caja/cotizacion",
+      "/caja/cotizacion?cargar=1",
+      `/ventas/${saleId}/cobrar?moneda=ARS`,
+    ]) {
+      await page.goto(path);
+      await expectNoOverflow(page, path, width);
+    }
+  }
+
   await expectAccessible(page, "cobro en pesos a 375 px");
 });
 
@@ -669,4 +747,42 @@ test("a 375 px la devolución y el pago en pesos no desbordan", async ({
     expect(overflow, path).toBeLessThanOrEqual(0);
   }
   await expectAccessible(page, "pago en pesos a 375 px");
+});
+
+// Sin JavaScript (brief-24.7.3, AC-3): el panel de la carga manual abre y cierra con enlaces y un
+// parámetro de URL, así que el invariante es comprobable. **Estaba afirmado en `Screens.md` y no
+// probado en ninguna dimensión** hasta que lo señaló la revisión independiente (N-1); la pantalla
+// hermana de los medios de pago sí lo tenía.
+test.describe("sin JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("la carga manual de una cotización anda sin JavaScript", async ({
+    page,
+  }) => {
+    await insertRate("1500");
+    await login(page, ADMIN.email);
+    await page.goto("/caja/cotizacion");
+    await page.getByRole("link", { name: "Cargar cotización" }).click();
+    await expect(page).toHaveURL(/\/caja\/cotizacion\?cargar=1$/);
+
+    const panel = page.getByRole("complementary", {
+      name: "Cargar cotización manual",
+    });
+    await panel.getByLabel("1 USD = ARS *").fill("1.520");
+    await panel.getByRole("button", { name: "Guardar cotización" }).click();
+    await expect(
+      page.getByText("Cotización cargada: es la vigente."),
+    ).toBeVisible();
+    // Guardar lo cierra solo: la acción redirige sin el parámetro.
+    await expect(page).toHaveURL(/\/caja\/cotizacion\?aviso=cargada$/);
+    await expect(
+      page.getByRole("region", { name: "Cotización actual" }),
+    ).toContainText("1 USD = ARS 1.520,00");
+
+    // Y el «Volver» del panel es un enlace a la pantalla sin el parámetro.
+    await page.getByRole("link", { name: "Cargar cotización" }).click();
+    await page.getByRole("link", { name: "Volver" }).click();
+    await expect(page).toHaveURL(/\/caja\/cotizacion$/);
+    await expect(panel).toHaveCount(0);
+  });
 });

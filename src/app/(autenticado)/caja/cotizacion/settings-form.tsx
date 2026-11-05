@@ -10,9 +10,12 @@ import {
 } from "@/app/_components/form-styles";
 import { updateExchangeSettingsAction } from "./actions";
 import {
-  AUTOMATIC_SOURCE_TEXT,
+  AUTOMATIC_SOURCE_HELP,
+  AUTOMATIC_SOURCE_LABEL,
   BACK_TO_AUTOMATIC_TEXT,
+  MANUAL_SOURCE_HELP,
   MANUAL_SOURCE_TEXT,
+  SAVE_SETTINGS_BUTTON,
   type SettingsFormState,
 } from "./messages";
 
@@ -67,25 +70,31 @@ export function SettingsForm({
 
       <fieldset className="flex flex-col gap-2">
         <legend className={labelClass}>Fuente</legend>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-start gap-2 text-sm">
           <input
             type="radio"
             name="source"
             value="dolarapi_blue"
             defaultChecked={shown.source === "dolarapi_blue"}
-            className={radioClass}
+            className={`${radioClass} mt-0.5`}
           />
-          {AUTOMATIC_SOURCE_TEXT}
+          <span className="min-w-0">
+            {AUTOMATIC_SOURCE_LABEL}
+            <span className="block text-muted">{AUTOMATIC_SOURCE_HELP}</span>
+          </span>
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-start gap-2 text-sm">
           <input
             type="radio"
             name="source"
             value="manual"
             defaultChecked={shown.source === "manual"}
-            className={radioClass}
+            className={`${radioClass} mt-0.5`}
           />
-          {MANUAL_SOURCE_TEXT}
+          <span className="min-w-0">
+            {MANUAL_SOURCE_TEXT}
+            <span className="block text-muted">{MANUAL_SOURCE_HELP}</span>
+          </span>
         </label>
         {source === "manual" ? (
           <p className="text-sm text-muted">{BACK_TO_AUTOMATIC_TEXT}</p>
@@ -119,7 +128,7 @@ export function SettingsForm({
 
       <div className="flex justify-end">
         <button type="submit" disabled={pending} className={inlineButtonClass}>
-          {pending ? "Guardando…" : "Guardar fuente y ajuste"}
+          {pending ? "Guardando…" : SAVE_SETTINGS_BUTTON}
         </button>
       </div>
     </form>

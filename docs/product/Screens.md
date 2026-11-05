@@ -570,7 +570,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
   - **Lo que un `viewer` no recibe, se dice.** Sus pagos a proveedores y de usados suman a los totales y **no están en la lista**, porque `cash` no le da el detalle (brief-22.6, D-9). La pantalla lo aclara en vez de dejar una lista que no cuadra con su propio total.
   - **Una operación convertida entra por lo físico, no por lo aplicado** (ADR 0025; brief-29.4, D-6): un cobro aplicado por USD 100 que recibió ARS 150.000 figura como ARS 150.000. La regla ya existía; ahora está escrita una sola vez.
   - **Las acciones viven en el encabezado**: «Registrar movimiento» —uno solo, con el tipo elegido en el formulario, donde antes había «Registrar aporte» y «Registrar retiro»— y **«Preparar cierre»**, que es como se llama ahora «Cerrar caja»: lleva al conteo y **no cierra nada al tocarlo**.
-  - **La barra agrupa**: «Caja actual», «Sesiones», «Cobros» y «Devoluciones» quedan a la vista, y «Cotización» y «Medios de pago» pasan a un **«Más»** (*corregido el 2026-11-04*: esta línea incluía «Deudores» a la vista, y la 24.7.2 lo sacó de la caja en su D-2, porque la cuenta de un cliente no es caja; ahora es la pantalla 39, un destino propio de Finanzas), que es un `<details>` y abre sin JavaScript. Si estás parado en una de las secundarias, **sube a la barra y sale del menú**: nunca hay que abrir un desplegable para saber dónde estás, y si el menú se queda sin nada que mostrar no se dibuja.
+  - **La barra agrupa**: «Caja actual», «Sesiones», «Cobros» y «Devoluciones» quedan a la vista, y «Medios de pago» pasa a un **«Más»** (*corregido el 2026-11-04*: esta línea incluía «Deudores» a la vista, y la 24.7.2 lo sacó de la caja en su D-2, porque la cuenta de un cliente no es caja; ahora es la pantalla 39, un destino propio de Finanzas. *Corregido el 2026-11-05*: también decía que «Cotización» pasaba al «Más», y la 24.7.3 la sacó de la barra en su D-1, por el mismo motivo que los deudores: el tipo de cambio es un ítem propio de Finanzas, hermano de Caja, y es la pantalla 26b. El menú queda con un solo destino. Lo encontró la revisión independiente de la 24.7.3, que vio esta línea contradiciendo al código, a la §26b y a las dos specs), que es un `<details>` y abre sin JavaScript. Si estás parado en una de las secundarias, **sube a la barra y sale del menú**: nunca hay que abrir un desplegable para saber dónde estás, y si el menú se queda sin nada que mostrar no se dibuja.
   - **En pantalla chica, dos vistas** (lámina 08): «Resumen» y «Movimientos», con `?vista=`. Son enlaces, así que andan sin JavaScript; en pantalla grande se ven las dos y la barra de vistas no se dibuja.
   - **El equivalente orientativo no es nuevo** (V-1): existe desde la 29.4 con su cotización, su fecha y su aviso de cotización vieja. La lámina lo dibuja como novedad y se conserva tal cual.
   - **Lo que de la v2 no entra, y por qué.** *(V-2)* Los importes de las láminas y su escenario —sesión C-000046, 1 USD = ARS 1.500— son un fixture de diseño y no se implementan. *(V-3)* La lámina 09 mezcla estados de caja con estados de cuentas de clientes: acá entra solo la mitad de caja, y la otra es de la 24.7.2. *(V-4)* La barra superior difiere entre piezas del lote; manda el marco de la 24.1. *(V-5)* La lámina 03 dibuja pestañas «Resumen · Movimientos · Registrar movimiento» y la 01 agrupa en un «Más»: manda la 01, porque registrar un movimiento es una página desde la 21.2 y convertirla en pestaña cambiaría sus pasos. *(V-6)* La lista de la lámina nombra al cliente de un cobro; `getCashState` no devuelve ese nombre y pedirlo sería una lectura nueva, así que la lista dice el **destino** —«Cobro · Venta V-000012», «Cobro · Pedido P-000001», «Cobro · A cuenta»— y el nombre queda en el recibo.
@@ -638,14 +638,112 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - *Desde la 24.7.1* ([brief-24.7.1](../decisions/brief-24.7.1-caja-y-cierre.md); lámina 05): el estado es una insignia con nombre e ícono, como en la lista; y una sesión cerrada dice **siempre** «Valores guardados al cierre. Una anulación posterior no reescribe este arqueo.» Hasta acá eso se decía solo cuando ya había alguna anulación posterior, que es tarde: sirve justamente antes de que aparezca la primera. La tabla por moneda es la transpuesta de la pantalla 21, y se imprime igual de bien.
   - **Lo que la lámina dibuja y acá no está, y por qué**: su arqueo vive en un **panel lateral con pestañas** —Resumen, Movimientos, Actividad— y una tabla compacta de cuatro columnas. Acá la pantalla 26 es una **página imprimible**, y lo impreso tiene que llevar el arqueo entero: partirlo en pestañas dejaría afuera lo que no esté en la pestaña abierta. Por eso también la tabla es la completa y no el resumen de cuatro columnas del panel.
 
+## 26b. Tipo de cambio
+
+*Agregada en la 29.4* ([ADR 0025](../decisions/0025-tipo-de-cambio.md), punto 4;
+[brief-29.4](../decisions/brief-29.4-el-tipo-de-cambio.md), D-4;
+[brief-29.4.2](../decisions/brief-29.4.2-la-lectura-de-la-cotizacion.md), D-9).
+**Esta sección se escribió en la 24.7.3**
+([brief-24.7.3](../decisions/brief-24.7.3-cotizacion-y-medios-de-pago.md), D-4 y H-1): la pantalla
+existía desde la 29.4 y el índice saltaba de la 26 a la 27. La numeración sigue a la 26, como la
+5b sigue a la 5, porque es donde la busca quien lee.
+
+Ruta `/caja/cotizacion` (`?cargar=1` abre la carga manual, `?pagina=` recorre el historial). **La
+ruta dice «caja» y la pantalla no**: la navegación y las migas la nombran «Tipo de cambio», ítem
+de Finanzas hermano de Caja y de Cuentas de clientes, desde la 24.1. Se queda ahí porque cuatro
+llamadas a `revalidatePath("/caja", "layout")` la cubren por ser hija de `/caja`, y mudarla es el
+defecto que la revisión independiente de la 24.7.2 encontró en `/cuentas` (brief-24.7.3, D-1 y
+H-3).
+
+- **Objetivo**: ver la cotización vigente entre la moneda principal y la otra, saber de dónde
+  salió y cuándo, configurar de dónde se obtiene, y cargar una a mano.
+- **Usuario autorizado**: ver, `admin` y `viewer`; configurar y cargar, solo `admin`. **Sin moneda
+  principal la pantalla no existe**: 404, y la navegación no la ofrece.
+- **Información mostrada**: «Cotización actual» con el par en grande («1 USD = ARS 1.500,00»), el
+  estado —«Vigente» o el aviso de antigüedad, con nombre e ícono— y cuándo se actualizó; debajo,
+  la fuente, y si es automática la lectura de referencia de DolarAPI con su fecha y el ajuste, o
+  si es manual quién la cargó; la fecha de registro y, en una automática, la última confirmación.
+  «Configuración de la cotización» (solo `admin`, y solo con la fuente automática disponible) con
+  la fuente, el ajuste y el recuadro **«Monedas del sistema»** en solo lectura, que dice el par y
+  que no se cambia desde acá. «Historial de cotizaciones» con **Fecha y hora, Tipo**
+  («Automática» o «Manual»), **Origen** (la lectura con su ajuste, o «Carga manual» con quién la
+  cargó) y **Cotización** en la otra moneda, de la más nueva a la más vieja. Al pie, la
+  atribución que piden las condiciones de uso de DolarAPI.
+- **Acciones** (`admin`): «Cargar cotización», que abre el panel `?cargar=1` con el valor, su
+  lectura («Se lee: 1 USD = ARS 1.565,00»), el aviso de que pasa a ser la vigente y, con la
+  fuente automática, el de que la próxima lectura puede reemplazarla; si se mueve más de un 10 %
+  contra la vigente, pide confirmarla sin bloquear. Y «Guardar configuración», que cambia la
+  fuente y el ajuste a partir de la próxima lectura.
+- **Paginación**: la del historial, **20 por página** (`EXCHANGE_RATE_PAGE_SIZE`, `fx/service.ts`; no son las 25 del resto de las pantallas). El panel conserva la página.
+- **Vacío**: «Todavía no hay una cotización cargada. Sin ella, no se cobra en la otra moneda.»
+- **Errores**: un valor inválido o con más de dos decimales se marca en su campo y conserva lo
+  escrito; el ajuste, igual. La fuente automática solo está disponible con USD como principal y
+  ARS como la otra.
+- **Responsive**: una columna en el teléfono; con el panel abierto, la pantalla se apila y el
+  panel va primero. Verificado sin desbordamiento a 320 y a 375 px, con el panel abierto, con el
+  panel cerrado **y con la cotización vieja**, que es el estado del texto largo: la oración del
+  aviso de antigüedad no entra en la insignia —es `whitespace-nowrap`— y desbordaba **239 px a
+  320**, medido, hasta que bajó a un recuadro que envuelve. La insignia dice «Desactualizada».
+- **Accesibilidad**: el panel es un `<aside>` con nombre, se abre y se cierra con enlaces y
+  **anda sin JavaScript**; el estado es una insignia con nombre e ícono, nunca solo color.
+- **No mostrar**: a un `viewer`, ni el enlace de carga, ni el panel forzando `?cargar=1`, ni la
+  configuración.
+- *Desde la 24.7.3* ([brief-24.7.3](../decisions/brief-24.7.3-cotizacion-y-medios-de-pago.md);
+  lámina 01 del lote [23-tipo-cambio](../ui-redesign/v2/23-tipo-cambio/README.md)): la forma de
+  arriba. **Ninguna regla de dinero cambió y no hay ninguna lectura nueva**; lo que cambió es
+  cómo se compone lo que ya se leía. Antes el encabezado decía «Caja» y debajo iba la barra de
+  secciones de la caja; la carga manual era una tarjeta siempre visible; y el historial tenía
+  Fecha, Cotización, Fuente y Cargó.
+  - **Diferencias con la lámina, a propósito**: el aviso «Datos de ejemplo · No es una cotización
+    de mercado» y el pie «Registros anteriores a modo ilustrativo» son del mockup, no del
+    producto. «Guardar configuración» **no se apaga** cuando no hay cambios: ese estado necesita
+    JavaScript y la pantalla anda sin él. El fondo **no queda inerte** al abrir el panel: eso es
+    un modal, y un modal sin JavaScript no existe; el panel va al costado y el resto sigue
+    usable. El título lleva una bajada que la lámina no tiene, porque el encabezado compartido la
+    pide. Y el origen de cada fila dice la lectura con su valor y su ajuste, no «DolarAPI +
+    ajuste»: la lámina abrevia un dato que la pantalla ya daba. Con el panel abierto **la
+    pantalla se apila**: la lámina deja las dos tarjetas lado a lado al costado del panel, que a
+    1440 px de ventana deja cada columna en 360 px y el historial desplazándose adentro de la
+    suya; con el panel abierto el trabajo es cargar un valor. Y las dos tarjetas llevan el
+    **cuadro de ícono** de `SectionCard`, que la lámina no dibuja: es el componente con el que se
+    dibujan las tarjetas con título en todo el CRM, y esta pantalla no lo cambia por su cuenta.
+
 ## 27. Medios de pago
 
-*Agregada en la 21.2* (D-6 y D-10; FR-CAJ-01). Ruta `/caja/medios-de-pago`, para los dos roles; las acciones, solo `admin`.
+*Agregada en la 21.2* (D-6 y D-10; FR-CAJ-01). Ruta `/caja/medios-de-pago` (`?nuevo=1` para el
+alta, `?editar=<id>` para el renombre, `?confirmar=<id>` para la desactivación), para los dos
+roles; las acciones, solo `admin`.
 
-- **Información mostrada**: cada medio con su nombre, si entra a la caja del efectivo y su estado.
-- **Acciones** (`admin`): «Nuevo medio de pago», con el nombre y «¿Es efectivo?»; «Renombrar» (`?editar=<id>`); «Desactivar», con confirmación (`?confirmar=<id>`); «Reactivar»; y, con la lista vacía, «Crear la lista inicial».
+- **Información mostrada**: cada medio con su nombre, su **tipo** —«Efectivo», «No efectivo» o
+  «Del sistema»— y su estado.
+- **Acciones** (`admin`): «Nuevo medio», que abre el panel `?nuevo=1` con el nombre y «¿Es
+  efectivo?»; «Renombrar» (`?editar=<id>`), en el mismo panel y con el tipo en solo lectura;
+  «Desactivar», con confirmación (`?confirmar=<id>`); «Reactivar»; y, con la lista vacía, «Crear
+  la lista inicial».
 - **Vacío**: «Todavía no hay medios de pago. Un administrador puede crear la lista inicial.»
 - **No mostrar**: la información del negocio que lee el agente: es otra cosa.
+- *Desde la 24.7.3* ([brief-24.7.3](../decisions/brief-24.7.3-cotizacion-y-medios-de-pago.md);
+  lámina 01 del lote [24-medios-pago](../ui-redesign/v2/24-medios-pago/README.md)): el encabezado
+  es de la pantalla y no de la caja, con su bajada y el botón primario «+ Nuevo medio»; la columna
+  «Caja», que tenía una frase por fila («Efectivo: entra a la caja»), es «Tipo» con una palabra, y
+  **las frases bajan a un aviso al pie que se dice una sola vez**; el alta y el renombre viven en
+  un panel que abre y cierra por la URL, como el recibo de la 24.7.2-b, y andan sin JavaScript.
+  El bloqueo de «Permuta» pasa a ser «Sin edición» con candado y nombre accesible.
+  - **El aviso al pie nombra solo lo que existe** (D-5): la línea de «Permuta» se dibuja **solo si
+    la fila de Permuta existe**, y la de «USDT» de la lámina **no se dibuja nunca**, porque USDT
+    es un medio ordinario del ejemplo —una organización puede no haberlo creado— y no una regla
+    del producto.
+  - **Diferencias con la lámina, a propósito**: el menú «⋮» de la columna «Acciones» no se
+    implementa —un menú emergente necesita JavaScript, y las acciones van como enlaces visibles,
+    como decidió la 24.7.2-b—; el estado sigue siendo una insignia con ícono y no un punto de
+    color; y la barra de secciones de la caja **se queda**, porque es desde donde se llega a esta
+    pantalla. El botón «Nuevo medio» **se esconde mientras el panel está abierto**: la lámina lo
+    deja visible, la del tipo de cambio lo esconde, y un botón que lleva a donde ya se está no es
+    un control. El **orden de las filas** es el que el servicio ya devolvía —alfabético, con los
+    inactivos entre medio— y no el de la lámina, que pone los activos primero: cambiarlo es
+    cambiar la consulta del módulo, y eso está fuera del alcance de esta subfase. La **bajada**
+    dice otra cosa que la lámina —que nombra el límite con lo que lee el agente, en vez de repetir
+    el título— y se conserva la del producto.
 
 ## 28. Registrar cobro
 
