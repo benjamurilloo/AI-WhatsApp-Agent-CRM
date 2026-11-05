@@ -408,3 +408,191 @@ para el recorrido. **Un nivel superior nunca se infiere de uno inferior.**
 Después de esta fila quedan seis en la Fase 24, ninguna con brief: 24.8.1, 24.8.2, 24.9.1,
 24.9.2, 24.9.3 y 24.10. La **13.5.2-b conserva su prioridad**, para cuando haya un negocio real
 confirmado.
+
+## Cierre
+
+**CERRADA el 2026-11-05.** Nivel alcanzado: **validado en staging**, con AC-17 cumplido.
+Desplegada en **`fd43a2a`**, con la CI en `success` sobre ese SHA exacto (run 42120553449, leída
+por `headSha` y no por «la última»), las siete verificaciones del runbook pasadas y el recorrido
+del usuario confirmado. **Para volver atrás: `d008e2a`**, anotado en
+`/var/lib/crm-production/despliegues` antes de desplegar; **entre los dos no hay migraciones**.
+
+### Los criterios, uno por uno
+
+| id | Estado | Dónde está la evidencia |
+|---|---|---|
+| AC-1 | Cumplido | `caja/cotizacion/page.tsx`; §26b de `Screens.md`; `exchange.spec.ts` |
+| AC-2 | Cumplido | Las cuatro columnas en `page.tsx`; `exchange.spec.ts` |
+| AC-3 | Cumplido | D-2 cerró en (a): panel `?cargar=1`. El caso sin JavaScript **no existía** y lo pidió la revisión (N-1); hoy es `test.describe("sin JavaScript")` de `exchange.spec.ts` |
+| AC-4 | Cumplido | `caja/medios-de-pago/page.tsx`; §27 |
+| AC-5 | Cumplido | D-3 cerró en (a). El renombre sin JavaScript **tampoco estaba probado** y lo pidió la revisión (N-2); hoy está en `cash.spec.ts` |
+| AC-6 | Cumplido | Casos de `viewer` en las dos specs |
+| AC-7 | Cumplido | `exchange.spec.ts`, «sin moneda principal no hay cotización: ni pestaña ni página» |
+| AC-8 | Cumplido | «Permuta» con nombre accesible, no solo icono |
+| AC-9 | **NO cumplido como está escrito** | Ver abajo: es el hallazgo del cierre |
+| AC-10 | Cumplido | **67** migraciones, sin tablas ni contratos nuevos |
+| AC-11 | Cumplido | M-1 en las dos specs. Encontró **239 px** de desbordamiento a 320 con la cotización vieja |
+| AC-12 | Cumplido | La tabla de más abajo, archivo por archivo contra `HEAD` |
+| AC-13 | Cumplido | §26b nueva y §27 al día |
+| AC-14 | Cumplido | La comparación de más abajo |
+| AC-15 | Cumplido | Run 42120553449, con «Alcance del cambio» en **`Corre todo: true`** |
+| AC-16 | Cumplido | **R1** sobre la entrega y **R2** sobre las dos correcciones del recorrido, que R1 no había visto; los hallazgos de las dos verificados contra el código antes de aceptarse. R2 dejó **un desvío de alcance abierto** (B-2) |
+| AC-17 | Cumplido | Siete verificaciones en verde; recorrido del usuario, que produjo **dos correcciones** |
+
+### AC-9 · El criterio no se cumple como está escrito, y no se reescribe
+
+AC-9 pide que `src/modules/fx/**` y `src/modules/cash/**` queden **sin modificar**, «y el
+`git diff` lo muestra». El `git diff` muestra lo contrario: **`src/modules/fx/service.ts`, +5/−1**.
+Lo cambió la segunda corrección del recorrido, que bajó `EXCHANGE_RATE_PAGE_SIZE` de 20 a 5.
+
+Lo que el criterio **protegía sí se sostiene**, y conviene separarlo del criterio:
+`src/modules/cash/**` quedó intacto; ninguna regla de dinero cambió; lo único que se tocó de `fx`
+es una constante de **presentación** —cuántas filas trae una página del historial—, en la sección
+que el propio archivo rotula «La pantalla de la cotización». No se movió el umbral del 10 %, ni el
+aviso de antigüedad, ni una conversión, ni una regla de un medio de pago.
+
+**Queda escrito como no cumplido en lugar de redefinir el criterio.** Un criterio reescrito para
+que cierre deja de ser un criterio, y esta fase ya tuvo dos casos de afirmaciones en verde que la
+revisión independiente destapó. La lección es del brief, no del código: **un criterio que prohíbe
+tocar un directorio entero es más estrecho que la regla que quiere proteger**, y una corrección de
+UI legítima lo rompe sin tocar nada de lo que importaba. Si una fila próxima quiere un criterio
+así, conviene que diga «ninguna regla de dinero cambia, y los cambios en `fx/**` y `cash/**` se
+enumeran» en vez de «sin modificar».
+
+### AC-12 · Ninguna lectura nueva, servicio por servicio contra `HEAD`
+
+Comparado entre **`86c3b5f`** (el `HEAD` anterior a la subfase) y **`fd43a2a`**, archivo por
+archivo:
+
+| Pantalla | Antes | Después |
+|---|---|---|
+| `/caja/cotizacion` | `requireSession`, `getExchangeRatePage`, `getOrganizationTimezone` | **las mismas tres** |
+| `/caja/medios-de-pago` | `requireSession`, `listPaymentMethods` | **las mismas dos** |
+| `cash-sub-nav.tsx` | `requireSession`, `getMainCurrency` | **ninguna** |
+
+Ninguna lectura nueva en ninguna de las dos pantallas, y la barra de la caja hace **una lectura de
+base menos**: `getMainCurrency` era una consulta real, y se fue con el tipo de cambio, que era lo
+único que la usaba. El `requireSession()` que quedó colgado detrás —sin usar su resultado— lo
+sacó la revisión independiente (N-6); la sesión la exige cada página antes de dibujar la barra, y
+el layout de `(autenticado)` antes que ellas.
+
+**Esto está verificado por camino de código, no medido** (M-2), y se escribe con esas palabras
+porque el brief las fijó antes de mirar: no hay instrumentación que cuente consultas, hay una
+comparación de los `await` de cada archivo contra los del `HEAD` anterior. La 24.7.2-b llamó
+«medido» a un recuento que no lo era y lo encontró su revisión.
+
+### AC-14 · La comparación visual, entrada por entrada
+
+Hecha con **las dos láminas abiertas**, no de memoria. El resultado se parte en tres, y la
+partición es el resultado:
+
+- **Corregidas**: el orden de los avisos dentro del panel de carga (van dentro del formulario,
+  antes del botón, como ordena la lámina); el «Volver» del panel; el «+» del nombre del enlace de
+  alta, que es convención del proyecto desde la Fase 4 **y** lo que la lámina dibuja; la insignia
+  de la cotización vigente.
+- **Declaradas como diferencia a propósito**, las seis de antes de implementar —el menú «⋮»
+  (H-4), «Guardar configuración» sin apagado por «sin cambios» (H-5), el fondo que no queda
+  inerte, el aviso «Datos de ejemplo», el pie «Registros anteriores a modo ilustrativo» y
+  «Orientativo» (H-6)— más cinco que aparecieron **al comparar** y quedaron escritas en
+  `Screens.md`: el apilado con el panel abierto, los cuadros de ícono de `SectionCard`, el
+  ocultamiento del botón de alta mientras el panel está abierto, el orden de las filas y la
+  redacción de la bajada.
+- **Fuera de alcance**, sin tocar: el objetivo táctil de 44 px y el desbordamiento del `<select>`
+  en «cobrar a cuenta» y «pagos a proveedores».
+
+**Una diferencia se verificó contra el instrumento antes de atribuirla al producto**, como pide el
+criterio, y conviene el ejemplo concreto: la barra de secciones de la caja quedó en «Medios de
+pago» aunque la lámina no la dibuja. No se sacó: la decisión fue del usuario, y la diferencia
+está declarada en la §27 y en el comentario del código.
+
+### Las dos correcciones del recorrido
+
+El recorrido del usuario, que es el paso que eleva esta subfase a *validado en staging*, produjo
+dos correcciones, **las dos fuera de la lista cerrada de archivos** y **preguntadas antes de
+implementar** (ver la nota del 2026-11-05 en esa sección):
+
+1. **Se sacó «Registrar cobro»** del encabezado de `/caja/cobros`, con su párrafo de ayuda. Era el
+   H-6 de la [24.7.2-b](brief-24.7.2-b-cobros-y-devoluciones-de-la-caja.md), que queda
+   **superado** ahí mismo. El caso de `receipts.spec.ts` afirmaba que el botón estaba
+   deshabilitado y pasó a afirmar que **no existe**.
+2. **El historial de cotizaciones pasó de 20 filas por página a 5**, conservando la paginación.
+
+**Lo que esto enseña sobre las revisiones, y es el hallazgo más útil de la subfase:** ninguna de
+las dos cosas las vio una revisión. Ni la autoevaluación ni la independiente. Las dos comprobaron
+que la pantalla **fuera como la lámina la pedía**, y lo era: el botón deshabilitado estaba en la
+lámina y el brief de la 24.7.2-b lo había razonado explícitamente, concluyendo que un control
+apagado sin explicación es una trampa. Una revisión contra el diseño no puede encontrar un defecto
+**del diseño**; hace falta usar la pantalla.
+
+Y el 20 del historial **no lo miraba ninguna prueba**: el único caso del historial tenía dos
+filas, así que el valor podía cambiar —o volver— sin que nada se pusiera rojo. La corrección trajo
+el caso que lo fija en `tests/integration/exchange.test.ts`, y **se comprobó que falla** al volver
+el valor a 20, que es lo único que prueba que la guarda guarda algo.
+
+### La revisión de las dos correcciones (R2)
+
+Las dos correcciones del recorrido llegaron **después** de R1, así que R1 no las vio. Se pidió una
+segunda revisión independiente, solo sobre ellas, a un agente que no participó del trabajo y con
+acceso de solo lectura. **Veredicto: R1 hallazgos, dos bloqueantes y cuatro no bloqueantes**, los
+seis verificados contra el código antes de aceptar ninguno. Su veredicto **no autorizó nada**.
+
+**Lo primero que informó es una limitación propia, y queda escrita porque acota qué cubre su
+veredicto:** no tuvo Bash, así que **no leyó el `git diff`** y no pudo confirmar ni negar la lista
+de archivos del commit. Lo que verificó es contenido contra contenido, releyendo archivos y citando
+líneas. Tres criterios quedaron fuera de su alcance por la misma razón —AC-10, AC-15 y AC-17 se
+leen contando migraciones, en Actions y en producción—, y lo declaró en vez de inferirlos.
+
+| id | Hallazgo | Verificado | Qué se hizo |
+|---|---|---|---|
+| **B-1** | `docs/decisions/README.md` afirmaba que `src/modules/fx/**` y `src/modules/cash/**` quedaban «sin modificar», y el código dice lo contrario | Sí: la fila del índice contra `fx/service.ts:224` | **Corregido**, con nota fechada. El archivo está en la lista cerrada, así que corregirlo estaba autorizado. La fila además **no registraba el cierre** y la 173 sí: ahora lo registra |
+| **B-2** | Se editó `brief-24.7.2-b-cobros-y-devoluciones-de-la-caja.md`, que **no está en la lista cerrada** ni antes ni después de la ampliación | Sí: la cita «Superado el 2026-11-05» existe, y la lista no incluye ese archivo | **Aceptado como desvío real y no resuelto.** Ver abajo: es el hallazgo que esta subfase no puede cerrar sola |
+| **N-1** | La prosa promete que el caso se pone rojo «apagado o encendido», y la aserción solo cubre el rol `button`; un «Registrar cobro» encendido en este repo es un `<Link>`, rol `link` | Sí: `clientes/[clientId]/account-tab.tsx:137` y `ventas/[saleId]/page.tsx:403` lo dibujan como `<Link>` | **Aceptado, no aplicado todavía.** Ver abajo |
+| **N-2** | La línea «ADR 0022, punto 11» quedó absorbida en el párrafo nuevo y parece justificar la ausencia del botón en vez de la leyenda | Sí: `cobros/page.tsx:58-65` | **Aceptado, no aplicado todavía.** Ver abajo |
+| **N-3** | En el brief de la 24.7.2-b, cuatro afirmaciones sobre el botón apagado siguen en presente, fuera del H-6 marcado | Sí: líneas 167, 177, 270 y 446 de ese brief | **Aceptado y no tocado**, porque ese archivo es exactamente el del desvío B-2: ampliar la edición profundizaría el desvío en vez de corregirlo |
+| **N-4** | Barrido negativo: ningún otro resto del botón —ni constante, ni mensaje, ni estilo, ni atributo ARIA, ni import huérfano— | Sí, por `grep` sobre las 40 ocurrencias restantes y la lectura entera de `caja/messages.ts` | **Sin acción**, y es un resultado útil: el hallazgo que no está también se informa |
+
+Su **§Estado documental** marcó `CHANGELOG.md`, `HANDOFF.md` y la fila del Roadmap como atrasados.
+Los tres estaban **en curso en este mismo cierre** cuando el revisor leyó el árbol, y los tres
+quedaron al día. Lo informó bien: leyó un árbol a medio cerrar y lo dijo en vez de suponer.
+
+#### B-2 · El desvío de alcance que este cierre no puede resolver solo
+
+La nota «**Superado el 2026-11-05**» sobre el H-6 del brief de la
+[24.7.2-b](brief-24.7.2-b-cobros-y-devoluciones-de-la-caja.md) **la escribió esta subfase**, y ese
+archivo **no está en la lista cerrada**: ni en la original ni en la ampliación del 2026-11-05, que
+enumera archivo por archivo las dos correcciones y de la 24.7.2-b solo dice que «queda superado ahí
+mismo» —el efecto, no el archivo tocado—.
+
+La regla es de este mismo brief, cuatro líneas arriba de la lista: «Tocar algo fuera de esta lista
+es un hallazgo bloqueante, no una mejora. **Salirse se pregunta antes de implementar**, sin
+excepción por tamaño.» **No se preguntó.** Las dos correcciones sí se preguntaron; esta tercera
+edición se hizo sin preguntar, dentro del mismo turno, probablemente porque se leyó como parte de
+la primera. No lo es: es otro archivo y otro brief.
+
+**Queda registrado como desvío, no revertido ni legalizado.** Agregar el archivo a la lista ahora
+sería reescribir el alcance para que cierre, el mismo error que AC-9 evitó a propósito dos
+secciones más arriba. Revertirlo también es una decisión: el texto es verdadero y útil —sin él, el
+brief de la 24.7.2-b sigue afirmando que el botón va deshabilitado, contra la §30 vigente de
+`Screens.md`—, y N-3 muestra que **la contradicción no se agota en H-6**: son cinco lugares, no
+uno. **La decisión es del usuario**, y es la única del cierre que queda abierta.
+
+**La lección es del turno, no del código**: una corrección autorizada arrastra ediciones
+«obviamente necesarias» a archivos vecinos, y la autorización no viaja con ellas. El límite de un
+desvío aprobado es la lista de archivos que se nombró al aprobarlo.
+
+#### N-1 y N-2 · Aceptados, con el costo de aplicarlos declarado
+
+Los dos son reales y los dos están **dentro** de la lista cerrada, así que aplicarlos no sería un
+desvío. **No se aplicaron en este cierre, y el motivo no es el tamaño del arreglo**: lo desplegado
+y lo que corrió la batería es **`fd43a2a`**. Tocar `cobros/page.tsx` y `receipts.spec.ts` ahora
+deja el árbol distinto de lo que producción corre y de lo que la CI probó, y entonces AC-15 —«la
+batería completa en una sola corrida sobre el SHA exacto»— dejaría de ser cierto sin otra corrida y
+otro despliegue. **Un cierre que afirma un nivel sobre un SHA no puede cambiar el SHA en la misma
+pasada.**
+
+De los dos, **N-1 es el que importa**: es un agujero en una guarda, de la familia que este
+proyecto trata como defecto. La aserción prueba lo que el brief dice que prueba, pero dos textos
+—el comentario del caso y la §30 de `Screens.md`— prometen más de lo que cubre. El arreglo es
+cubrir los dos roles, `button` y `link`, o bajar las dos frases a «un control con rol `button`.»
+**Lo primero es mejor**, porque el redibujado probable es justamente el enlace. N-2 es separar dos
+comentarios y no cambia ninguna conducta.
