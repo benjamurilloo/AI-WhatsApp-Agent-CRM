@@ -60,7 +60,9 @@ const UNKNOWN_CLIENT_TEXT = "Cliente no disponible";
 // razonando que un control apagado sin explicación es una trampa. En uso resultó peor que la
 // trampa: un botón que no se enciende nunca, más un párrafo que ocupa el encabezado para decir que
 // no sirve. Dónde se registra un cobro ya lo dice el estado vacío —que es donde alguien busca cómo
-// empezar— y el encabezado queda como el de «Devoluciones», su pantalla hermana.
+// empezar— y el encabezado queda como el de «Devoluciones», su pantalla hermana. La prueba que lo
+// fija es negativa y mira **los dos roles**, `button` y `link`, en `tests/e2e/receipts.spec.ts`.
+
 // ADR 0022, punto 11, como en el recibo entero.
 const NOT_AN_INVOICE_LEGEND = "Documento no válido como factura";
 

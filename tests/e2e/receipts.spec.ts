@@ -445,9 +445,18 @@ test("un admin filtra los cobros por cliente y abre el recibo en el panel sin pe
   // afirmaba lo contrario —el H-6 de la 24.7.2-b lo pedía deshabilitado, como la lámina—, y la
   // aserción queda en negativo a propósito: si alguien lo vuelve a dibujar, apagado o encendido,
   // este caso se pone rojo. Dónde se registra un cobro lo dice el estado vacío.
-  await expect(
-    page.getByRole("button", { name: "Registrar cobro" }),
-  ).toHaveCount(0);
+  //
+  // **Se miran los dos roles, y el motivo es cuál es el redibujado probable.** Apagado volvería
+  // como `<button disabled>`, pero **encendido, en este repositorio, se dibuja como enlace**:
+  // `clientes/[clientId]/account-tab.tsx` y la ficha de la venta lo hacen así. Un `<Link>` tiene
+  // rol `link`, no `button`, así que con una sola aserción sobre `button` el redibujado **más
+  // esperable de los dos** dejaba este caso en verde. Lo encontró la segunda revisión independiente
+  // de la 24.7.3 (su N-1), leyendo la promesa del comentario contra lo que la aserción cubría.
+  for (const rol of ["button", "link"] as const) {
+    await expect(page.getByRole(rol, { name: "Registrar cobro" })).toHaveCount(
+      0,
+    );
+  }
 
   // AC-2: el filtro por cliente deja **solo** los cobros de ese cliente.
   const cliente = page.getByLabel("Cliente");
