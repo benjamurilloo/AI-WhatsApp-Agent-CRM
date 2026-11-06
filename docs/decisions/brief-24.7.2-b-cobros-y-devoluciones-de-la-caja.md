@@ -154,6 +154,21 @@ se activó**: no hay ninguna consulta nueva.
 > autoevaluación ni la independiente, porque las dos comprobaron que el botón estuviera como la
 > lámina lo pedía. El detalle y la diferencia con la lámina quedan en la §30 de
 > [Screens.md](../product/Screens.md).
+>
+> *Ampliada el 2026-11-05.* Esta nota estaba **solo acá**, y la decisión que revierte está afirmada
+> en **cinco** lugares de este brief: las dos tablas de diferencias con la v2, el alcance excluido,
+> la tabla de comparación visual y la tabla de hallazgos de la revisión (B-3). Los cinco quedan
+> marcados. Lo encontró la **segunda revisión independiente** de la 24.7.3, y la regla que deja es
+> que al revertir una decisión registrada se busca por el **nombre del control**, no por el id del
+> hallazgo: buscar «H-6» encuentra uno, buscar «Registrar cobro» encuentra los cinco.
+>
+> **Y la edición de este archivo fue un desvío de alcance de la 24.7.3**, que se registra acá en vez
+> de taparse: este brief **no estaba** en su lista cerrada, ni antes ni después de la ampliación del
+> 2026-11-05, y la edición no se preguntó antes de hacerse. Las dos correcciones del recorrido sí se
+> preguntaron; esta tercera edición salió de la primera y se hizo con ella, y la autorización no
+> viaja a un archivo vecino. El usuario decidió el 2026-11-05 **dejar la nota y extender la marca a
+> los cinco lugares** en vez de revertirla, porque sin ella este brief contradice al documento de
+> producto vigente.
 
 La lámina 06 dibuja «Registrar cobro» **deshabilitado** en el encabezado. El brief de la 24.7.2 ya
 lo declaró como diferencia con la v2: un cobro necesita un destino, y hoy se registra desde su
@@ -164,7 +179,7 @@ no existe. **Se conserva la declaración, no se reabre.**
 
 | Lámina | Qué no se va a hacer igual | Por qué |
 |---|---|---|
-| 06 | «Registrar cobro» queda **deshabilitado** | H-6; ya declarado por la 24.7.2 |
+| 06 | «Registrar cobro» queda **deshabilitado** | H-6; ya declarado por la 24.7.2. **Superado el 2026-11-05** (ver H-6): el botón se sacó. La lámina sigue dibujándolo, así que la diferencia con la v2 **se agranda**: ahora no está |
 | 06 | El menú «…» no será un *popover* con JavaScript | H-2; el no-JavaScript es un invariante medido |
 | 06 | El panel muestra la cotización usada **solo si el cobro la tiene** | La lámina dibuja un cobro con conversión; uno en la misma moneda no tiene qué mostrar |
 | 06 | La columna se llama **«Destino»** y no «Venta» | *Agregado el 2026-11-05, antes de escribir la pantalla.* El destino de un cobro **no siempre es una venta**: desde la 21.4 puede ser la seña de un pedido y desde la 21.6, la cuenta del cliente. La lámina dibuja solo el caso de la venta; llamar «Venta» a la columna haría que una fila con «Pedido P-000011» contradijera su propio encabezado. Las celdas sí dicen «Venta V-000223», como la lámina |
@@ -174,7 +189,7 @@ no existe. **Se conserva la declaración, no se reabre.**
 
 | Lámina | Qué no se va a hacer igual | Por qué |
 |---|---|---|
-| 06 | Debajo del botón apagado va un párrafo que dice **por qué** está apagado | La lámina dibuja solo el botón. Un control apagado sin motivo es una trampa; y desde la revisión, **solo lo ve un `admin`** (B-3) |
+| 06 | ~~Debajo del botón apagado va un párrafo que dice **por qué** está apagado~~ **Superado el 2026-11-05** (ver H-6): el botón se sacó. El párrafo se fue con él | La lámina dibuja solo el botón. Un control apagado sin motivo es una trampa; y desde la revisión, **solo lo ve un `admin`** (B-3) |
 | 06 | El filtro por número lleva `placeholder` «R-000123» y un botón «Buscar» | La lámina pone «Todos» y no dibuja el botón. El botón es lo que hace que el filtro ande **sin JavaScript**, y es anterior a esta subfase |
 | 06 | La fila «Fecha» del panel agrega la zona horaria entre paréntesis | La lámina la pone en la barra superior de la aplicación, que acá no la tiene. Una fecha de caja sin su zona no se puede comparar con otra |
 | 07 | El texto bajo «Moneda que sale» es «Sale en ARS, la moneda de lo que hay que devolver» y no «Esta venta está emitida en ARS» | **El formulario es uno solo para sus dos entradas** (AC-6), y desde la cuenta no hay ninguna venta que nombrar |
@@ -267,7 +282,7 @@ contradicción escrita en el documento. Es el mismo razonamiento de H-3.
 
 **Excluido, y dicho para que no se cuele:**
 
-- **Habilitar «Registrar cobro»** (H-6).
+- **Habilitar «Registrar cobro»** (H-6). **Superado el 2026-11-05** (ver H-6): el botón se sacó. Sigue excluido habilitarlo, pero ya no hay control que habilitar.
 - **Cualquier cambio a una regla de dinero**: la imputación, los topes y los rechazos de `cash` no
   se tocan. Esta subfase es de pantallas y de un filtro.
 - **Migraciones, tablas y contratos nuevos.** Siguen 67 migraciones.
@@ -443,7 +458,7 @@ diferencias están todas acá.
 | Columna **«Venta»** | ✘ se llama **«Destino»**: un cobro se aplica a una venta, a un pedido o a la cuenta, y la columna muestra los tres. Declarada antes de implementar |
 | «—» para el cobro sin cliente | ✘ dice **«Consumidor final»**, que es lo que AC-1 pide |
 | Estado «● Vigente» | ✔ con diferencia menor: es una píldora con ícono de tilde, no un punto |
-| «Registrar cobro» apagado | ✔ apagado (`disabled:opacity-60`), y **solo lo ve un `admin`** desde B-3. Debajo va un párrafo que dice **por qué** está apagado — declarada |
+| «Registrar cobro» apagado | ✔ apagado (`disabled:opacity-60`), y **solo lo ve un `admin`** desde B-3. Debajo va un párrafo que dice **por qué** está apagado — declarada. **Superado el 2026-11-05** (ver H-6): el botón se sacó. Esta celda es el registro de lo que esta subfase entregó y midió; lo que la pantalla tiene hoy es **ningún control en el encabezado**, y la §30 de [Screens.md](../product/Screens.md) es su contrato vigente |
 | Filtro «Número R» con marcador «Todos» | ✘ el marcador es «R-000123» y lleva botón «Buscar»: es lo que hace que el filtro ande **sin JavaScript**, y es anterior a esta subfase |
 | Panel: título, estado, tarjeta del negocio, «Imprimir» | ✔ |
 | Fila «Sesión de caja» del panel | ✔, y **solo aparece cuando el cobro tiene sesión** |
@@ -503,7 +518,7 @@ contra el código antes de aceptarse, resultaron **los cuatro reales** y están 
 |---|---|---|
 | **B-1** | La «Revisión de importes» afirmaba en rojo un rechazo que no existe, y **sumaba dos monedas distintas** | La tarjeta dejó de restar una moneda de la otra y dice que el cálculo con la cotización lo hace el registro. **Convertir en la página habría reimplementado una regla de dinero que el brief excluye** |
 | **B-2** | AC-10: el barrido de anchos no cubría dos de las cinco pantallas de la subfase, y sí cubría una que no es de la subfase | Segundo barrido para las pantallas de devolución |
-| **B-3** | AC-8: un `viewer` veía «Registrar cobro» y la instrucción de cómo registrar un cobro | El botón y su párrafo quedan tras `context.role === "admin"` |
+| **B-3** | AC-8: un `viewer` veía «Registrar cobro» y la instrucción de cómo registrar un cobro | El botón y su párrafo quedan tras `context.role === "admin"`. **Superado el 2026-11-05** (ver H-6): el botón se sacó. El hallazgo fue real y su corrección también; el control que protegía ya no existe |
 | **B-4** | La lectura nueva de `cash` sobre `crm` no estaba registrada, y **dos documentos decían lo contrario del código** | `Overview.md` registra `listClientOrderKeys`; la fila del Roadmap se corrigió con autorización |
 
 Los nueve no bloqueantes también están corregidos: el panel cerrado reservaba 22 rem vacíos (N-1),
