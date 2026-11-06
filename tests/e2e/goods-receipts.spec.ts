@@ -176,7 +176,7 @@ test("un admin recibe una orden en dos recepciones, ve el rechazo de recibir de 
   await login(page, ADMIN);
 
   await page.goto(`/compras/ordenes/${orderId}`);
-  await page.getByRole("link", { name: "Registrar recepción" }).click();
+  await page.getByRole("link", { name: "Recibir mercadería" }).click();
   await expect(page).toHaveURL(`/compras/recepciones/nueva?orden=${orderId}`);
   // Las filas arrancan en lo que falta y en el costo esperado.
   await expect(line(page, 1)).toContainText("Café molido (CAF-250)");
@@ -248,12 +248,12 @@ test("un admin recibe una orden en dos recepciones, ve el rechazo de recibir de 
   await expect(coffeeRow).toContainText("4");
   await expect(
     page
-      .getByRole("region", { name: "Recepciones" })
-      .getByRole("link", { name: "RC-000001" }),
+      .getByRole("region", { name: "Recepciones", exact: true })
+      .getByRole("link", { name: "RC-000001", exact: true }),
   ).toBeVisible();
 
   // Recibir de más se rechaza en la línea, sin escribir.
-  await page.getByRole("link", { name: "Registrar recepción" }).click();
+  await page.getByRole("link", { name: "Recibir mercadería" }).click();
   await expect(line(page, 1).getByLabel("Cantidad")).toHaveValue("4");
   await line(page, 1).getByLabel("Cantidad").fill("5");
   await page.getByRole("button", { name: "Registrar recepción" }).click();
@@ -273,17 +273,17 @@ test("un admin recibe una orden en dos recepciones, ve el rechazo de recibir de 
     page.getByText(/Con ella la orden quedó completa y se cerró\.$/),
   ).toBeVisible();
   await page.goto(`/compras/ordenes/${orderId}`);
+  // Desde la 24.8.1 la insignia separa el cierre completo del cierre con faltante (brief-24.8.1,
+  // D-2): esta orden se recibió entera, así que dice «Completa». El «Cerrada» a secas que había
+  // acá dejó de alcanzar, y además el único texto exacto «Cerrada» de la página es ahora el del
+  // comprobante, que solo se dibuja en papel.
+  await expect(page.getByText("Cerrada · Completa")).toBeVisible();
   await expect(
-    page.getByText("Cerrada", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Registrar recepción" }),
+    page.getByRole("link", { name: "Recibir mercadería" }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("table", {
-      name: "Historia de la orden de compra OC-000001",
-    }),
-  ).toContainText("Cierre por la recepción RC-000002");
+  await expect(page.getByRole("region", { name: "Actividad" })).toContainText(
+    "La recepción RC-000002 completó la orden.",
+  );
   await expectAccessible(page, "orden cerrada por la recepción");
 
   // En el producto: el movimiento y el costo con su origen.

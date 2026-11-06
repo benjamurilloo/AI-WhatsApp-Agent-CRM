@@ -326,6 +326,11 @@ test("anular la recepción de una orden: lo recibido vuelve a cero, la orden se 
   await login(page, ADMIN);
 
   await page.goto(`/compras/ordenes/${orderId}`);
+  // Las dos viven en «Más acciones» y nunca conviven (brief-24.8.1, D-4): con una recepción
+  // vigente se cierra con faltante y no se cancela.
+  await page
+    .getByRole("button", { name: "Más acciones de la orden de compra" })
+    .click();
   await expect(
     page.getByRole("link", { name: "Cerrar con faltante" }),
   ).toBeVisible();
@@ -346,18 +351,28 @@ test("anular la recepción de una orden: lo recibido vuelve a cero, la orden se 
     .getByRole("table", { name: "Líneas de la orden de compra OC-000001" })
     .getByRole("row")
     .filter({ hasText: "Café molido" });
-  // Recibido y Falta, las dos últimas columnas.
-  await expect(coffeeRow.getByRole("cell").nth(4)).toHaveText(/^0\b/);
-  await expect(coffeeRow.getByRole("cell").nth(5)).toHaveText(/^10\b/);
+  // Recibidas y Pendientes, tercera y cuarta columna desde la 24.8.1: la lámina 03 las pone
+  // entre «Pedidas» y el costo, y son las dos que no se imprimen.
+  await expect(coffeeRow.getByRole("cell").nth(2)).toHaveText(/^0\b/);
+  await expect(coffeeRow.getByRole("cell").nth(3)).toHaveText(/^10\b/);
   await expect(page.getByText(/Abierta$/).first()).toBeVisible();
+  // Sin recepciones vigentes se invierte: se cancela y ya no se cierra a mano.
+  await page
+    .getByRole("button", { name: "Más acciones de la orden de compra" })
+    .click();
   await expect(
     page.getByRole("link", { name: "Cerrar con faltante" }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Cancelar la orden" }),
   ).toBeVisible();
-  const receipts = page.getByRole("region", { name: "Recepciones" });
-  await expect(receipts.getByRole("link", { name: "RC-000001" })).toBeVisible();
+  const receipts = page.getByRole("region", {
+    name: "Recepciones",
+    exact: true,
+  });
+  await expect(
+    receipts.getByRole("link", { name: "RC-000001", exact: true }),
+  ).toBeVisible();
   await expect(receipts).toContainText("Anulada");
   await expectAccessible(page, "orden con su recepción anulada");
   expect(await onHand(coffee)).toBe("0.000");
@@ -444,9 +459,9 @@ test("la lista marca las anuladas, filtra por estado y busca por el número de l
   await expect(table.getByRole("link", { name: "RC-000001" })).toHaveCount(0);
 
   await page.goto(`/compras/proveedores/${supplierId}`);
-  await expect(page.getByRole("region", { name: "Recepciones" })).toContainText(
-    "Anulada",
-  );
+  await expect(
+    page.getByRole("region", { name: "Recepciones", exact: true }),
+  ).toContainText("Anulada");
 });
 
 test("un viewer ve el movimiento de la anulación sin costo ni proveedor, y el aviso en la anulación", async ({

@@ -4,11 +4,14 @@ import { getOrganizationTimezone } from "@/modules/organizations";
 import {
   getSupplier,
   listPurchaseOrders,
+  listPurchaseOrderSupplierOptions,
   PURCHASE_ORDERS_PAGE_SIZE,
+  type PurchaseOrderSupplierOptions,
 } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import {
   cardClass,
+  iconTileClass,
   inlineButtonClass,
   inputClass,
   labelClass,
@@ -18,11 +21,11 @@ import {
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
 import { EmptyState } from "@/app/_components/empty-state";
-import { Icon } from "@/app/_components/icons";
+import { Icon, type IconName } from "@/app/_components/icons";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
-import { formatShortDateTime } from "@/app/_format/date-time";
+import { formatDate } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
 import { PurchasingSubNav } from "../purchasing-sub-nav";
 import {
@@ -46,10 +49,105 @@ export const metadata: Metadata = {
 
 const TITLE = "Órdenes de compra";
 
+// La franja de etapas de la lámina 01 (brief-24.8.1, V-4): **texto fijo, sin un solo dato**. Dice
+// de dónde sale cada efecto, que es la confusión que esta pantalla arrastra: la orden no mueve
+// stock ni dinero. El ícono es de los del proyecto (V-17), no un activo nuevo.
+const STAGES: { icon: IconName; title: string; detail: string }[] = [
+  { icon: "fileText", title: "Orden", detail: "Compromiso" },
+  { icon: "package", title: "Recepción", detail: "Stock y costo" },
+  { icon: "creditCard", title: "Pago", detail: "Cuenta" },
+];
+
+function StageStrip() {
+  return (
+    <ol
+      aria-label="Cómo sigue una compra"
+      className={`mt-6 flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-2 ${cardClass}`}
+    >
+      {STAGES.map((stage, index) => (
+        <li key={stage.title} className="flex min-w-0 items-center gap-3">
+          {index > 0 ? (
+            <Icon
+              name="chevronRight"
+              className="hidden size-5 shrink-0 text-muted sm:block"
+            />
+          ) : null}
+          <span className={iconTileClass}>
+            <Icon name={stage.icon} className="size-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block font-semibold">{stage.title}</span>
+            <span className="block text-sm text-muted">{stage.detail}</span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// El filtro de proveedor de la lámina (D-5): el `<select>` con «Todos» cuando los proveedores con
+// órdenes entran en el tope, y **ningún control** cuando lo pasan, que es la conducta de hoy —el
+// proveedor llega por la URL desde la fila o desde su ficha—. El campo de texto del precedente de
+// clientes no se copia porque acá no filtraría nada: `listPurchaseOrders` acepta un id, no un
+// nombre, y hacerle entender nombres era un tercer cambio en `purchasing` que esta subfase no
+// tiene. **Decidido por el usuario el 2026-11-06**, y declarado en el brief y en Screens.md.
+//
+// El `<select>` lleva `w-full min-w-0` obligatorio: su ancho mínimo es el de su opción más larga
+// —403 px medidos en la 24.7.2-b sobre el mismo control con la misma clase de contenido— y sin eso
+// desborda a 320 px (H-6).
+function SupplierFilter({
+  options,
+  value,
+  supplierName,
+}: {
+  options: PurchaseOrderSupplierOptions;
+  value: string;
+  supplierName: string;
+}) {
+  if (options.kind === "text") {
+    // Sin control, el id elegido tiene que sobrevivir a «Aplicar filtros».
+    return value === "" ? null : (
+      <input type="hidden" name="proveedor" value={value} />
+    );
+  }
+  return (
+    <div className="flex min-w-0 flex-col gap-1 sm:w-64">
+      <label htmlFor="proveedor" className={labelClass}>
+        Proveedor
+      </label>
+      <select
+        id="proveedor"
+        name="proveedor"
+        defaultValue={value}
+        className={`${selectClass} w-full min-w-0`}
+      >
+        <option value="">Todos</option>
+        {options.suppliers.map((supplier) => (
+          <option key={supplier.id} value={supplier.id}>
+            {supplier.name}
+          </option>
+        ))}
+        {/* El proveedor que vino en la dirección y **no tiene órdenes**: sin esta opción el
+            navegador deja «Todos» seleccionado y el control contradice a la lista, que está
+            vacía. Es el defecto N-9 de la 24.7.2-b. */}
+        {value !== "" &&
+        !options.suppliers.some((supplier) => supplier.id === value) ? (
+          <option value={value}>{supplierName}</option>
+        ) : null}
+      </select>
+    </div>
+  );
+}
+
 // La lista de órdenes de compra (brief-22.3, D-10 y D-11): la más nueva primero, el filtro de
 // estado, el de proveedor y la búsqueda por número, en la URL. El proveedor de cada fila filtra la
 // lista por él, y la ficha del proveedor llega ya filtrada. Tabla en escritorio y tarjetas en móvil,
 // como pedidos. Solo admin: a un viewer, purchasing le responde FORBIDDEN y la página lo dice.
+//
+// Desde la 24.8.1 tiene la forma de la lámina 01 del lote V2-11: la franja de etapas (V-4), el
+// filtro de proveedor (D-5), las columnas Nº de orden / Proveedor / Fecha / Monto / Estado / Ver
+// —sin «Líneas» y en ese orden (V-1)—, la insignia de **cuatro** estados (D-2) y la fecha con su
+// año y sin la hora, como la dibuja la lámina (V-19).
 export default async function PurchaseOrdersPage({
   searchParams,
 }: {
@@ -57,15 +155,21 @@ export default async function PurchaseOrdersPage({
 }) {
   const context = await requireSession();
   const filters = parsePurchaseOrderFilters(await searchParams);
-  const result = await listPurchaseOrders(context, {
-    status: filters.status,
-    supplierId: filters.supplierId || null,
-    number: filters.number,
-    page: filters.page,
-  });
-  if (!result.ok) {
+  // Las opciones del filtro son la segunda lectura nueva de la subfase (D-5), autorizada el
+  // 2026-11-06: una sentencia con `limit 51`, en paralelo con la lista.
+  const [result, chosen] = await Promise.all([
+    listPurchaseOrders(context, {
+      status: filters.status,
+      supplierId: filters.supplierId || null,
+      number: filters.number,
+      page: filters.page,
+    }),
+    listPurchaseOrderSupplierOptions(context),
+  ]);
+  if (!result.ok || !chosen.ok) {
     return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
   }
+  const options = chosen.options;
   const timeZone = await getOrganizationTimezone(context);
   const filteredSupplier = filters.supplierId
     ? await getSupplier(context, filters.supplierId)
@@ -81,13 +185,15 @@ export default async function PurchaseOrdersPage({
     <main className="mx-auto max-w-6xl px-4 py-8">
       <PageHeader
         title={TITLE}
-        subtitle="Lo que le pedís a cada proveedor, con su número, su total y su estado."
+        subtitle="Planificá las compras. El stock ingresa al recibir."
         action={{
           href: "/compras/ordenes/nueva",
-          label: "+ Nueva orden de compra",
+          label: "+ Nueva orden",
         }}
       />
       <PurchasingSubNav current="ordenes" />
+
+      <StageStrip />
 
       <form
         key={purchaseOrderFiltersHref(filters)}
@@ -95,7 +201,7 @@ export default async function PurchaseOrdersPage({
         action="/compras/ordenes"
         className="mt-6 flex flex-wrap items-end gap-3"
       >
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <label htmlFor="numero" className={labelClass}>
             Número
           </label>
@@ -112,7 +218,12 @@ export default async function PurchaseOrdersPage({
             <SearchIcon />
           </div>
         </div>
-        <div className="flex flex-col gap-1">
+        <SupplierFilter
+          options={options}
+          value={filters.supplierId}
+          supplierName={supplierName}
+        />
+        <div className="flex min-w-0 flex-col gap-1">
           <label htmlFor="estado" className={labelClass}>
             Estado
           </label>
@@ -128,9 +239,6 @@ export default async function PurchaseOrdersPage({
             <option value="canceladas">Canceladas</option>
           </select>
         </div>
-        {filters.supplierId ? (
-          <input type="hidden" name="proveedor" value={filters.supplierId} />
-        ) : null}
         <button type="submit" className={inlineButtonClass}>
           <Icon name="filter" className="size-4" />
           Aplicar filtros
@@ -142,7 +250,9 @@ export default async function PurchaseOrdersPage({
         ) : null}
       </form>
 
-      {filters.supplierId ? (
+      {/* Con el `<select>` dibujado, el control ya dice de quién es la lista y cómo volver a
+          todos. Esta línea queda solo cuando no hay control: ahí es la única salida. */}
+      {filters.supplierId && options.kind === "text" ? (
         <p className="mt-4 text-sm">
           Órdenes de <span className="font-semibold">{supplierName}</span>.{" "}
           <Link
@@ -199,28 +309,28 @@ export default async function PurchaseOrdersPage({
               <thead>
                 <tr>
                   <th scope="col" className={tableHeadCellClass}>
-                    Número
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Fecha
+                    Nº de orden
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
                     Proveedor
                   </th>
-                  <th
-                    scope="col"
-                    className={`${tableHeadCellClass} text-right`}
-                  >
-                    Líneas
+                  <th scope="col" className={tableHeadCellClass}>
+                    Fecha
                   </th>
                   <th
                     scope="col"
                     className={`${tableHeadCellClass} text-right`}
                   >
-                    Total
+                    Monto
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
                     Estado
+                  </th>
+                  <th
+                    scope="col"
+                    className={`${tableHeadCellClass} text-right`}
+                  >
+                    <span className="sr-only">Ver la orden</span>
                   </th>
                 </tr>
               </thead>
@@ -237,9 +347,6 @@ export default async function PurchaseOrdersPage({
                         {order.displayNumber}
                       </Link>
                     </td>
-                    <td className={`${tableCellClass} whitespace-nowrap`}>
-                      {formatShortDateTime(order.createdAt, timeZone)}
-                    </td>
                     <td className={tableCellClass}>
                       <Link
                         href={supplierHref(order.supplierId)}
@@ -249,8 +356,8 @@ export default async function PurchaseOrdersPage({
                         <span className="sr-only">: ver solo sus órdenes</span>
                       </Link>
                     </td>
-                    <td className={`${tableCellClass} text-right tabular-nums`}>
-                      {order.lineCount}
+                    <td className={`${tableCellClass} whitespace-nowrap`}>
+                      {formatDate(order.createdAt, timeZone)}
                     </td>
                     <td
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
@@ -258,7 +365,24 @@ export default async function PurchaseOrdersPage({
                       {formatMoney(order.total, order.currency)}
                     </td>
                     <td className={tableCellClass}>
-                      <PurchaseOrderStatusBadge status={order.status} />
+                      <PurchaseOrderStatusBadge
+                        status={order.status}
+                        hasPending={order.hasPending}
+                      />
+                    </td>
+                    <td
+                      className={`${tableCellClass} text-right whitespace-nowrap`}
+                    >
+                      <Link
+                        href={`/compras/ordenes/${order.id}`}
+                        className={`${linkClass} inline-flex items-center gap-1`}
+                      >
+                        Ver
+                        <span className="sr-only">
+                          la orden {order.displayNumber}
+                        </span>
+                        <Icon name="chevronRight" className="size-4" />
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -279,7 +403,10 @@ export default async function PurchaseOrdersPage({
                   >
                     {order.displayNumber}
                   </Link>
-                  <PurchaseOrderStatusBadge status={order.status} />
+                  <PurchaseOrderStatusBadge
+                    status={order.status}
+                    hasPending={order.hasPending}
+                  />
                 </p>
                 <p className="mt-1 font-semibold">
                   <Link
@@ -291,9 +418,7 @@ export default async function PurchaseOrdersPage({
                   </Link>
                 </p>
                 <p className="mt-1 text-sm text-muted">
-                  {formatShortDateTime(order.createdAt, timeZone)} ·{" "}
-                  {order.lineCount} {order.lineCount === 1 ? "línea" : "líneas"}{" "}
-                  ·{" "}
+                  {formatDate(order.createdAt, timeZone)} ·{" "}
                   <span className="tabular-nums">
                     {formatMoney(order.total, order.currency)}
                   </span>

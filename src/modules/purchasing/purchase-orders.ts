@@ -48,6 +48,9 @@ export const PURCHASE_ORDER_STATUSES = purchaseOrderStatus.enumValues;
 export { MAX_PURCHASE_ORDER_LINES };
 export const PURCHASE_ORDERS_PAGE_SIZE = 25;
 export const SUPPLIER_PURCHASE_ORDERS_LIMIT = 5;
+// Hasta acá el filtro de proveedor es un `<select>`; pasado el tope, un campo de texto
+// (brief-24.8.1, D-5). Es el mismo número que CASH_CLIENT_FILTER_LIMIT, el precedente de clientes.
+export const PURCHASE_ORDER_SUPPLIER_FILTER_LIMIT = 50;
 
 const idSchema = z.uuid();
 
@@ -434,6 +437,10 @@ export type PurchaseOrderSummary = {
   total: string;
   currency: string;
   status: PurchaseOrderStatus;
+  // Desde la 24.8.1 (brief-24.8.1, H-2): si a la orden le falta recibir algo. No es un estado: con
+  // `status` cerrado distingue «Cerrada · Completa» de «Cerrada · Con faltante», y en una abierta
+  // dice si todavía espera mercadería.
+  hasPending: boolean;
   createdAt: Date;
 };
 
@@ -468,6 +475,7 @@ function summarize(
     total: row.total,
     currency: row.currency,
     status: row.status,
+    hasPending: row.hasPending,
     createdAt: row.createdAt,
   };
 }
@@ -509,6 +517,38 @@ export async function listPurchaseOrders(
           (page - 1) * PURCHASE_ORDERS_PAGE_SIZE,
         );
   return { ok: true, orders: rows.map(summarize), total, page, pageCount };
+}
+
+// Las opciones del filtro de proveedor de la lista (brief-24.8.1, D-5): los proveedores que tienen
+// órdenes, para dibujar un `<select>` en vez de depender de que el id llegue por la URL.
+//
+// Devuelve `kind: "text"` cuando pasan el tope, y entonces la pantalla cae al campo de texto. Es la
+// forma de `CashClientOptions`, con una diferencia a favor: los proveedores son una tabla de
+// `purchasing`, así que el nombre sale de la misma sentencia y no hay segunda consulta que pueda
+// fallar aparte. El orden alfabético se pone acá, en español.
+export type PurchaseOrderSupplierOptions =
+  | { kind: "select"; suppliers: { id: string; name: string }[] }
+  | { kind: "text" };
+
+export async function listPurchaseOrderSupplierOptions(
+  context: AuthContext,
+): Promise<
+  { ok: true; options: PurchaseOrderSupplierOptions } | Failure<"FORBIDDEN">
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const rows = await orderRepository.findPurchaseOrderSupplierOptions(
+    context.organizationId,
+    PURCHASE_ORDER_SUPPLIER_FILTER_LIMIT + 1,
+  );
+  // Se pidió uno más que el tope: si llegaron más, el `<select>` no va.
+  if (rows.length > PURCHASE_ORDER_SUPPLIER_FILTER_LIMIT) {
+    return { ok: true, options: { kind: "text" } };
+  }
+  const suppliers = [...rows].sort((a, b) =>
+    a.name.localeCompare(b.name, "es"),
+  );
+  return { ok: true, options: { kind: "select", suppliers } };
 }
 
 // Las últimas órdenes de un proveedor, para su ficha (D-10).

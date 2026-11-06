@@ -1,25 +1,55 @@
 import { describe, expect, it } from "vitest";
-import type { PurchaseOrderAuditEntry } from "@/modules/purchasing";
-import { auditActionLabel, describeAuditDiff } from "./audit-summary";
+import type {
+  GoodsReceiptSummary,
+  PurchaseOrderAuditEntry,
+} from "@/modules/purchasing";
+import {
+  auditActionLabel,
+  describeAuditEntry,
+  purchaseOrderActivity,
+  receiptActivityRow,
+} from "./audit-summary";
 
-// La historia de la orden de compra (brief-22.3, D-9; brief-22.4, D-6).
+// La «Actividad» de la orden de compra (brief-24.8.1, D-6): el hecho en una oración, no la
+// transición. Reemplaza a los textos de la 22.3 y la 22.4 («Alta», «Abierta → Cerrada»).
 
 function entry(
   action: PurchaseOrderAuditEntry["action"],
   diff: PurchaseOrderAuditEntry["diff"],
+  createdAt = new Date(0),
 ): PurchaseOrderAuditEntry {
   return {
-    id: "a",
+    id: `a-${createdAt.getTime()}-${action}`,
     entityType: "purchase_order",
     action,
     diff,
     actor: { kind: "user", id: "u", name: "Ana" },
-    createdAt: new Date(0),
+    createdAt,
   };
 }
 
-describe("la historia de una orden de compra", () => {
-  it("el alta dice el número, las líneas y el total, sin el proveedor", () => {
+function receipt(
+  overrides: Partial<GoodsReceiptSummary> = {},
+): GoodsReceiptSummary {
+  return {
+    id: "r1",
+    number: 91,
+    displayNumber: "RC-000091",
+    supplierId: "s1",
+    supplierName: "Importaciones Sur",
+    purchaseOrderId: "o1",
+    purchaseOrderDisplayNumber: "OC-000057",
+    lineCount: 1,
+    total: "1020.00",
+    currency: "USD",
+    createdAt: new Date(1000),
+    voidDisplayNumber: null,
+    ...overrides,
+  };
+}
+
+describe("la actividad de una orden de compra", () => {
+  it("el alta nombra a quien la creó y, sin autor resoluble, lo omite", () => {
     const created = entry("create", {
       before: null,
       after: {
@@ -31,24 +61,31 @@ describe("la historia de una orden de compra", () => {
         lines: 2,
       },
     });
-    expect(auditActionLabel(created)).toBe("Alta");
-    expect(describeAuditDiff(created)).toMatch(
-      /^Orden OC-000004 · 2 líneas · total \$\s3\.002,49$/,
+    expect(auditActionLabel(created)).toBe("Creada");
+    expect(describeAuditEntry(created, "Carla Méndez")).toBe(
+      "Orden de compra creada por Carla Méndez.",
     );
-    expect(describeAuditDiff(created)).not.toContain("proveedor-x");
+    expect(describeAuditEntry(created, null)).toBe("Orden de compra creada.");
+    // Ni el id del proveedor ni ningún otro dato interno salen a la pantalla (ADR 0023, punto 14).
+    expect(describeAuditEntry(created, "Carla Méndez")).not.toContain(
+      "proveedor-x",
+    );
   });
 
-  it("la cancelación dice el cambio de estado", () => {
+  it("la cancelación cuenta el hecho y no la transición", () => {
     const cancelled = entry("status_change", {
       before: { status: "open" },
       after: { status: "cancelled" },
     });
-    expect(auditActionLabel(cancelled)).toBe("Cancelación");
-    expect(describeAuditDiff(cancelled)).toBe("Abierta → Cancelada");
+    expect(auditActionLabel(cancelled)).toBe("Cancelada");
+    expect(describeAuditEntry(cancelled, "Ana")).toBe(
+      "Orden de compra cancelada por Ana.",
+    );
+    expect(describeAuditEntry(cancelled, "Ana")).not.toContain("→");
   });
 
-  // brief-22.4, D-6: el cierre se rotula por quién lo hizo.
-  it("el cierre automático nombra la recepción, y el cierre a mano lo dice", () => {
+  // brief-22.4, D-6: los dos cierres se distinguen, y desde la 24.8.1 cada uno con su oración.
+  it("el cierre automático nombra la recepción, y el cierre a mano dice que queda faltante", () => {
     const byReceipt = entry("status_change", {
       before: {
         status: "open",
@@ -61,26 +98,78 @@ describe("la historia de una orden de compra", () => {
         goods_receipt_number: "RC-000123",
       },
     });
-    expect(auditActionLabel(byReceipt)).toBe(
-      "Cierre por la recepción RC-000123",
+    expect(auditActionLabel(byReceipt)).toBe("Cerrada");
+    expect(describeAuditEntry(byReceipt, "Ana")).toBe(
+      "La recepción RC-000123 completó la orden.",
     );
-    expect(describeAuditDiff(byReceipt)).toBe("Abierta → Cerrada");
     const manual = entry("status_change", {
       before: { status: "open", closed_by: "manual" },
       after: { status: "closed", closed_by: "manual" },
     });
-    expect(auditActionLabel(manual)).toBe("Cierre a mano");
-    expect(describeAuditDiff(manual)).toBe("Abierta → Cerrada");
+    expect(auditActionLabel(manual)).toBe("Cerrada con faltante");
+    expect(describeAuditEntry(manual, "Ana")).toBe(
+      "Orden cerrada con faltante por Ana: lo que falta ya no se recibe con esta orden.",
+    );
   });
 
-  it("un estado desconocido se muestra tal cual", () => {
+  it("la recepción dice su número y su monto, y la anulada, con qué se anuló", () => {
+    const current = receiptActivityRow(receipt());
+    expect(current.label).toBe("Recepción");
+    // `\s` y no un espacio: formatMoney separa el símbolo de la moneda con un espacio duro.
+    expect(current.sentence).toMatch(
+      /^Se registró la recepción RC-000091 por US\$\s1\.020,00\.$/,
+    );
+    const voided = receiptActivityRow(
+      receipt({ voidDisplayNumber: "ARC-000012" }),
+    );
+    expect(voided.label).toBe("Recepción anulada");
+    expect(voided.sentence).toMatch(
+      /^Se registró la recepción RC-000091 por US\$\s1\.020,00, anulada con ARC-000012\.$/,
+    );
+  });
+
+  // El orden es el de la lámina: de lo más viejo a lo más nuevo, al revés de como llega la
+  // auditoría. Y la recepción va antes del cierre que provocó, que se escribe en la misma
+  // transacción y puede traer el mismo instante.
+  it("ordena de lo más viejo a lo más nuevo y pone la recepción antes del cierre que provocó", () => {
+    const closedAt = new Date(2000);
+    const rows = purchaseOrderActivity({
+      entries: [
+        entry(
+          "status_change",
+          {
+            before: {
+              status: "open",
+              closed_by: "goods_receipt",
+              goods_receipt_number: "RC-000091",
+            },
+            after: {
+              status: "closed",
+              closed_by: "goods_receipt",
+              goods_receipt_number: "RC-000091",
+            },
+          },
+          closedAt,
+        ),
+        entry("create", { before: null, after: { status: "open" } }),
+      ],
+      actorName: () => "Ana",
+      receipts: [receipt({ createdAt: closedAt })],
+    });
+    expect(rows.map((row) => row.label)).toEqual([
+      "Creada",
+      "Recepción",
+      "Cerrada",
+    ]);
+  });
+
+  it("sin entradas ni recepciones no inventa filas", () => {
     expect(
-      describeAuditDiff(
-        entry("status_change", {
-          before: { status: "open" },
-          after: { status: "toString" },
-        }),
-      ),
-    ).toBe("Abierta → toString");
+      purchaseOrderActivity({
+        entries: [],
+        actorName: () => null,
+        receipts: [],
+      }),
+    ).toEqual([]);
   });
 });

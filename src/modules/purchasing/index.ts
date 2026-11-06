@@ -41,10 +41,12 @@ export {
   getPurchaseOrder,
   listPurchaseOrderAudit,
   listPurchaseOrders,
+  listPurchaseOrderSupplierOptions,
   listRecentSupplierPurchaseOrders,
   MAX_PURCHASE_ORDER_LINES,
   parsePurchaseOrderNumberSearch,
   PURCHASE_ORDER_STATUSES,
+  PURCHASE_ORDER_SUPPLIER_FILTER_LIMIT,
   PURCHASE_ORDERS_PAGE_SIZE,
   SUPPLIER_PURCHASE_ORDERS_LIMIT,
   type CancelPurchaseOrderResult,
@@ -65,6 +67,7 @@ export {
   type PurchaseOrderStatus,
   type PurchaseOrderStatusFilter,
   type PurchaseOrderSummary,
+  type PurchaseOrderSupplierOptions,
   type PurchaseOrderValidationFailure,
 } from "./purchase-orders";
 export {

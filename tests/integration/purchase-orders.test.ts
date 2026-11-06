@@ -4,12 +4,16 @@ import { hashPassword, login } from "@/modules/auth";
 import { getAuthContext, type AuthContext } from "@/modules/organizations";
 import {
   cancelPurchaseOrder,
+  closePurchaseOrder,
+  createGoodsReceipt,
   createPurchaseOrder,
   createSupplier,
   getPurchaseOrder,
   listPurchaseOrderAudit,
   listPurchaseOrders,
+  listPurchaseOrderSupplierOptions,
   listRecentSupplierPurchaseOrders,
+  PURCHASE_ORDER_SUPPLIER_FILTER_LIMIT,
   PURCHASE_ORDERS_PAGE_SIZE,
   type PurchaseOrderInput,
   type PurchaseOrderLineInput,
@@ -1084,6 +1088,317 @@ describe("la lista con 2.000 órdenes (AC-7; D-11)", () => {
           `lista ${JSON.stringify(query)}: ${elapsed.toFixed(1)} ms`,
         );
       }
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// Las dos lecturas nuevas de la 24.8.1 (brief-24.8.1, AC-3 y AC-4).
+
+// Copia del medidor de `sales-list-reads.test.ts:175`. Se copia y no se importa porque importar otro
+// archivo de pruebas correría sus suites, y sacarlo a un archivo compartido sería un archivo fuera
+// de la lista cerrada de esta subfase; la duplicación queda anotada para la subfase que toque los
+// dos. Se copia **entera, con sus tres trampas**, que allá están medidas:
+//
+// 1. Se cuenta solo en el cliente, nunca en el pool: `Pool.query` de pg no habla con la base, saca
+//    un cliente con `connect` y le pasa la consulta, así que contar de los dos lados cuenta dos
+//    veces la misma sentencia.
+// 2. El pool **reusa** sus clientes entre mediciones, así que cada uno se envuelve una sola vez y se
+//    **desenvuelve al terminar**; sin lo segundo, el envoltorio de una medición le suma sus
+//    sentencias a la siguiente.
+// 3. `connect` tiene dos formas, con callback y con promesa, y las dos se usan: drizzle abre la
+//    transacción con la promesa y el pool internamente con el callback. Cubrir solo la promesa
+//    rompe la medición, y acá rompió: la primera corrida de este archivo falló con «Cannot read
+//    properties of undefined (reading 'then')».
+async function statementsOf<T>(
+  work: () => Promise<T>,
+): Promise<{ result: T; statements: string[] }> {
+  const pool = getDb().$client as unknown as {
+    query: (...args: unknown[]) => unknown;
+    connect: (...args: unknown[]) => Promise<{
+      query: (...args: unknown[]) => unknown;
+    }>;
+  };
+  const statements: string[] = [];
+  const record = (first: unknown) => {
+    const text =
+      typeof first === "string"
+        ? first
+        : typeof (first as { text?: unknown })?.text === "string"
+          ? (first as { text: string }).text
+          : "";
+    statements.push(text);
+  };
+  const originalQuery = pool.query.bind(pool);
+  const originalConnect = pool.connect.bind(pool);
+  type Client = { query: (...args: unknown[]) => unknown };
+  const wrapped = new Map<Client, Client["query"]>();
+  const wrap = (client: Client) => {
+    if (wrapped.has(client)) return;
+    const clientQuery = client.query.bind(client);
+    wrapped.set(client, client.query);
+    client.query = (...inner: unknown[]) => {
+      record(inner[0]);
+      return clientQuery(...inner);
+    };
+  };
+  pool.query = (...args: unknown[]) => originalQuery(...args);
+  pool.connect = ((...args: unknown[]) => {
+    if (typeof args[0] === "function") {
+      const callback = args[0] as (...inner: unknown[]) => void;
+      return originalConnect((...inner: unknown[]) => {
+        const client = inner[1] as
+          { query: (...args: unknown[]) => unknown } | undefined;
+        if (client) wrap(client);
+        callback(...inner);
+      });
+    }
+    return (
+      originalConnect(...args) as Promise<{
+        query: (...args: unknown[]) => unknown;
+      }>
+    ).then((client) => {
+      wrap(client);
+      return client;
+    });
+  }) as typeof pool.connect;
+  try {
+    return { result: await work(), statements };
+  } finally {
+    pool.query = originalQuery;
+    pool.connect = originalConnect;
+    for (const [client, query] of wrapped) client.query = query;
+  }
+}
+
+// begin, commit y los set del aislamiento no son lecturas.
+function reads(statements: string[]): string[] {
+  return statements.filter(
+    (text) =>
+      !/^\s*(begin|commit|rollback|set\b|start transaction)/i.test(text),
+  );
+}
+
+// La recepción nombra la línea de la orden (brief-22.4, D-7), así que hay que leer sus ids. Las
+// cantidades se escriben como las escribiría una persona y no con el formato de la base, que para
+// `1` dice `1.000` y el parser leería como mil.
+async function orderLineIds(context: AuthContext, orderId: string) {
+  const detail = await getPurchaseOrder(context, orderId);
+  if (!detail.ok) throw new Error(`ficha rechazada: ${detail.code}`);
+  return detail.order.lines.map((orderLine) => orderLine.id);
+}
+
+async function receive(
+  context: AuthContext,
+  orderId: string,
+  supplierId: string,
+  lines: { purchaseOrderLineId: string; quantity: string; unitCost: string }[],
+) {
+  const result = await createGoodsReceipt(context, {
+    purchaseOrderId: orderId,
+    supplierId,
+    currency: "ARS",
+    supplierReference: "",
+    lines: lines.map((received) => ({ ...received, productId: "" })),
+  });
+  if (!result.ok) {
+    throw new Error(`recepción rechazada: ${JSON.stringify(result)}`);
+  }
+  return result;
+}
+
+describe("lo recibido en la lista y las opciones del filtro (brief-24.8.1)", () => {
+  // AC-3: la distinción entre cerrada completa y cerrada con faltante es **derivada**. El enum
+  // sigue con sus tres valores y el trigger de la 0048 sin tocar, así que las dos órdenes se
+  // cierran de verdad, por los dos caminos, y es la lista la única que las distingue.
+  it(
+    "una cerrada completa y una cerrada con faltante se leen distinto con el mismo status",
+    async () => {
+      const s = await seed();
+      const complete = await create(s.adminA, {
+        supplierId: s.supplierA,
+        currency: "ARS",
+        lines: [line(s.productA, "2", "100")],
+      });
+      const short = await create(s.adminA, {
+        supplierId: s.supplierA,
+        currency: "ARS",
+        lines: [line(s.productA, "2", "100"), line(s.productA2, "3", "10")],
+      });
+
+      // La completa se cierra sola al recibirla entera (brief-22.4, D-9).
+      const [completeLine] = await orderLineIds(s.adminA, complete.id);
+      await receive(s.adminA, complete.id, s.supplierA, [
+        { purchaseOrderLineId: completeLine!, quantity: "2", unitCost: "100" },
+      ]);
+      // La otra recibe una sola línea y se cierra a mano, con faltante.
+      const [shortLine] = await orderLineIds(s.adminA, short.id);
+      await receive(s.adminA, short.id, s.supplierA, [
+        { purchaseOrderLineId: shortLine!, quantity: "2", unitCost: "100" },
+      ]);
+      expect(await closePurchaseOrder(s.adminA, short.id)).toMatchObject({
+        ok: true,
+      });
+
+      const listed = await listPurchaseOrders(s.adminA, {
+        status: "closed",
+        supplierId: null,
+        number: "",
+        page: 1,
+      });
+      if (!listed.ok) throw new Error(`lista rechazada: ${listed.code}`);
+      const byId = new Map(listed.orders.map((order) => [order.id, order]));
+      expect(byId.get(complete.id)).toMatchObject({
+        status: "closed",
+        hasPending: false,
+      });
+      expect(byId.get(short.id)).toMatchObject({
+        status: "closed",
+        hasPending: true,
+      });
+
+      // Y el enum intacto: la subfase no agregó un cuarto valor para nombrar el faltante.
+      const states = await getDb().execute<{ values: string }>(
+        sql`select string_agg(enumlabel, ',' order by enumsortorder) as values
+            from pg_enum where enumtypid = 'purchase_order_status'::regtype`,
+      );
+      expect(states.rows[0]!.values).toBe("open,closed,cancelled");
+    },
+    TEST_TIMEOUT,
+  );
+
+  // AC-4 y M-1: el recuento no crece con las filas. La forma obvia —una consulta de lo recibido
+  // por fila— costaría 25 sentencias más en una página llena.
+  it(
+    "la lista cuesta las mismas sentencias con 1 y con 25 órdenes",
+    async () => {
+      const s = await seed();
+      const filters = {
+        status: "all" as const,
+        supplierId: null,
+        number: "",
+        page: 1,
+      };
+      await create(s.adminA, {
+        supplierId: s.supplierA,
+        currency: "ARS",
+        lines: [line(s.productA, "1", "100")],
+      });
+      const one = await statementsOf(() =>
+        listPurchaseOrders(s.adminA, filters),
+      );
+      for (let i = 1; i < PURCHASE_ORDERS_PAGE_SIZE; i += 1) {
+        await create(s.adminA, {
+          supplierId: s.supplierA,
+          currency: "ARS",
+          lines: [line(s.productA, "1", "100")],
+        });
+      }
+      const many = await statementsOf(() =>
+        listPurchaseOrders(s.adminA, filters),
+      );
+      if (!many.result.ok) throw new Error("lista rechazada");
+      expect(many.result.orders.length).toBe(PURCHASE_ORDERS_PAGE_SIZE);
+      expect(reads(one.statements).length).toBeGreaterThan(0);
+      expect(reads(many.statements).length).toBe(reads(one.statements).length);
+    },
+    TEST_TIMEOUT,
+  );
+
+  // AC-4: la segunda lectura es **una sola sentencia**, trae solo proveedores que tienen órdenes y
+  // no cruza la frontera de la organización.
+  it(
+    "las opciones del filtro son una sentencia, solo con proveedores que tienen órdenes",
+    async () => {
+      const s = await seed();
+      await create(s.adminA, {
+        supplierId: s.supplierA,
+        currency: "ARS",
+        lines: [line(s.productA, "1", "100")],
+      });
+      // supplierA2 no tiene ninguna orden, y supplierB es de la otra organización.
+      await create(s.adminB, {
+        supplierId: s.supplierB,
+        currency: "ARS",
+        lines: [line(s.productB, "1", "100")],
+      });
+
+      const measured = await statementsOf(() =>
+        listPurchaseOrderSupplierOptions(s.adminA),
+      );
+      expect(reads(measured.statements).length).toBe(1);
+      expect(reads(measured.statements)[0]).toMatch(/limit/i);
+      const options = measured.result;
+      if (!options.ok) throw new Error(`opciones rechazadas: ${options.code}`);
+      if (options.options.kind !== "select") {
+        throw new Error("se esperaba el select");
+      }
+      expect(options.options.suppliers).toEqual([
+        { id: s.supplierA, name: "Importaciones Sur" },
+      ]);
+    },
+    TEST_TIMEOUT,
+  );
+
+  // AC-4 y D-5: en el tope exacto el `<select>` todavía entra, y con uno más desaparece y el
+  // proveedor vuelve a llegar por la URL. Se insertan por SQL y no por el caso de uso porque la
+  // lectura solo mira `purchase_orders`, y 51 altas con su transacción tardarían más que la
+  // medición que importa.
+  it(
+    "en el tope de proveedores con órdenes el filtro entra, y con uno más deja de ofrecerse",
+    async () => {
+      const s = await seed();
+      await getDb().execute(
+        sql`insert into suppliers (organization_id, name)
+            select ${s.orgA}, 'Proveedor ' || lpad(g::text, 2, '0')
+            from generate_series(1, ${PURCHASE_ORDER_SUPPLIER_FILTER_LIMIT}::int) as g`,
+      );
+      await getDb().execute(
+        sql`insert into purchase_orders (organization_id, number, supplier_id, currency, total,
+                                         created_by)
+            select ${s.orgA}, 1000 + row_number() over (order by name), id, 'ARS', '100.00',
+                   ${s.adminUserA}
+            from suppliers
+            where organization_id = ${s.orgA} and name like 'Proveedor %'`,
+      );
+
+      const atLimit = await listPurchaseOrderSupplierOptions(s.adminA);
+      if (!atLimit.ok) throw new Error(`opciones rechazadas: ${atLimit.code}`);
+      if (atLimit.options.kind !== "select") {
+        throw new Error("se esperaba el select en el tope exacto");
+      }
+      expect(atLimit.options.suppliers.length).toBe(
+        PURCHASE_ORDER_SUPPLIER_FILTER_LIMIT,
+      );
+      // Y en orden alfabético español, que lo pone el servicio y no la base.
+      const names = atLimit.options.suppliers.map((option) => option.name);
+      expect(names).toEqual(
+        [...names].sort((a, b) => a.localeCompare(b, "es")),
+      );
+
+      await getDb().execute(
+        sql`with nuevo as (
+              insert into suppliers (organization_id, name)
+              values (${s.orgA}, 'Proveedor del tope') returning id)
+            insert into purchase_orders (organization_id, number, supplier_id, currency, total,
+                                         created_by)
+            select ${s.orgA}, 2000, id, 'ARS', '100.00', ${s.adminUserA} from nuevo`,
+      );
+      const beyond = await listPurchaseOrderSupplierOptions(s.adminA);
+      if (!beyond.ok) throw new Error(`opciones rechazadas: ${beyond.code}`);
+      expect(beyond.options.kind).toBe("text");
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "un viewer no lee las opciones del filtro",
+    async () => {
+      const s = await seed();
+      expect(await listPurchaseOrderSupplierOptions(s.viewerA)).toMatchObject({
+        ok: false,
+        code: "FORBIDDEN",
+      });
     },
     TEST_TIMEOUT,
   );

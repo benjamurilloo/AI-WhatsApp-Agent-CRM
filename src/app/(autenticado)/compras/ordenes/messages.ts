@@ -7,6 +7,7 @@ import type {
   PurchaseOrderLineRule,
   PurchaseOrderStatus,
 } from "@/modules/purchasing";
+import type { StockTracking } from "@/modules/catalog";
 import { currencyDecimals } from "@/shared/money";
 
 // Textos de las pantallas de órdenes de compra (brief-22.3, D-8 y D-10), derivados de la taxonomía
@@ -30,10 +31,55 @@ export const CURRENT_DATA_NOTE =
 export const UNKNOWN_PRODUCT_TEXT = "Producto no disponible";
 export const UNKNOWN_SUPPLIER_TEXT = "Proveedor no disponible";
 
+// El estado de la base, que es el que nombran los rechazos («La orden ya está cerrada…»).
 export const STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
   open: "Abierta",
   closed: "Cerrada",
   cancelled: "Cancelada",
+};
+
+// El estado que se *muestra* (brief-24.8.1, D-2), que no es el de la base: la lámina 01 separa una
+// orden cerrada completa de una cerrada con faltante, y eso **no es un valor del enum** sino una
+// derivación de lo recibido por línea (H-2). El enum sigue con sus tres valores y el trigger de la
+// `0048` sin tocar; acá solo se elige cómo se nombra.
+export type PurchaseOrderDisplayStatus =
+  "open" | "closedComplete" | "closedShort" | "cancelled";
+
+export function purchaseOrderDisplayStatus(
+  status: PurchaseOrderStatus,
+  hasPending: boolean,
+): PurchaseOrderDisplayStatus {
+  if (status !== "closed") return status;
+  return hasPending ? "closedShort" : "closedComplete";
+}
+
+export const DISPLAY_STATUS_LABEL: Record<PurchaseOrderDisplayStatus, string> =
+  {
+    open: "Abierta",
+    closedComplete: "Cerrada · Completa",
+    closedShort: "Cerrada · Con faltante",
+    cancelled: "Cancelada",
+  };
+
+// El singular de las cantidades (brief-24.8.1, V-28). La cantidad llega en el formato de la base
+// —«1.000» es una unidad—, que es el mismo que ya comparaba el resumen de la ficha. Una orden de
+// una sola unidad **no es un borde**: comprar un equipo es el caso corriente del rubro, y la
+// lámina de estados escribe «Quedará 1 pendiente», no «Quedarán 1 pendientes». Lo encontró la
+// comparación entrada por entrada contra las láminas (AC-16).
+export function byQuantity(
+  quantity: string,
+  singular: string,
+  plural: string,
+): string {
+  return quantity === "1.000" ? singular : plural;
+}
+
+// Cómo se lleva el stock del producto, en la columna «Seguimiento» del alta (brief-24.8.1, V-8).
+// Son las palabras de la lámina, más cortas que las de la ficha de unidades porque acá son una
+// columna y no un campo que se elige.
+export const TRACKING_LABEL: Record<StockTracking, string> = {
+  quantity: "Por cantidad",
+  unit: "Por unidad",
 };
 
 export function unexpectedErrorMessage(requestId: string): string {

@@ -138,7 +138,7 @@ const line = (page: Page, position: number) =>
 // Elige una opción de un buscador del alta con el teclado: escribe, espera la lista, baja a la
 // primera opción y la elige con Enter, como en orders.spec.ts.
 async function pick(scope: Locator | Page, label: string, text: string) {
-  const field = scope.getByLabel(label, { exact: true });
+  const field = scope.getByRole("combobox", { name: label, exact: true });
   await field.fill(text);
   await expect(scope.getByRole("option").first()).toBeVisible();
   await field.press("ArrowDown");
@@ -179,16 +179,16 @@ test("un admin crea una orden de dos líneas, ve los rechazos, la imprime y la c
   ).toBeVisible();
   await expectAccessible(page, "lista vacía");
 
-  await page.getByRole("link", { name: "+ Nueva orden de compra" }).click();
+  await page.getByRole("link", { name: "+ Nueva orden" }).click();
   await expect(page).toHaveURL("/compras/ordenes/nueva");
   // La moneda no viene elegida (D-5).
   await expect(page.getByLabel("Moneda", { exact: true })).toHaveValue("");
   await expectAccessible(page, "alta vacía");
 
   await pick(page, "Proveedor", "Import");
-  await expect(page.getByLabel("Proveedor", { exact: true })).toHaveValue(
-    "Importaciones Sur",
-  );
+  await expect(
+    page.getByRole("combobox", { name: "Proveedor", exact: true }),
+  ).toHaveValue("Importaciones Sur");
   await page.getByLabel("Moneda", { exact: true }).selectOption("ARS");
   await pick(line(page, 1), "Producto", "Café");
   await expect(line(page, 1).getByLabel("Producto")).toHaveValue(
@@ -203,7 +203,7 @@ test("un admin crea una orden de dos líneas, ve los rechazos, la imprime y la c
   await pick(line(page, 2), "Producto", "Té");
   await line(page, 2).getByLabel("Cantidad").fill("1,5");
   await line(page, 2).getByLabel("Costo unitario").fill("0,999");
-  await page.getByRole("button", { name: "Crear orden de compra" }).click();
+  await page.getByRole("button", { name: "Crear orden" }).click();
   // El anunciador de rutas de Next.js también es un alert: el mensaje se busca por su texto.
   await expect(page.getByText("Revisá las líneas marcadas.")).toBeFocused();
   await expect(line(page, 2)).toContainText(
@@ -215,16 +215,19 @@ test("un admin crea una orden de dos líneas, ve los rechazos, la imprime y la c
   // Un producto repetido.
   await pick(line(page, 2), "Producto", "Café");
   await line(page, 2).getByLabel("Costo unitario").fill("0,99");
-  await page.getByRole("button", { name: "Crear orden de compra" }).click();
+  await page.getByRole("button", { name: "Crear orden" }).click();
   await expect(line(page, 2)).toContainText(
     "El producto ya está en otra línea: sumá la cantidad ahí.",
   );
   expect(await orderCount()).toBe(0);
 
   await pick(line(page, 2), "Producto", "Té");
-  await expect(page.getByText("Total estimado: $ 3.002,49")).toBeVisible();
+  // El total vive en «Resumen de la orden» (brief-24.8.1, V-9), no en una línea suelta.
+  await expect(
+    page.getByRole("complementary", { name: "Resumen de la orden" }),
+  ).toContainText("$ 3.002,49");
   await expectAccessible(page, "alta con dos líneas");
-  await page.getByRole("button", { name: "Crear orden de compra" }).click();
+  await page.getByRole("button", { name: "Crear orden" }).click();
   await expect(page).toHaveURL(
     /\/compras\/ordenes\/[0-9a-f-]{36}\?aviso=creada$/,
   );
@@ -257,10 +260,10 @@ test("un admin crea una orden de dos líneas, ve los rechazos, la imprime y la c
   for (const hidden of [
     nav,
     page.getByRole("button", { name: "Imprimir o guardar PDF" }),
-    page.getByRole("link", { name: "Cancelar la orden" }),
-    page.getByRole("table", {
-      name: "Historia de la orden de compra OC-000001",
-    }),
+    page.getByRole("button", { name: "Más acciones de la orden de compra" }),
+    page.getByRole("region", { name: "Recepción de mercadería" }),
+    page.getByRole("region", { name: "Actividad" }),
+    page.getByRole("complementary", { name: "Resumen de la orden" }),
     page.getByText("Orden de compra creada."),
   ]) {
     await expect(hidden).toBeHidden();
@@ -268,7 +271,10 @@ test("un admin crea una orden de dos líneas, ve los rechazos, la imprime y la c
   await page.emulateMedia({ media: null });
   await expectAccessible(page, "vista de impresión", "print");
 
-  // La cancelación, con su confirmación.
+  // La cancelación vive en «Más acciones» (brief-24.8.1, D-4), con su confirmación.
+  await page
+    .getByRole("button", { name: "Más acciones de la orden de compra" })
+    .click();
   await page.getByRole("link", { name: "Cancelar la orden" }).click();
   await expect(page).toHaveURL(/\?confirmar=cancelar$/);
   await expect(
@@ -278,16 +284,21 @@ test("un admin crea una orden de dos líneas, ve los rechazos, la imprime y la c
   await page.getByRole("button", { name: "Sí, cancelar la orden" }).click();
   await expect(page).toHaveURL(/\?aviso=cancelada$/);
   await expect(page.getByText("Orden de compra cancelada.")).toBeVisible();
+  // Cancelada es final: no queda ninguna acción, así que tampoco queda menú.
   await expect(
-    page.getByRole("link", { name: "Cancelar la orden" }),
+    page.getByRole("button", { name: "Más acciones de la orden de compra" }),
   ).toHaveCount(0);
-  const history = page.getByRole("table", {
-    name: "Historia de la orden de compra OC-000001",
-  });
-  await expect(history).toContainText("Alta");
-  await expect(history).toContainText("Orden OC-000001 · 2 líneas");
-  await expect(history).toContainText("Cancelación");
-  await expect(history).toContainText("Abierta → Cancelada");
+  // La actividad narra el hecho y ya no la transición (brief-24.8.1, D-6).
+  const activity = page.getByRole("region", { name: "Actividad" });
+  await expect(activity).toContainText("Creada");
+  await expect(activity).toContainText(
+    "Orden de compra creada por Admin de ejemplo.",
+  );
+  await expect(activity).toContainText("Cancelada");
+  await expect(activity).toContainText(
+    "Orden de compra cancelada por Admin de ejemplo.",
+  );
+  await expect(activity).not.toContainText("→");
   await expectAccessible(page, "detalle cancelada");
 
   // En la ficha del proveedor.
@@ -314,21 +325,70 @@ test("un admin filtra la lista por estado y por proveedor, busca por número y c
     name: "Órdenes de compra de la organización",
   });
   for (const number of ["OC-000001", "OC-000002", "OC-000003"]) {
-    await expect(table.getByRole("link", { name: number })).toBeVisible();
+    await expect(
+      table.getByRole("link", { name: number, exact: true }),
+    ).toBeVisible();
   }
   await expectAccessible(page, "lista");
 
   await page.getByLabel("Estado").selectOption("canceladas");
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
-  await expect(page).toHaveURL("/compras/ordenes?numero=&estado=canceladas");
-  await expect(table.getByRole("link", { name: "OC-000002" })).toBeVisible();
-  await expect(table.getByRole("link", { name: "OC-000001" })).toHaveCount(0);
+  // El formulario lleva ahora el proveedor de D-5, así que viaja vacío en la dirección.
+  await expect(page).toHaveURL(
+    "/compras/ordenes?numero=&proveedor=&estado=canceladas",
+  );
+  await expect(
+    table.getByRole("link", { name: "OC-000002", exact: true }),
+  ).toBeVisible();
+  await expect(
+    table.getByRole("link", { name: "OC-000001", exact: true }),
+  ).toHaveCount(0);
+
+  // El proveedor pasa a ser un control (D-5): hasta la 24.8.1 su id solo llegaba por la dirección.
+  // Las opciones son «Todos» más los proveedores **con** órdenes, en orden alfabético español.
+  await page.goto("/compras/ordenes");
+  const supplierFilter = page.getByLabel("Proveedor", { exact: true });
+  await expect(supplierFilter.locator("option")).toHaveText([
+    "Todos",
+    "Distribuidora Norte",
+    "Importaciones Sur",
+  ]);
+  await supplierFilter.selectOption(north);
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(
+    `/compras/ordenes?numero=&proveedor=${north}&estado=todas`,
+  );
+  await expect(
+    table.getByRole("link", { name: "OC-000002", exact: true }),
+  ).toBeVisible();
+  await expect(
+    table.getByRole("link", { name: "OC-000001", exact: true }),
+  ).toHaveCount(0);
+
+  // Un proveedor **sin** órdenes que llega por la dirección: el control lo nombra en vez de quedar
+  // en «Todos» contradiciendo a una lista vacía, que es el defecto N-9 de la 24.7.2-b.
+  const west = await insertSupplier("Mayorista Oeste");
+  await page.goto(`/compras/ordenes?proveedor=${west}`);
+  await expect(supplierFilter).toHaveValue(west);
+  await expect(supplierFilter.locator("option")).toHaveText([
+    "Todos",
+    "Distribuidora Norte",
+    "Importaciones Sur",
+    "Mayorista Oeste",
+  ]);
+  await expect(
+    page.getByText("Ninguna orden de compra coincide con estos filtros."),
+  ).toBeVisible();
 
   await page.goto("/compras/ordenes");
   await page.getByLabel("Número").fill("oc3");
   await page.getByLabel("Número").press("Enter");
-  await expect(table.getByRole("link", { name: "OC-000003" })).toBeVisible();
-  await expect(table.getByRole("link", { name: "OC-000001" })).toHaveCount(0);
+  await expect(
+    table.getByRole("link", { name: "OC-000003", exact: true }),
+  ).toBeVisible();
+  await expect(
+    table.getByRole("link", { name: "OC-000001", exact: true }),
+  ).toHaveCount(0);
   await page.getByLabel("Número").fill("P-000003");
   await page.getByLabel("Número").press("Enter");
   await expect(
@@ -342,9 +402,16 @@ test("un admin filtra la lista por estado y por proveedor, busca por número y c
     .first()
     .click();
   await expect(page).toHaveURL(`/compras/ordenes?proveedor=${south}`);
-  await expect(page.getByText("Órdenes de Importaciones Sur.")).toBeVisible();
-  await expect(table.getByRole("link", { name: "OC-000002" })).toHaveCount(0);
-  await expect(table.getByRole("link", { name: "OC-000003" })).toBeVisible();
+  // Con el `<select>` de D-5 dibujado, **el control** dice de quién es la lista y cómo volver a
+  // todas: la línea «Órdenes de …» quedó solo para cuando el control no entra.
+  await expect(supplierFilter).toHaveValue(south);
+  await expect(page.getByText("Órdenes de Importaciones Sur.")).toHaveCount(0);
+  await expect(
+    table.getByRole("link", { name: "OC-000002", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    table.getByRole("link", { name: "OC-000003", exact: true }),
+  ).toBeVisible();
   await expectAccessible(page, "lista filtrada por proveedor");
 
   // Desde la ficha, el alta llega con el proveedor ya elegido.
@@ -358,9 +425,74 @@ test("un admin filtra la lista por estado y por proveedor, busca por número y c
   await page.goto(`/compras/proveedores/${south}`);
   await card.getByRole("link", { name: "Nueva orden de compra" }).click();
   await expect(page).toHaveURL(`/compras/ordenes/nueva?proveedor=${south}`);
-  await expect(page.getByLabel("Proveedor", { exact: true })).toHaveValue(
-    "Importaciones Sur",
+  await expect(
+    page.getByRole("combobox", { name: "Proveedor", exact: true }),
+  ).toHaveValue("Importaciones Sur");
+});
+
+// M-2 (AC-14): el barrido de anchos **escrito**, no declarado a ojo. Es el instrumento que encontró
+// 338 px de desbordamiento en la 24.7.2 después de que el criterio se diera por cumplido sin él, y
+// el que midió los 403 px del `<select>` de clientes. Acá el riesgo es ese mismo control —el filtro
+// de proveedor de D-5 (H-6)—, así que se mide **con el control dibujado** y con un nombre de
+// proveedor largo adentro. `clientWidth` del documento y no `window.innerWidth`, que incluye la
+// barra de desplazamiento y es más permisivo (N-5 de la 24.7.3).
+const anchoDesbordado = (page: Page) =>
+  page.evaluate(() => {
+    const raiz = document.documentElement;
+    return raiz.scrollWidth - raiz.clientWidth;
+  });
+
+test("brief-24.8.1: las tres pantallas no desbordan a 320 ni a 375 px", async ({
+  page,
+}) => {
+  const south = await insertSupplier(
+    "Importaciones del Sur Argentino y Distribución Mayorista",
   );
+  const coffee = await insertProduct(
+    "CAF-250-MOLIDO",
+    "Café molido en grano tostado natural de origen único",
+  );
+  const orderId = await insertOrder(1, south, coffee);
+  await login(page, ADMIN);
+
+  for (const ancho of [320, 375]) {
+    await page.setViewportSize({ width: ancho, height: 900 });
+
+    await page.goto("/compras/ordenes");
+    await expect(page.getByLabel("Proveedor", { exact: true })).toBeVisible();
+    expect(
+      await anchoDesbordado(page),
+      `lista a ${ancho} px`,
+    ).toBeLessThanOrEqual(0);
+
+    await page.goto("/compras/ordenes/nueva");
+    await expect(line(page, 5)).toBeVisible();
+    expect(
+      await anchoDesbordado(page),
+      `alta a ${ancho} px`,
+    ).toBeLessThanOrEqual(0);
+
+    await page.goto(`/compras/ordenes/${orderId}`);
+    await expect(
+      page.getByRole("heading", { name: "Orden de compra OC-000001" }),
+    ).toBeVisible();
+    expect(
+      await anchoDesbordado(page),
+      `ficha a ${ancho} px`,
+    ).toBeLessThanOrEqual(0);
+
+    // Y con el menú de la ficha desplegado, que es lo que más sobresale a 320 px.
+    await page
+      .getByRole("button", { name: "Más acciones de la orden de compra" })
+      .click();
+    await expect(
+      page.getByRole("link", { name: "Cancelar la orden" }),
+    ).toBeVisible();
+    expect(
+      await anchoDesbordado(page),
+      `ficha con el menú abierto a ${ancho} px`,
+    ).toBeLessThanOrEqual(0);
+  }
 });
 
 test("un viewer no ve Compras y las páginas de órdenes muestran el permiso sin datos", async ({
@@ -431,44 +563,76 @@ test("un admin cierra con faltante una orden con recepciones, que no se cancela"
   const lines = page.getByRole("table", {
     name: "Líneas de la orden de compra OC-000001",
   });
+  // Las columnas de la lámina 03 (brief-24.8.1, AC-6).
+  for (const name of ["Pedidas", "Recibidas", "Pendientes"]) {
+    await expect(lines.getByRole("columnheader", { name })).toBeVisible();
+  }
+  // La barra de recepción (V-11) y el resumen, con lo pedido y lo que falta.
   await expect(
-    lines.getByRole("columnheader", { name: "Recibido" }),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Recepción de mercadería" }),
+  ).toContainText("1 de 4 unidades recibidas");
   await expect(
-    lines.getByRole("columnheader", { name: "Falta" }),
+    page.getByRole("complementary", { name: "Resumen de la orden" }),
+  ).toContainText("3 unidades");
+  // `exact`: sin él, «Recepciones» también alcanza a la región desplazable de la tabla, que se
+  // llama «Recepciones de la orden de compra OC-000001».
+  const receipts = page.getByRole("region", {
+    name: "Recepciones",
+    exact: true,
+  });
+  await expect(
+    receipts.getByRole("link", { name: "RC-000001", exact: true }),
   ).toBeVisible();
-  const receipts = page.getByRole("region", { name: "Recepciones" });
-  await expect(receipts.getByRole("link", { name: "RC-000001" })).toBeVisible();
+  await expect(receipts).toContainText("Vigente");
   await expect(
     page.getByRole("link", { name: "Cancelar la orden" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: "Registrar recepción" }),
+    page.getByRole("link", { name: "Recibir mercadería" }),
   ).toHaveAttribute("href", `/compras/recepciones/nueva?orden=${orderId}`);
   await expectAccessible(page, "detalle con recepciones");
 
+  // «Cerrar con faltante» vive en «Más acciones» (D-4), y «Imprimir» no se repite ahí (H-8).
+  const more = page.getByRole("button", {
+    name: "Más acciones de la orden de compra",
+  });
+  await more.click();
+  await expect(
+    page.getByRole("button", { name: "Imprimir o guardar PDF" }),
+  ).toHaveCount(1);
   await page.getByRole("link", { name: "Cerrar con faltante" }).click();
   await expect(page).toHaveURL(/\?confirmar=cerrar$/);
+  await expect(page.getByText("Cerrar OC-000001 con faltante")).toBeFocused();
+  // El verbo concuerda con lo recibido (V-28): acá llegó **una** unidad de cuatro, así que la
+  // frase arranca en singular y sigue en plural por las tres que faltan.
   await expect(
-    page.getByText("¿Cerrar la orden de compra OC-000001 con faltante?"),
-  ).toBeFocused();
+    page.getByText("Se recibió 1 de 4 unidades. Quedarán 3 pendientes."),
+  ).toBeVisible();
+  await expect(page.getByText("4 unidades en total")).toBeVisible();
+  await expect(page.getByText("1 recibida", { exact: true })).toBeVisible();
+  await expect(page.getByText("3 pendientes", { exact: true })).toBeVisible();
   await expectAccessible(page, "confirmación del cierre");
-  await page.getByRole("button", { name: "Sí, cerrar con faltante" }).click();
+  await page.getByRole("button", { name: "Cerrar con faltante" }).click();
   await expect(page).toHaveURL(/\?aviso=cerrada$/);
   await expect(
     page.getByText("Orden de compra cerrada con faltante."),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Registrar recepción" }),
+    page.getByRole("link", { name: "Recibir mercadería" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: "Cerrar con faltante" }),
+    page.getByRole("button", { name: "Más acciones de la orden de compra" }),
   ).toHaveCount(0);
-  const history = page.getByRole("table", {
-    name: "Historia de la orden de compra OC-000001",
-  });
-  await expect(history).toContainText("Cierre a mano");
-  await expect(history).toContainText("Abierta → Cerrada");
+  const closedActivity = page.getByRole("region", { name: "Actividad" });
+  await expect(closedActivity).toContainText("Cerrada con faltante");
+  await expect(closedActivity).toContainText(
+    "Orden cerrada con faltante por Admin de ejemplo: lo que falta ya no se recibe con esta orden.",
+  );
+  // La recepción no deja entrada en la auditoría de la orden y aun así se narra, desde las
+  // recepciones que la ficha ya lee (brief-24.8.1, corrección de D-6).
+  await expect(closedActivity).toContainText(
+    "Se registró la recepción RC-000001",
+  );
   await expectAccessible(page, "detalle cerrada con faltante");
 });
 
@@ -513,20 +677,20 @@ test.describe("sin JavaScript", () => {
     await page.goto("/compras/ordenes/nueva");
 
     await page
-      .getByLabel("Proveedor", { exact: true })
+      .getByRole("combobox", { name: "Proveedor", exact: true })
       .fill("importaciones sur");
     await page.getByLabel("Moneda", { exact: true }).selectOption("ARS");
     await line(page, 1).getByLabel("Producto").fill("caf-250");
     await line(page, 1).getByLabel("Cantidad").fill("2");
     await line(page, 1).getByLabel("Costo unitario").fill("0");
-    await page.getByRole("button", { name: "Crear orden de compra" }).click();
+    await page.getByRole("button", { name: "Crear orden" }).click();
     await expect(line(page, 1)).toContainText(
       "Escribí un costo mayor que cero.",
     );
     await expect(line(page, 1).getByLabel("Cantidad")).toHaveValue("2");
 
     await line(page, 1).getByLabel("Costo unitario").fill("1000");
-    await page.getByRole("button", { name: "Crear orden de compra" }).click();
+    await page.getByRole("button", { name: "Crear orden" }).click();
     await expect(
       page.getByRole("heading", {
         level: 1,

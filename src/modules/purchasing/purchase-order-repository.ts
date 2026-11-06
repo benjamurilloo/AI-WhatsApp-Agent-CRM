@@ -225,11 +225,20 @@ export async function countPurchaseOrders(
 export type PurchaseOrderListRow = PurchaseOrderRow & {
   supplierName: string;
   lineCount: number;
+  hasPending: boolean;
 };
 
 // De la más reciente a la más vieja, paginada en SQL (D-11). El nombre del proveedor y la cantidad
 // de líneas son subconsultas sobre tablas del mismo módulo, con alias explícitos: en un select de
 // una sola tabla, Drizzle no califica las columnas (como en orders).
+//
+// `hasPending` es la lectura que agrega la 24.8.1 (brief-24.8.1, H-2): si a la orden le falta
+// recibir algo. Con eso la lista distingue «Cerrada · Completa» de «Cerrada · Con faltante», que
+// **no son estados de la base** —el enum sigue con `open`, `closed` y `cancelled`— sino una
+// derivación de lo recibido por línea. Es la misma cuenta que hace la ficha con
+// `sumReceivedByOrderLine`, incluido el descuento de las recepciones anuladas, pero resuelta como
+// **una subconsulta más del mismo `select`**: una sentencia por página y no una por fila, que es lo
+// que la 24.6.2-b midió costando 252 consultas al hacerlo de la forma obvia.
 export function findPurchaseOrders(
   query: PurchaseOrderListQuery,
   limit: number,
@@ -246,10 +255,54 @@ export function findPurchaseOrders(
         select count(*)::int from purchase_order_lines l
         where l.organization_id = "purchase_orders"."organization_id"
           and l.purchase_order_id = "purchase_orders"."id")`,
+      hasPending: sql<boolean>`exists (
+        select 1 from purchase_order_lines l
+        where l.organization_id = "purchase_orders"."organization_id"
+          and l.purchase_order_id = "purchase_orders"."id"
+          and l.quantity > coalesce((
+            select sum(gl.quantity) from goods_receipt_lines gl
+            join goods_receipts g
+              on g.organization_id = gl.organization_id and g.id = gl.goods_receipt_id
+            where gl.organization_id = l.organization_id
+              and gl.purchase_order_line_id = l.id
+              and not exists (
+                select 1 from goods_receipt_voids v
+                where v.organization_id = g.organization_id and v.goods_receipt_id = g.id)
+          ), 0))`,
     })
     .from(purchaseOrders)
     .where(listConditions(query))
     .orderBy(desc(purchaseOrders.createdAt), desc(purchaseOrders.id))
     .limit(limit)
     .offset(offset);
+}
+
+// Las opciones del filtro de proveedor de la lista (brief-24.8.1, D-5), la segunda lectura nueva de
+// la subfase, autorizada el 2026-11-06 y declarada en el recuadro de D-5.
+//
+// Trae **solo los proveedores que tienen al menos una orden**: una opción que no devuelve ninguna
+// fila no es un filtro, es una trampa. Es **una sola sentencia**, con el nombre en una subconsulta
+// correlacionada como el `supplierName` de la lista, y no un `join`, para no cambiar la forma de
+// acceso que este archivo ya usa.
+//
+// Se pide **uno más que el tope** —como `findReceiptClientIds` de cash— para que el servicio sepa
+// si el `<select>` entra sin contar aparte. Deliberadamente **sin `order by`**: con `distinct`,
+// PostgreSQL exige que la expresión del orden esté en la lista de selección, y el orden que importa
+// es el alfabético en español, que lo pone el servicio con `localeCompare`. Pasado el tope el
+// recorte es arbitrario y da igual: ahí el control ya no es un `<select>`.
+export function findPurchaseOrderSupplierOptions(
+  organizationId: string,
+  limit: number,
+): Promise<{ id: string; name: string }[]> {
+  return getDb()
+    .selectDistinct({
+      id: purchaseOrders.supplierId,
+      name: sql<string>`(
+        select s.name from suppliers s
+        where s.organization_id = "purchase_orders"."organization_id"
+          and s.id = "purchase_orders"."supplier_id")`,
+    })
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.organizationId, organizationId))
+    .limit(limit);
 }

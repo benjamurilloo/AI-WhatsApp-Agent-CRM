@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { suggestProducts } from "@/modules/catalog";
+import { suggestProducts, type StockTracking } from "@/modules/catalog";
 import type { AuthContext } from "@/modules/organizations";
 import {
   cancelPurchaseOrder,
@@ -238,9 +238,16 @@ export type PurchaseOrderOption = {
   detail?: string;
 };
 
+// La opción de producto lleva además cómo se lleva su stock, para la columna «Seguimiento» de la
+// lámina 02 (brief-24.8.1, V-8). **No cuesta una lectura nueva** (H-4): `suggestProducts` ya
+// devuelve `tracking` en cada `ProductSuggestion` y esta acción lo descartaba al mapear.
+export type PurchaseOrderProductOption = PurchaseOrderOption & {
+  tracking: StockTracking;
+};
+
 export async function searchPurchaseOrderProductsAction(
   text: string,
-): Promise<PurchaseOrderOption[]> {
+): Promise<PurchaseOrderProductOption[]> {
   const context = await requireSession();
   const { log } = logger("compras.ordenes.productos", context);
   try {
@@ -251,6 +258,7 @@ export async function searchPurchaseOrderProductsAction(
       id: product.id,
       label: product.name,
       detail: product.sku,
+      tracking: product.tracking,
     }));
   } catch (error) {
     log("INTERNAL", error);

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  byQuantity,
   cancelRejectionMessage,
   closeRejectionMessage,
+  DISPLAY_STATUS_LABEL,
+  purchaseOrderDisplayStatus,
   purchaseOrderNoticeMessage,
   purchaseOrderRejection,
+  TRACKING_LABEL,
 } from "./messages";
 
 // Los textos de la orden de compra (brief-22.3, D-8): cada rechazo del alta en su lugar, el costo
@@ -163,5 +167,51 @@ describe("la cancelación y los avisos", () => {
     );
     expect(purchaseOrderNoticeMessage("toString")).toBeNull();
     expect(purchaseOrderNoticeMessage(undefined)).toBeNull();
+  });
+});
+
+// El estado que se muestra (brief-24.8.1, D-2 y M-3). Es la única pieza nueva de la subfase con
+// una regla adentro, y los dos casos que la lámina separó —completa y con faltante— son los que
+// fallan si la condición se invierte: con `hasPending` al revés, las dos aserciones de abajo se
+// ponen rojas. Lo demás es un mapa de palabras, y se afirma como tal.
+describe("el estado que se muestra", () => {
+  it("separa la cerrada completa de la cerrada con faltante", () => {
+    expect(purchaseOrderDisplayStatus("closed", false)).toBe("closedComplete");
+    expect(purchaseOrderDisplayStatus("closed", true)).toBe("closedShort");
+  });
+
+  it("una orden que no está cerrada no deriva nada, tenga o no faltante", () => {
+    for (const hasPending of [true, false]) {
+      expect(purchaseOrderDisplayStatus("open", hasPending)).toBe("open");
+      expect(purchaseOrderDisplayStatus("cancelled", hasPending)).toBe(
+        "cancelled",
+      );
+    }
+  });
+
+  it("cada estado mostrado tiene su palabra, y las dos cerradas se distinguen sin el color", () => {
+    expect(DISPLAY_STATUS_LABEL).toEqual({
+      open: "Abierta",
+      closedComplete: "Cerrada · Completa",
+      closedShort: "Cerrada · Con faltante",
+      cancelled: "Cancelada",
+    });
+  });
+
+  it("el seguimiento del producto se nombra en la columna del alta", () => {
+    expect(TRACKING_LABEL).toEqual({
+      quantity: "Por cantidad",
+      unit: "Por unidad",
+    });
+  });
+
+  // V-28: la cantidad llega en el formato de la base, y **solo** una unidad exacta va en singular.
+  // El caso que importa es «1.000»: una orden de un equipo es corriente, y la frase entera de la
+  // lámina está escrita en singular para él.
+  it("una unidad exacta va en singular, y nada más", () => {
+    expect(byQuantity("1.000", "unidad", "unidades")).toBe("unidad");
+    for (const quantity of ["0.000", "1.500", "2.000", "10.000", "0.001"]) {
+      expect(byQuantity(quantity, "unidad", "unidades")).toBe("unidades");
+    }
   });
 });

@@ -7,7 +7,6 @@ import {
   HeaderIcon,
 } from "@/app/_components/detail-header";
 import { PageNotice } from "@/app/_components/page-notice";
-import { SectionCard } from "@/app/_components/section-card";
 import { acceptedCurrencies } from "@/shared/money";
 import type { SearchParams } from "../filters";
 import { FORBIDDEN_PAGE_MESSAGE } from "../messages";
@@ -75,19 +74,16 @@ export default async function NewPurchaseOrderPage({
           </p>
         }
       />
-      <SectionCard
-        id="orden-titulo"
-        title="Proveedor, moneda y líneas"
-        icon="list"
-        className="mt-6"
-      >
+      {/* El formulario arma las dos tarjetas de la izquierda y el resumen de la derecha, que es
+          la forma de la lámina 02 (brief-24.8.1). */}
+      <div className="mt-6">
         <PurchaseOrderForm
           initialSupplier={initialSupplier}
           currencies={currencyOptions()}
           defaultCurrency={await getMainCurrency(context.organizationId)}
           maxLines={MAX_PURCHASE_ORDER_LINES}
         />
-      </SectionCard>
+      </div>
     </main>
   );
 }

@@ -275,7 +275,15 @@ export default async function SupplierPage({
                   <span className="tabular-nums">
                     {formatMoney(order.total, order.currency)}
                   </span>
-                  <PurchaseOrderStatusBadge status={order.status} />
+                  {/* `hasPending` viene en la misma lectura que ya trae estas órdenes, así que la
+                      ficha del proveedor nombra el estado igual que la lista. *Agregado el
+                      2026-11-06* por la 24.8.1, con la ampliación de su lista cerrada autorizada
+                      por el usuario: sin esto, la misma orden diría «Cerrada · Con faltante» en
+                      /compras/ordenes y «Cerrada» acá. */}
+                  <PurchaseOrderStatusBadge
+                    status={order.status}
+                    hasPending={order.hasPending}
+                  />
                 </li>
               ))}
             </ul>
