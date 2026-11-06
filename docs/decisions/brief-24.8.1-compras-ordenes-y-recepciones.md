@@ -453,6 +453,19 @@ autorizada arrastre.
 > base. Se descartó porque la inconsistencia es visible para el mismo usuario en la misma sesión, y
 > porque el precedente de la ficha del proveedor ya la había resuelto al revés.
 
+> **Ampliada por quinta vez el 2026-11-06**, al preparar el cierre y con autorización del usuario en
+> el turno, con **un archivo más**: `docs/decisions/README.md`.
+>
+> El índice de briefs tenía **149 filas para 150 briefs en disco**, y el único que faltaba era el de
+> esta subfase. Se encontró **verificando el índice en vez de suponerlo**: un bucle que comprueba, para
+> cada brief del disco, que exista su enlace en el índice. Sin la fila, este brief queda fuera del
+> documento que el propio HANDOFF nombra como dueño del estado y del cierre de cada brief.
+>
+> La alternativa descartada era dejar la fila para el cierre siguiente, que no toca ningún archivo
+> fuera de su lista. Se descartó porque el hueco lo creó **esta** subfase al nacer sin fila, y dejarlo
+> andando es exactamente la clase de atraso documental que la revisión de la 24.5.1 encontró en el
+> §3 del HANDOFF.
+
 **Pantallas**
 
 - `src/app/(autenticado)/compras/ordenes/page.tsx`
@@ -593,3 +606,205 @@ para el recorrido. **Un nivel superior nunca se infiere de uno inferior.**
   no de esta subfase, y **no se arreglan acá de paso**.
 
 Es la primera fila del **bloque de Abastecimiento**. La siguen la 24.8.1-b (D-1) y la 24.8.2.
+
+## Cierre
+
+**Cerrada el 2026-11-06. Nivel alcanzado: validado en staging**, con **AC-19 completo**: desplegada
+en `a4f2931f8c6b05fb83a52ae17a2271e3a1bca2fa`, las **siete** verificaciones del runbook pasadas y
+**el recorrido del usuario declarado** ese mismo día. **Para volver atrás:
+`fd43a2a7bab946d817319ff60c5a4fa1acb3af2d`**, anotado en `/var/lib/crm-production/despliegues`
+**antes** de desplegar; **entre los dos no hay migraciones**, así que la vuelta atrás es solo de
+código y siguen **67**.
+
+El cambio son **25 archivos, +2.946/−707**, comparados con `git diff --name-only 6eb0425 a4f2931`
+contra la tabla de la lista cerrada: **los veinticinco están dentro de la lista y sus cinco
+ampliaciones, y ninguno fuera**. De `src/modules/` entraron **exactamente las tres entradas
+declaradas** (+119/−9), ni una cuarta. **Tres archivos autorizados quedaron sin usar**, y se dicen
+para que no se los cuente como alcance entregado: `compras/ordenes/filters.ts` —D-5 cerró en (a) y
+el filtro quedó resuelto en la página—, `tests/e2e/suppliers.spec.ts` y
+`docs/architecture/Overview.md`, porque la lectura nueva no cambió la fila de `purchasing`.
+
+### Los diecinueve criterios
+
+| id | Veredicto |
+|---|---|
+| **AC-1** | **Cumplido.** La lista tiene la forma de la lámina 01: franja de etapas, los tres filtros, columnas Nº / Proveedor / Fecha / Monto / Estado / Ver, y tarjetas en teléfono. Verificado por la comparación entrada por entrada de AC-16 y por los dos casos de `purchase-orders.spec.ts` que la recorren. |
+| **AC-2** | **Cumplido.** La insignia distingue los cuatro casos con **texto e icono**, y `messages.test.ts` fija las cuatro combinaciones como función pura. El color no es el único portador del estado. |
+| **AC-3** | **Cumplido.** `purchase_order_status` sigue con `open`, `closed` y `cancelled`, y el trigger de la `0048` quedó sin tocar: no hay ninguna migración nueva. El caso de integración crea una orden cerrada completa y otra cerrada con faltante y lee las dos. |
+| **AC-4** | **Cumplido, con el punto ciego de su instrumento declarado.** M-1 midió el recuento y es **idéntico con 1 y con 25 órdenes**, y las opciones del filtro son **una sola sentencia**. Pero el recuento no vio lo que encontró **N-1**: la sentencia era una y el `limit` estaba arriba del `distinct`, así que no acotaba nada. **Un recuento de sentencias no es un recuento de costo**, y eso ahora está escrito. |
+| **AC-5** | **Cumplido.** El alta tiene la forma de la lámina 02 con «Seguimiento» y el resumen, **sigue arrancando con cinco líneas** y el caso de `test.describe("sin JavaScript")` crea una orden con el nombre exacto del proveedor y el SKU exacto del producto. |
+| **AC-6** | **Cumplido.** La ficha tiene la forma de la lámina 03 con «Creada por», la barra de progreso, Pedidas · Recibidas · Pendientes y las tres filas del resumen. |
+| **AC-7** | **Cumplido.** «Imprimir» aparece una sola vez (H-8, contra el propio README del lote, que la duplica) y «Más acciones» nunca ofrece a la vez cancelar y cerrar con faltante. |
+| **AC-8** | **Cumplido.** «Cerrar con faltante» se resuelve como un paso en la URL (`?confirmar=cerrar`), anda sin JavaScript y **conserva la página del historial**: eso último lo arregló **N-5**, que encontró que las confirmaciones descartaban `?historial`. |
+| **AC-9** | **Cumplido.** Ninguna regla de la compra cambió: transiciones, validaciones del alta, el tope de 50 líneas, el efecto de una recepción y el de una anulación quedaron idénticos. El `git diff` de `src/modules/purchasing/**` se adjunta **como evidencia y no como el criterio**, y toca las tres entradas declaradas: un campo derivado en una lectura, una lectura nueva de solo lectura y tres líneas de barrel. **Escrito sobre el invariante y no sobre el árbol de archivos**, que es la lección que dejó AC-9 de la 24.7.3. |
+| **AC-10** | **Cumplido.** El caso que crea, imprime y cancela una orden sigue verde, y la ficha agrega `print:hidden` a todo lo nuevo: el progreso, el resumen y las columnas Recibidas y Pendientes no salen en papel. |
+| **AC-11** | **Cumplido.** El caso del `viewer` recorre las tres pantallas y las tres dan el mensaje de permiso sin datos. |
+| **AC-12** | **Cumplido.** Ninguna migración, tabla ni contrato nuevo; siguen **67** migraciones, contadas en el directorio y en el servidor al desplegar. |
+| **AC-13** | **Cumplido, y verificado servicio por servicio contra `HEAD`**: la tabla de abajo. **Dos lecturas nuevas y ninguna tercera.** |
+| **AC-14** | **Cumplido.** M-2 barrió las tres pantallas a 320 y a 375 px con el `<select>` dibujado y los datos sembrados adversarialmente, y ninguna desborda. |
+| **AC-15** | **Cumplido.** `Screens.md` queda al día en sus §43, §44 y §45, **incluida la corrección de «tres pestañas»** de D-7: hoy son **cinco**, porque la 22.6 y la 22.7 agregaron «Pagos» y «A pagar» y la línea no se había actualizado. **N-3 y N-9** sumaron tres cadenas de interfaz más que esta subfase volvió falsas. |
+| **AC-16** | **Cumplido.** Comparación entrada por entrada con las cuatro láminas abiertas: **treinta y una diferencias declaradas una por una** —diecisiete al planificar y catorce al implementar y comparar—, con el recuento del Roadmap corregido por **N-9**, que decía diecisiete cuando ya eran treinta y una. |
+| **AC-17** | **Cumplido.** Run **42229020325** en `conclusion: success`, leída por **`headSha a4f2931f8c6b05fb83a52ae17a2271e3a1bca2fa`** y no por «la última», con el paso «Alcance del cambio» en **`Corre todo: true`**. **33** archivos de guardas con **920** pruebas, **123** archivos con **1312** unitarios, **115** archivos con **1930** de integración contra PostgreSQL 18, y **384** de extremo a extremo en 24,1 minutos. 13:52:29 → 14:29:06 UTC. |
+| **AC-18** | **Cumplido.** Revisión de un agente que no participó, de solo lectura, contra este brief y contra las reglas vigentes: **nueve hallazgos, ninguno bloqueante**, los nueve verificados contra el código antes de aceptarse y los nueve aplicados. Su veredicto no autorizó nada. |
+| **AC-19** | **Cumplido.** Despliegue, las siete verificaciones del runbook y el recorrido del usuario, que es la mitad que ninguna revisión puede hacer por él. |
+
+### AC-13 · Las dos lecturas nuevas, página por página
+
+El criterio pedía el nombre de cada llamada **antes y después**. Medido con `git show 6eb0425:<ruta>`
+contra `HEAD`, pantalla por pantalla:
+
+| Pantalla | Antes (`6eb0425`) | Después (`a4f2931`) | Diferencia |
+|---|---|---|---|
+| `compras/ordenes/page.tsx` | `listPurchaseOrders`, `getOrganizationTimezone`, `getSupplier` (condicional) | las mismas tres **más `listPurchaseOrderSupplierOptions`** | **+1**, la que D-5 obliga, en `Promise.all` con la lista |
+| `compras/ordenes/nueva/page.tsx` | `getSupplier` (condicional), `getMainCurrency` | **idéntico** | **0** — `tracking` ya viajaba en la sugerencia del buscador y la acción lo descartaba al mapear (H-4) |
+| `compras/ordenes/[orderId]/page.tsx` | `getOrganizationTimezone`, `getAppFrame`, `listPurchaseOrderAudit`, `auditActorLabels` | **idéntico** | **0** — «Creada por» sale del historial que la página ya leía (H-5) |
+| `compras/proveedores/[supplierId]/page.tsx` | sin cambios de lectura | **idéntico** | **0** — `hasPending` viaja en la lectura que esa ficha ya hacía |
+
+**La primera lectura nueva no es una llamada de página**: lo recibido por orden va dentro del mismo
+`select` de `listPurchaseOrders`, que es justamente lo que AC-4 exige. **La segunda es la única
+llamada agregada en las cuatro pantallas.** Dos, y ninguna tercera.
+
+### Las tres mediciones
+
+- **M-1 · Medido, no razonado.** El recuento de sentencias de la lista es **el mismo con 1 y con 25
+  órdenes**, contado en la corrida interceptando el cliente de `pg` —nunca el pool— y desenvolviendo
+  cada cliente después de medir, con las dos formas de `connect` cubiertas, de callback y de promesa.
+  Las opciones del filtro son **una sentencia**, y solo traen proveedores que tienen órdenes. **Lo
+  que M-1 no mide está declarado**: el recuento es de sentencias, no de filas leídas, y por ese hueco
+  pasó N-1. La corrección de N-1 está **razonada sobre la semántica de `distinct`, no medida con
+  `explain`**, y se escribe con esas palabras.
+- **M-2 · Medido.** `setViewportSize` a 320 y a 375 px y `scrollWidth` contra `clientWidth` en las
+  tres pantallas, con el filtro de proveedor desplegado y **sembrado adversarialmente** —un nombre de
+  proveedor largo, un SKU y una descripción largos—, porque un barrido con datos cómodos mide el
+  sembrado y no la pantalla. Ninguna desborda. Es el instrumento que encontró 338 px en la 24.7.2 y
+  239 px en la 24.7.3.
+- **M-3 · Comprobado que falla.** Con una orden cerrada con faltante dibujada como «Cerrada ·
+  Completa», el caso se pone **rojo**; se comprobó y se revirtió. Y toda aserción negativa nombra
+  **los dos roles posibles** del control que mira, por la lección de la 24.7.3.
+
+**Las tres son independientes y ninguna hereda la salvedad de otra.**
+
+### La revisión independiente: nueve hallazgos, ninguno bloqueante
+
+Los nueve se verificaron contra el código antes de aceptarse y los nueve se aplicaron en `a4f2931`.
+*Aviso de numeración*: estos `N-x` son los de **esta** revisión; el «N-9» que D-5 cita en su recuadro
+es un hallazgo de la revisión de la **24.7.2-b** y son cosas distintas.
+
+- **N-1, el más caro, y el único que el instrumento no podía ver.** Las opciones del filtro hacían
+  `select distinct` sobre `purchase_orders` con el `limit` **arriba** del `distinct`, que por lo tanto
+  no acotaba nada: la lista de selección se evalúa por fila de entrada antes de deduplicar, así que
+  PostgreSQL resolvía la subconsulta del nombre **para cada orden de la organización**. Ahora recorre
+  `suppliers` con un `exists`, y el `limit` corta proveedores. **M-1 daba verde en los dos casos**:
+  veía una sentencia con `limit` y el costo caía justo en su punto ciego.
+- **N-2, visible para el usuario.** La tarjeta «Actividad» mezcla las recepciones con la auditoría, y
+  su pie contaba **solo la auditoría**: una orden con una recepción y su cierre dibujaba dos filas y
+  decía debajo «Mostrando 1 a 1 de 1 cambio». Ahora cuenta los hitos dibujados, y la aserción que
+  faltaba quedó escrita.
+- **N-6.** `lineCount` se quedó **sin consumidor** cuando V-1 sacó la columna «Líneas»: una
+  subconsulta correlacionada por fila que pagaban los tres consumidores de la lectura para tirar el
+  resultado. Se fue de la consulta y del tipo.
+- **N-5.** Las confirmaciones descartaban `?historial`, que AC-8 nombra. Hoy es inalcanzable —la
+  auditoría de una orden no pasa de dos entradas— pero **ninguna prueba fija esa condición**, así que
+  la página se conserva en vez de apoyarse en que el caso no exista.
+- **N-7**, que necesitó la **cuarta** ampliación de la lista cerrada, autorizada en el turno: el
+  buscador global componía su detalle con los tres nombres del enum, así que la misma orden decía
+  «Cerrada» ahí y «Cerrada · Con faltante» en la lista y en la ficha. Es **el mismo argumento** con el
+  que la lista se había ampliado con la ficha del proveedor.
+- **N-3 y N-9, documentales**: tres cadenas de interfaz que esta subfase volvió falsas en
+  `Screens.md` §45, y el recuento de diferencias del Roadmap, que decía diecisiete cuando ya eran
+  treinta y una.
+- **N-4 y N-8, huecos de declaración**: V-32 por el título afirmativo de la confirmación frente a la
+  pregunta de su hermana, V-33 por «unidades» en la tarjeta 17-1, el comentario del módulo que
+  contradecía lo que D-5 había decidido, y la **segunda ampliación**, que no nombraba la constante del
+  tope aunque también entra a la superficie pública.
+
+**Las dos fallas de la primera corrida local de integración eran del entorno, no del código**, y la
+CI lo demostró corriendo **1930 de 1930**: un `beforeEach` que pasó los 10 s reseteando la base bajo
+carga, y un worker de Windows muerto con **`0xC0000409`** (`STATUS_STACK_BUFFER_OVERRUN`). El
+conjunto que falla cambió entre corridas y los archivos pasan aislados, que es la firma de un
+problema de entorno y no de una falla. **No se subió ningún límite global para taparlo**, que es la
+condición de detención 6.
+
+### El despliegue y las siete verificaciones
+
+`rc=0`, **cero reinicios** del servicio, **133 segundos** de caída (14:36:34 → 14:38:47 UTC, un solo
+`Stopped` y un solo `Started`, **leídos del journal y no inferidos** del tiempo total del script) y
+HEAD igual al SHA. Es la **cuarta prueba real** de las correcciones que dejó la 24.7.2 —swap de 2 GB,
+build desacoplado del `ssh` y arranque decidido por el `BUILD_ID` y no por el código de salida del
+build— y las tres volvieron a funcionar. **El swap del pico viene creciendo despliegue a despliegue:
+78 MB en la 24.7.2-b, 84,7 en la 24.7.3 y 160 ahora**; no es un problema hoy y conviene tenerlo a la
+vista antes de que lo sea, porque el droplet tiene 2 GB y ya tuvo tres OOM de build.
+
+Las siete, todas en verde: **18 de 18** archivos de configuración idénticos a los versionados; **un
+solo salto de proxy medido por consecuencia** sobre `login_attempts.key_hash`, con su control
+negativo —dos filas en la ventana de quince minutos, dos claves distintas, la del operador con una
+hora que coincide con el intento, y ninguna igual a `sha256` de `sin-proxy`—; **HSTS** presente sobre
+HTTPS (`max-age=31536000; includeSubDomains`) y ausente sobre HTTP, que devuelve 301; escucha **solo
+en `127.0.0.1:3000`**; `crm_app_login` distinto de `crm_owner`, con `INSERT=t`, `UPDATE=f` y
+`DELETE=f`; ingestión y lectura desde afuera en **401** en las tres rutas; y la organización real
+**«Vixora» en 0 clientes, 0 mensajes y 0 productos**. **Ni la IP ni su hash salieron de la shell ni
+entran acá**: lo que se versiona es si coinciden y la hora de la fila, porque un `sha256` de una IPv4
+sin sal se revierte en minutos y este repositorio es público desde el 2026-10-30.
+
+### El recorrido del usuario
+
+Declarado el 2026-11-06 sobre las tres pantallas —la lista, el alta y la ficha de una orden— **sin
+hallar nada**. Es el primer recorrido de la Fase 24 que no produce una corrección, y eso **no devalúa
+el instrumento**: en la 24.7.3 encontró dos defectos que ninguna de las dos revisiones había visto,
+porque una revisión contra el diseño no puede encontrar un defecto del diseño. Que esta vez no
+encuentre nada es un resultado, no una omisión.
+
+### La quinta ampliación de la lista cerrada
+
+**Autorizada el 2026-11-06, al preparar el cierre**, con **un archivo**: `docs/decisions/README.md`.
+El índice de briefs tenía **149 filas para 150 briefs en disco**, y el único que faltaba era este. Se
+encontró porque el cierre **verificó el índice en vez de suponerlo**, con un bucle que comprueba cada
+brief del disco contra su enlace. El archivo está fuera de la lista cerrada, así que **se preguntó
+antes de tocarlo**, que es la condición de detención 4.
+
+### Lo que no certifica
+
+- **No es «preparado para producción».** El nivel es **validado en staging**, con el recorrido hecho.
+- **Las recepciones no son de esta subfase.** D-1 partió la fila: la recepción en dos pasos y en el
+  teléfono, las unidades por recepción y la anulación revisable son la **24.8.1-b**. En la ficha eso
+  se nota en dos lugares declarados: la columna «Unidades» de la tarjeta de recepciones **no se
+  dibuja**, y la oración de la recepción parcial dice **el monto y no las unidades**, porque ese
+  recuento es la lectura que la 24.8.1-b trae.
+- **La miniatura del producto de la lámina 03 no se dibuja**, y es una decisión y no un olvido: sería
+  una lectura nueva contra el catálogo **en la página que se imprime y se le manda al proveedor**.
+- **El menú «⋮» de las láminas no se implementó**, por decisión registrada y repetida desde la
+  24.7.2-b: necesita JavaScript, y el no-JavaScript es un invariante **medido** del proyecto. «Más
+  acciones» es su reemplazo sin JavaScript.
+- **N-1 está razonado, no medido.** La corrección es correcta por la semántica de `distinct`, pero
+  **nadie corrió un `explain`** sobre la consulta vieja ni sobre la nueva. Si alguna vez el filtro de
+  proveedor se vuelve lento, ese es el primer lugar donde mirar y la primera cosa que falta medir.
+- **El objetivo táctil de 44 px sigue sin corregir**, pendiente como subfase propia; y el
+  **desbordamiento del `<select>` de «cobrar a cuenta» y «pagos a proveedores»** sigue abierto,
+  declarado por la 24.7.1 y medido por la 24.7.2-b (403 px de `min-content` contra 288 dibujados).
+  Los dos son del proyecto y **no se arreglaron acá de paso**, como el brief fijó antes de empezar.
+
+### Lo que esta subfase deja aprendido
+
+1. **Un recuento de sentencias no es un recuento de costo.** M-1 fue diseñada contra el defecto obvio
+   —una consulta por fila— y lo descartó bien, pero **daba verde con el `limit` arriba del
+   `distinct`**, que hacía exactamente lo que M-1 quería prohibir: trabajo proporcional a las filas.
+   Una medición de cardinalidad no cubre la forma de la consulta, y la que la cubre es `explain`.
+2. **Un campo que se queda sin consumidor no se nota al sacar la columna.** V-1 sacó «Líneas» de la
+   lista y `lineCount` siguió costando una subconsulta correlacionada por fila a los **tres**
+   consumidores de la lectura. Al quitar una columna de una pantalla conviene preguntar qué parte de
+   la consulta existía solo para ella.
+3. **Un contador y lo que dibuja la pantalla pueden venir de dos fuentes distintas.** N-2 salió de que
+   la tarjeta mezcla dos orígenes y el pie contaba uno solo. Cuando una lista une dos fuentes, el
+   recuento se cuenta sobre **lo dibujado**, no sobre la fuente que le dio el nombre.
+4. **Lo que el índice afirma se verifica, no se supone.** 149 filas para 150 briefs apareció con un
+   bucle de dos líneas, y ni las revisiones ni el propio cierre lo habrían visto leyendo.
+5. **Una condición inalcanzable que ninguna prueba fija no es una condición**: N-5 descartaba
+   `?historial` sin consecuencia porque hoy la auditoría no pasa de dos entradas, y nada escribía esa
+   premisa. Se conserva el parámetro en vez de apoyarse en ella.
+
+### Discrepancia encontrada al cerrar, que no se corrige en silencio
+
+El §3 del `HANDOFF.md` afirmaba que **la CI tiene `timeout-minutes: 35` desde la 21.4 (D-12)**, y
+`.github/workflows/ci.yml:26` dice **`timeout-minutes: 45`**. Gana el código, que es la primera
+fuente de verdad del proyecto. Esa línea se va con el recorte de ese §3, cuyo dueño es el propio
+workflow; queda anotada acá para que el cambio no parezca una pérdida de información.
