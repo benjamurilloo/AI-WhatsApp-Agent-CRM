@@ -227,6 +227,21 @@ test("brief-23.3: un admin encuentra los seis tipos con el teclado y llega a cad
     }),
   ).toContainText(`${SUPPLIER} · Abierta`);
 
+  // El estado que la sugerencia muestra es el **derivado**, el de cuatro valores, y no el del enum
+  // (brief-24.8.1, D-2; N-7 de la revisión independiente). Esta orden no recibió nada, así que
+  // cerrada queda «Con faltante». Hasta la 24.8.1 el buscador decía «Cerrada» mientras la lista y
+  // la ficha decían otra cosa de la misma orden.
+  await db.execute(
+    sql`update purchase_orders set status = 'closed', closed_at = now()
+        where id = ${ids.purchaseOrder}`,
+  );
+  await type(page, "123");
+  await expect(
+    suggestions(page).getByRole("option", {
+      name: /^OC-000123, orden de compra/,
+    }),
+  ).toContainText(`${SUPPLIER} · Cerrada · Con faltante`);
+
   // Con el prefijo, uno solo; y cada ficha.
   for (const [text, href] of [
     ["P-000123", `/pedidos/${ids.order}`],

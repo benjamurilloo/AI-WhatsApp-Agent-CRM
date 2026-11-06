@@ -29,7 +29,8 @@ import {
   UNKNOWN_CLIENT_TEXT,
 } from "@/app/(autenticado)/pedidos/messages";
 import {
-  STATUS_LABEL as PURCHASE_ORDER_STATUS_LABEL,
+  DISPLAY_STATUS_LABEL as PURCHASE_ORDER_DISPLAY_STATUS_LABEL,
+  purchaseOrderDisplayStatus,
   UNKNOWN_SUPPLIER_TEXT,
 } from "@/app/(autenticado)/compras/ordenes/messages";
 import {
@@ -259,7 +260,16 @@ const READERS: Readonly<Record<SearchKind, Reader>> = {
     return result.orders.map((order) => ({
       id: order.id,
       label: order.displayNumber,
-      detail: `${order.supplierName || UNKNOWN_SUPPLIER_TEXT} · ${PURCHASE_ORDER_STATUS_LABEL[order.status]}`,
+      // El estado **mostrado**, el de cuatro valores, y no el del enum (brief-24.8.1, D-2): con
+      // `STATUS_LABEL` la misma orden decía «Cerrada» acá y «Cerrada · Con faltante» en la lista y
+      // en la ficha. Es el mismo argumento con el que la lista cerrada de la subfase se amplió con
+      // la ficha del proveedor, y lo encontró N-7 de la revisión independiente; la cuarta
+      // ampliación, con este archivo, la autorizó el usuario el 2026-11-06.
+      detail: `${order.supplierName || UNKNOWN_SUPPLIER_TEXT} · ${
+        PURCHASE_ORDER_DISPLAY_STATUS_LABEL[
+          purchaseOrderDisplayStatus(order.status, order.hasPending)
+        ]
+      }`,
       detailStyle: "text",
       href: `/compras/ordenes/${order.id}`,
     }));

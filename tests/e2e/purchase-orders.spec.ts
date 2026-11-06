@@ -633,6 +633,12 @@ test("un admin cierra con faltante una orden con recepciones, que no se cancela"
   await expect(closedActivity).toContainText(
     "Se registró la recepción RC-000001",
   );
+  // El pie cuenta **lo que la tarjeta dibuja** (N-2 de la revisión independiente): acá, dos hitos
+  // —el cierre y la recepción— contra **una** entrada de auditoría, porque esta orden la inserta
+  // el fixture por SQL y no deja el alta. Contando la auditoría el pie decía «Mostrando 1 a 1 de 1
+  // cambio» debajo de dos filas, y ninguna aserción lo miraba.
+  await expect(closedActivity.getByRole("listitem")).toHaveCount(2);
+  await expect(closedActivity).toContainText("Mostrando 1 a 2 de 2 hitos");
   await expectAccessible(page, "detalle cerrada con faltante");
 });
 

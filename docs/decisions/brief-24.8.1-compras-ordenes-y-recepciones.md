@@ -252,6 +252,8 @@ manda al proveedor**. Se declara como diferencia y no se dibuja.
 | V-29 | 03 | La actividad rotula «Recepción parcial» | **Dice «Recepción»** (y «Recepción anulada»). *Agregada el 2026-11-06, en AC-16*: la misma fila cubre la recepción que completa la orden, y llamarla «parcial» sería falso justo en el caso que cierra la compra; cuál de las dos es se lee en la oración, que es lo que D-6 pide |
 | V-30 | 03 | Cabecera «Acciones» visible en la tarjeta de recepciones | **Queda `sr-only`** («Ver la recepción»). *Agregada el 2026-11-06, en AC-16*: es la convención que la propia lista de órdenes usa para su columna de «Ver», y la lámina 01 tampoco le pone texto a esa cabecera |
 | V-31 | 17-1 | «Estado de recepción» con una barra de tres segmentos | **Se dibuja la lista con íconos** («2 recibidas», «1 pendiente»), sin la barra. *Agregada el 2026-11-06, en AC-16*: la barra de la lámina es la misma información que la lista de abajo y que la barra de progreso que la ficha ya tiene a dos párrafos de distancia, y segmentarla por línea pedía el recuento por recepción que D-1 mandó a la 24.8.1-b |
+| V-32 | 17-1 | Título «Cerrar OC-000057 con faltante», en afirmación | **Se adopta el de la lámina**, y queda declarado que la confirmación hermana sigue en pregunta («¿Cancelar la orden de compra {número}?»), con «No, volver» / «Sí, cancelar la orden» contra «Volver» / «Cerrar con faltante». *Agregada el 2026-11-06, por N-4 de la revisión independiente*: las dos viven en la misma ficha y se abren del mismo menú, así que la divergencia se ve. Ninguna lámina dibuja la cancelación, de modo que unificar las dos gramáticas sería rediseñar una pantalla que la v2 no pide y arrastrar tres specs; se deja declarada y no resuelta |
+| V-33 | 17-1 | «Se recibieron 2 de 3 **ítems**» en la tarjeta del cierre | **Dice «unidades»**, por el mismo motivo que V-23 en la barra de progreso: una línea puede pedir 2,5 de algo. *Agregada el 2026-11-06, por N-8 de la revisión independiente*: V-23 declaraba la lámina 03 y el recuadro de D-3 citaba «ítems» sin corregirlo, así que el cambio estaba hecho y declarado en el código pero no tenía fila propia para la tarjeta 17-1 |
 
 ## Decisiones
 
@@ -415,7 +417,7 @@ autorizada arrastre.
 > La segunda lectura que D-5 obliga tiene que ser llamada desde la pantalla, y en este repositorio
 > **no existe un solo import profundo desde `src/app` hacia `purchasing`**: todo entra por el
 > barrel, y el precedente está exportado igual en `src/modules/cash/index.ts:37`. Sin esa línea, la
-> lectura autorizada no es alcanzable. Son **tres líneas de export**: la función y su tipo.
+> lectura autorizada no es alcanzable. Son **tres líneas de export**: la función `listPurchaseOrderSupplierOptions`, su tipo `PurchaseOrderSupplierOptions` y la constante del tope `PURCHASE_ORDER_SUPPLIER_FILTER_LIMIT`, cuyo único consumidor es la prueba de integración que mide el borde de los 50. *Precisado el 2026-11-06, por N-8 de la revisión independiente*: la ampliación decía «la función y su tipo» y la constante también entra a la superficie pública.
 >
 > La alternativa descartada era devolver las opciones dentro de `listPurchaseOrders`, que ya está
 > exportada y no habría tocado ningún archivo nuevo. Se descartó porque
@@ -435,6 +437,21 @@ autorizada arrastre.
 > La alternativa descartada era demostrar las dos cosas solo por e2e. Se descartó porque el estado
 > derivado es una función pura con cuatro combinaciones, y pagar un navegador por cada una es más
 > lento y prueba menos.
+
+> **Ampliada por cuarta vez el 2026-11-06**, después de la revisión independiente y con
+> autorización del usuario en el turno, con **un archivo más**:
+> `src/app/(autenticado)/buscar/search.ts`.
+>
+> Lo encontró **N-7 de la revisión**: la sugerencia del buscador global compone su detalle con
+> `STATUS_LABEL`, los tres nombres del enum, así que una orden cerrada con faltante decía
+> «Cerrada» ahí y «Cerrada · Con faltante» en la lista y en la ficha. Es **el mismo argumento con
+> el que la lista se amplió con la ficha del proveedor**: sin tocar ese archivo la misma orden dice
+> dos cosas distintas en dos pantallas. El cambio son dos líneas —el import y el detalle— y una
+> aserción en `tests/e2e/search.spec.ts`, que ya estaba en la lista.
+>
+> La alternativa descartada era declarar la diferencia y dejar el buscador con el estado de la
+> base. Se descartó porque la inconsistencia es visible para el mismo usuario en la misma sesión, y
+> porque el precedente de la ficha del proveedor ya la había resuelto al revés.
 
 **Pantallas**
 

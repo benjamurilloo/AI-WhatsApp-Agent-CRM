@@ -4,6 +4,7 @@ import {
   purchaseOrderLines,
   purchaseOrders,
   purchaseOrderStatus,
+  suppliers,
 } from "./schema";
 
 // Acceso a purchase_orders y purchase_order_lines (ADR 0023, punto 3; brief-22.3). Toda consulta
@@ -224,13 +225,17 @@ export async function countPurchaseOrders(
 
 export type PurchaseOrderListRow = PurchaseOrderRow & {
   supplierName: string;
-  lineCount: number;
   hasPending: boolean;
 };
 
-// De la más reciente a la más vieja, paginada en SQL (D-11). El nombre del proveedor y la cantidad
-// de líneas son subconsultas sobre tablas del mismo módulo, con alias explícitos: en un select de
-// una sola tabla, Drizzle no califica las columnas (como en orders).
+// De la más reciente a la más vieja, paginada en SQL (D-11). El nombre del proveedor es una
+// subconsulta sobre una tabla del mismo módulo, con alias explícitos: en un select de una sola
+// tabla, Drizzle no califica las columnas (como en orders).
+//
+// `lineCount` **se fue en la 24.8.1** (N-6 de la revisión): la columna «Líneas» de la lista fue la
+// única que lo usaba y V-1 la sacó. Era una subconsulta correlacionada por fila, que pagaban los
+// tres consumidores de esta lectura —la lista, el buscador global y la ficha del proveedor— para
+// tirar el resultado.
 //
 // `hasPending` es la lectura que agrega la 24.8.1 (brief-24.8.1, H-2): si a la orden le falta
 // recibir algo. Con eso la lista distingue «Cerrada · Completa» de «Cerrada · Con faltante», que
@@ -251,10 +256,6 @@ export function findPurchaseOrders(
         select s.name from suppliers s
         where s.organization_id = "purchase_orders"."organization_id"
           and s.id = "purchase_orders"."supplier_id")`,
-      lineCount: sql<number>`(
-        select count(*)::int from purchase_order_lines l
-        where l.organization_id = "purchase_orders"."organization_id"
-          and l.purchase_order_id = "purchase_orders"."id")`,
       hasPending: sql<boolean>`exists (
         select 1 from purchase_order_lines l
         where l.organization_id = "purchase_orders"."organization_id"
@@ -281,28 +282,39 @@ export function findPurchaseOrders(
 // la subfase, autorizada el 2026-11-06 y declarada en el recuadro de D-5.
 //
 // Trae **solo los proveedores que tienen al menos una orden**: una opción que no devuelve ninguna
-// fila no es un filtro, es una trampa. Es **una sola sentencia**, con el nombre en una subconsulta
-// correlacionada como el `supplierName` de la lista, y no un `join`, para no cambiar la forma de
-// acceso que este archivo ya usa.
+// fila no es un filtro, es una trampa. Es **una sola sentencia**, con el `exists` correlacionado
+// sobre una tabla del mismo módulo y alias explícitos, como el `hasPending` de la lista, y no un
+// `join`, para no cambiar la forma de acceso que este archivo ya usa.
+//
+// **Recorre `suppliers` y no `purchase_orders`** (N-1 de la revisión independiente). Escrita al
+// revés —`select distinct` sobre las órdenes, con el nombre en una subconsulta— el `limit` queda
+// *arriba* del `distinct` y no acota nada: PostgreSQL evalúa la lista de selección para **cada
+// orden de la organización** antes de deduplicar, así que una organización con miles de órdenes y
+// doce proveedores pagaba miles de evaluaciones en cada render de la lista. Acá el `limit` corta
+// proveedores, que es lo que el control muestra, y el `exists` corta en el primer acierto. Es el
+// mismo contraste que `findPurchaseOrders`, donde el `limit 25` sí está arriba del scan. **Razonado
+// sobre la semántica de `distinct`, no medido con `explain`**: el recuento de sentencias de M-1 no
+// ve este costo, que es exactamente el punto ciego del instrumento.
 //
 // Se pide **uno más que el tope** —como `findReceiptClientIds` de cash— para que el servicio sepa
-// si el `<select>` entra sin contar aparte. Deliberadamente **sin `order by`**: con `distinct`,
-// PostgreSQL exige que la expresión del orden esté en la lista de selección, y el orden que importa
-// es el alfabético en español, que lo pone el servicio con `localeCompare`. Pasado el tope el
-// recorte es arbitrario y da igual: ahí el control ya no es un `<select>`.
+// si el `<select>` entra sin contar aparte. Sin `order by`: el orden que importa es el alfabético
+// en español, que lo pone el servicio con `localeCompare`. Pasado el tope el recorte es arbitrario
+// y da igual: ahí el control ya no es un `<select>`.
 export function findPurchaseOrderSupplierOptions(
   organizationId: string,
   limit: number,
 ): Promise<{ id: string; name: string }[]> {
   return getDb()
-    .selectDistinct({
-      id: purchaseOrders.supplierId,
-      name: sql<string>`(
-        select s.name from suppliers s
-        where s.organization_id = "purchase_orders"."organization_id"
-          and s.id = "purchase_orders"."supplier_id")`,
-    })
-    .from(purchaseOrders)
-    .where(eq(purchaseOrders.organizationId, organizationId))
+    .select({ id: suppliers.id, name: suppliers.name })
+    .from(suppliers)
+    .where(
+      and(
+        eq(suppliers.organizationId, organizationId),
+        sql`exists (
+          select 1 from purchase_orders po
+          where po.organization_id = "suppliers"."organization_id"
+            and po.supplier_id = "suppliers"."id")`,
+      ),
+    )
     .limit(limit);
 }

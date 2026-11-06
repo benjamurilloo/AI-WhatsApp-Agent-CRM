@@ -18,9 +18,13 @@ const initialState: CancelState = { status: "idle" };
 export function CancelPurchaseOrderConfirm({
   orderId,
   displayNumber,
+  backHref,
 }: {
   orderId: string;
   displayNumber: string;
+  // La ficha con la página de la actividad que se estaba mirando. Lo agrega la 24.8.1 por AC-8,
+  // para que las dos confirmaciones de la ficha vuelvan al mismo lugar.
+  backHref: string;
 }) {
   const [state, formAction, pending] = useActionState(
     cancelPurchaseOrderAction,
@@ -62,10 +66,7 @@ export function CancelPurchaseOrderConfirm({
       </div>
       <form action={formAction} className="flex flex-wrap justify-end gap-3">
         <input type="hidden" name="orderId" value={orderId} />
-        <Link
-          href={`/compras/ordenes/${orderId}`}
-          className={secondaryLinkClass}
-        >
+        <Link href={backHref} className={secondaryLinkClass}>
           No, volver
         </Link>
         <button type="submit" disabled={pending} className={dangerButtonClass}>

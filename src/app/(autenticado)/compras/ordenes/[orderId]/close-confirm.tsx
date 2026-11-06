@@ -39,12 +39,15 @@ export function ClosePurchaseOrderConfirm({
   ordered,
   received,
   pending,
+  backHref,
 }: {
   orderId: string;
   displayNumber: string;
   ordered: string;
   received: string;
   pending: string;
+  // La ficha con la página de la actividad que se estaba mirando (AC-8).
+  backHref: string;
 }) {
   const [state, formAction, submitting] = useActionState(
     closePurchaseOrderAction,
@@ -131,10 +134,7 @@ export function ClosePurchaseOrderConfirm({
       </div>
       <form action={formAction} className="flex flex-wrap justify-end gap-3">
         <input type="hidden" name="orderId" value={orderId} />
-        <Link
-          href={`/compras/ordenes/${orderId}`}
-          className={secondaryLinkClass}
-        >
+        <Link href={backHref} className={secondaryLinkClass}>
           Volver
         </Link>
         <button

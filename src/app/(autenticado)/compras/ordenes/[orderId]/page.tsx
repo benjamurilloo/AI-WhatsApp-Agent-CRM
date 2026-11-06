@@ -31,7 +31,7 @@ import {
 } from "@/app/_components/more-action-styles";
 import { MoreActions } from "@/app/_components/more-actions";
 import { PageNotice } from "@/app/_components/page-notice";
-import { Pagination, shownRangeText } from "@/app/_components/pagination";
+import { Pagination } from "@/app/_components/pagination";
 import { SectionCard } from "@/app/_components/section-card";
 import { StatusBadge } from "@/app/_components/status-badge";
 import {
@@ -204,6 +204,32 @@ export default async function PurchaseOrderPage({
         })
       : [];
 
+  // Abrir y cerrar una confirmación no pierde la página de la actividad (AC-8). Hoy es inalcanzable
+  // —la auditoría de una orden no pasa de dos entradas y la página es de 25—, pero el criterio lo
+  // nombra y la condición que lo vuelve inalcanzable no la fija ninguna prueba (N-5 de la revisión).
+  const historyQuery =
+    audit.ok && audit.page > 1 ? `historial=${audit.page}` : "";
+  const backHref = historyQuery ? `${href}?${historyQuery}` : href;
+  const confirmHref = (value: string) =>
+    `${href}?confirmar=${value}${historyQuery ? `&${historyQuery}` : ""}`;
+
+  // El pie cuenta **los hitos que la tarjeta dibuja** y no las entradas de auditoría (N-2 de la
+  // revisión independiente). Contando la auditoría, una orden con una recepción y su cierre
+  // dibujaba dos filas y decía debajo «Mostrando 1 a 1 de 1 cambio», un recuento que no cierra a la
+  // vista. No se reusa `shownRangeText` porque las recepciones se suman solo en la primera página,
+  // y eso corre el primer número de las siguientes: un desplazamiento que el ayudante compartido no
+  // modela y que no se puede agregar sin tocar `pagination.tsx`, que está fuera de la lista cerrada
+  // de esta subfase.
+  const mergedReceipts = order.receipts.length;
+  const activityTotal = (audit.ok ? audit.total : 0) + mergedReceipts;
+  const activityFirst =
+    (audit.ok ? audit.page - 1 : 0) * AUDIT_PAGE_SIZE +
+    (audit.ok && audit.page > 1 ? mergedReceipts : 0) +
+    1;
+  const activityRangeText = `Mostrando ${activityFirst} a ${
+    activityFirst + activity.length - 1
+  } de ${activityTotal} ${activityTotal === 1 ? "hito" : "hitos"}`;
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8 print:max-w-none print:p-0">
       <div className="print:hidden">
@@ -244,7 +270,7 @@ export default async function PurchaseOrderPage({
                 {canClose && !confirmingClose ? (
                   <li>
                     <Link
-                      href={`${href}?confirmar=cerrar`}
+                      href={confirmHref("cerrar")}
                       className={moreActionItemClass}
                     >
                       <Icon name="fileText" className="size-4" />
@@ -255,7 +281,7 @@ export default async function PurchaseOrderPage({
                 {canCancel && !confirming ? (
                   <li>
                     <Link
-                      href={`${href}?confirmar=cancelar`}
+                      href={confirmHref("cancelar")}
                       className={`${moreActionItemClass} ${moreActionDangerClass}`}
                     >
                       <Icon name="close" className="size-4" />
@@ -330,6 +356,7 @@ export default async function PurchaseOrderPage({
             <CancelPurchaseOrderConfirm
               orderId={order.id}
               displayNumber={order.displayNumber}
+              backHref={backHref}
             />
           </div>
         ) : null}
@@ -339,6 +366,7 @@ export default async function PurchaseOrderPage({
             <ClosePurchaseOrderConfirm
               orderId={order.id}
               displayNumber={order.displayNumber}
+              backHref={backHref}
               received={received}
               pending={pending}
               ordered={ordered}
@@ -777,14 +805,7 @@ export default async function PurchaseOrderPage({
               <Pagination
                 page={audit.page}
                 pageCount={audit.pageCount}
-                rangeText={shownRangeText({
-                  page: audit.page,
-                  pageSize: AUDIT_PAGE_SIZE,
-                  shown: audit.entries.length,
-                  total: audit.total,
-                  singular: "cambio",
-                  plural: "cambios",
-                })}
+                rangeText={activityRangeText}
                 hrefFor={(target) =>
                   target > 1 ? `${href}?historial=${target}` : href
                 }

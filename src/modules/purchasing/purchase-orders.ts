@@ -433,7 +433,6 @@ export type PurchaseOrderSummary = {
   displayNumber: string;
   supplierId: string;
   supplierName: string;
-  lineCount: number;
   total: string;
   currency: string;
   status: PurchaseOrderStatus;
@@ -471,7 +470,6 @@ function summarize(
     displayNumber: formatPurchaseOrderNumber(row.number),
     supplierId: row.supplierId,
     supplierName: row.supplierName,
-    lineCount: row.lineCount,
     total: row.total,
     currency: row.currency,
     status: row.status,
@@ -522,8 +520,12 @@ export async function listPurchaseOrders(
 // Las opciones del filtro de proveedor de la lista (brief-24.8.1, D-5): los proveedores que tienen
 // órdenes, para dibujar un `<select>` en vez de depender de que el id llegue por la URL.
 //
-// Devuelve `kind: "text"` cuando pasan el tope, y entonces la pantalla cae al campo de texto. Es la
-// forma de `CashClientOptions`, con una diferencia a favor: los proveedores son una tabla de
+// Devuelve `kind: "text"` cuando pasan el tope, y entonces la pantalla **no dibuja ningún control**
+// y el proveedor vuelve a llegar solo por la URL: el campo de texto del precedente de clientes no
+// se copia, porque `listPurchaseOrders` acepta un id y no un nombre (D-5, decidido por el usuario
+// el 2026-11-06). El nombre `kind: "text"` es el de `CashClientOptions`, que es de donde viene la
+// forma; lo que cambia es qué hace la pantalla con él. Es esa misma forma, con una diferencia a
+// favor: los proveedores son una tabla de
 // `purchasing`, así que el nombre sale de la misma sentencia y no hay segunda consulta que pueda
 // fallar aparte. El orden alfabético se pone acá, en español.
 export type PurchaseOrderSupplierOptions =

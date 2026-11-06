@@ -451,7 +451,6 @@ describe("las operaciones (AC-3; D-8 a D-11)", () => {
       expect(all.ok && all.orders[0]).toMatchObject({
         displayNumber: "OC-000027",
         supplierName: "Importaciones Sur",
-        lineCount: 1,
         total: "27.00",
         currency: "ARS",
         status: "open",
