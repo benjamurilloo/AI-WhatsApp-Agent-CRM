@@ -145,6 +145,13 @@ async function expectAccessible(page: Page, state: string) {
 const line = (page: Page, position: number) =>
   page.getByRole("group", { name: `Línea ${position}`, exact: true });
 
+// Desde la 24.8.1-b el alta de recepciones tiene dos pasos (brief-24.8.1-b, D-2): la revisión
+// no valida nada, así que el rechazo sigue llegando después de confirmar.
+async function registrarRecepcion(page: Page) {
+  await page.getByRole("button", { name: "Revisar recepción" }).click();
+  await page.getByRole("button", { name: "Registrar recepción" }).click();
+}
+
 async function pick(scope: Locator | Page, label: string, text: string) {
   const field = scope.getByLabel(label, { exact: true });
   await field.fill(text);
@@ -189,7 +196,9 @@ test("un admin pasa un producto a «por unidad», recibe con IMEI, carga y da de
   // La recepción pide un IMEI por unidad (D-6).
   await page.goto("/compras/recepciones/nueva");
   await pick(page, "Proveedor", "Norte");
-  await page.getByLabel("Moneda", { exact: true }).selectOption("USD");
+  await page
+    .getByLabel("Moneda de la recepción", { exact: true })
+    .selectOption("USD");
   // El SKU se encuentra solo completo; un prefijo no está en el nombre.
   await pick(line(page, 1), "Producto", "IP15P-256");
   await line(page, 1).getByLabel("Cantidad").fill("2");
@@ -199,7 +208,7 @@ test("un admin pasa un producto a «por unidad», recibe con IMEI, carga y da de
   );
   await expect(imei).toBeVisible();
   await imei.fill("356938035643809");
-  await page.getByRole("button", { name: "Registrar recepción" }).click();
+  await registrarRecepcion(page);
   await expect(line(page, 1)).toContainText(
     "escribí un IMEI por cada unidad recibida",
   );
@@ -207,13 +216,17 @@ test("un admin pasa un producto a «por unidad», recibe con IMEI, carga y da de
     .getByLabel("IMEI o número de serie, uno por renglón")
     .fill("356938035643809\n356938035643810");
   await expectAccessible(page, "recepción con IMEI");
-  await page.getByRole("button", { name: "Registrar recepción" }).click();
+  await registrarRecepcion(page);
   await expect(page).toHaveURL(
     /\/compras\/recepciones\/[0-9a-f-]{36}\?aviso=creada$/,
   );
-  await expect(
-    page.getByText("356938035643809, 356938035643810"),
-  ).toBeVisible();
+  // Desde la 24.8.1-b cada unidad es una fila debajo de su línea, con el IMEI completo y el
+  // estado de hoy (brief-24.8.1-b, D-2 y D-3). Antes los dos IMEI iban en un renglón, separados
+  // por comas. **Lo que este caso comprueba no cambió**: que la ficha nombra las dos unidades.
+  for (const serial of ["356938035643809", "356938035643810"]) {
+    await expect(page.getByText(serial, { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("Disponible").first()).toBeVisible();
   expect(await onHand(productId)).toBe("2.000");
 
   // Las unidades, la carga manual y la baja.

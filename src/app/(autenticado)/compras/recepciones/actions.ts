@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentPrices, suggestProducts } from "@/modules/catalog";
+import { splitUnitSerials } from "@/modules/inventory";
 import type { AuthContext } from "@/modules/organizations";
 import {
   createGoodsReceipt,
@@ -146,11 +147,36 @@ export async function createGoodsReceiptAction(
   const { requestId, log } = logger("compras.recepciones.crear", context);
   let values = readForm(formData);
 
+  // Los dos pasos, con el molde del cierre de caja (brief-24.8.1-b, V-10; H-1): sin «confirm», la
+  // revisión de lo cargado; con él, el alta. «edit» vuelve al paso 1 con lo mismo, y vuelve antes
+  // de resolver lo tipeado: corregir no necesita leer nada.
+  if (formData.get("edit") === "1") {
+    return { status: "edit", requestId, values };
+  }
+  const confirmed = formData.get("confirm") === "1";
+
   let destination: string;
   try {
     values = await resolveTypedValues(context, values);
     const rows = sentRows(values);
     const sent = rows.map((index) => values.lines[index]!);
+    if (!confirmed) {
+      // Sin evento: la revisión no registra nada, y un «OK» acá sería indistinguible de un alta.
+      return {
+        status: "review",
+        requestId,
+        values,
+        // El recuento de los IMEI lo hace el servidor (V-15), con la misma regla que usa
+        // purchasing al registrar: la del módulo, no una copia.
+        lines: rows.map((index, position) => ({
+          position: index + 1,
+          productText: sent[position]!.productText,
+          quantity: sent[position]!.quantity,
+          unitCost: sent[position]!.unitCost,
+          serials: splitUnitSerials(sent[position]!.serials),
+        })),
+      };
+    }
     const input: GoodsReceiptInput = {
       purchaseOrderId: values.orderId || null,
       supplierId: values.supplierId,
@@ -170,21 +196,26 @@ export async function createGoodsReceiptAction(
       const rejection = goodsReceiptRejection(
         result,
         values.currency,
-        sent.map((line) => line.productId),
+        sent.map((line) => ({
+          productId: line.productId,
+          serials: splitUnitSerials(line.serials),
+        })),
       );
       // Las posiciones del rechazo son las de las líneas enviadas: se llevan a las del formulario.
-      const lineErrors = Object.fromEntries(
-        Object.entries(rejection.lineErrors).map(([position, message]) => [
-          rows[Number(position) - 1]! + 1,
-          message,
-        ]),
-      );
+      const byForm = (errors: Record<number, string>) =>
+        Object.fromEntries(
+          Object.entries(errors).map(([position, message]) => [
+            rows[Number(position) - 1]! + 1,
+            message,
+          ]),
+        );
       return {
         status: "error",
         requestId,
         values,
         ...rejection,
-        lineErrors,
+        lineErrors: byForm(rejection.lineErrors),
+        serialErrors: byForm(rejection.serialErrors),
       };
     }
     log("OK");
@@ -199,6 +230,7 @@ export async function createGoodsReceiptAction(
       values,
       message: unexpectedErrorMessage(requestId),
       lineErrors: {},
+      serialErrors: {},
       supplierError: null,
       currencyError: null,
       referenceError: null,
@@ -287,6 +319,7 @@ export async function voidGoodsReceiptAction(
       message: voidUnexpectedErrorMessage(requestId),
       existing: null,
       shortages: [],
+      blockedSerials: [],
     };
   }
 

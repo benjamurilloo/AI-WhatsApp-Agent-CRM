@@ -670,14 +670,14 @@ export default async function PurchaseOrderPage({
                       <th scope="col" className={tableHeadCellClass}>
                         Estado
                       </th>
-                      {/* La lámina dice «Unidades». `GoodsReceiptSummary` trae las líneas, no las
-                          unidades: ese recuento es la lectura que D-1 mandó a la 24.8.1-b.
-                          Declarado en el brief como corrección de V-13. */}
+                      {/* La lámina dice «Unidades», y desde la 24.8.1-b el resumen las trae: es
+                          la suma de las cantidades de las líneas, la lectura que D-1 mandó a esta
+                          subfase (brief-24.8.1-b, AC-12). Antes decía «Líneas». */}
                       <th
                         scope="col"
                         className={`${tableHeadCellClass} text-right`}
                       >
-                        Líneas
+                        Unidades
                       </th>
                       <th
                         scope="col"
@@ -727,7 +727,7 @@ export default async function PurchaseOrderPage({
                         <td
                           className={`${tableCellClass} text-right tabular-nums`}
                         >
-                          {receipt.lineCount}
+                          {formatQuantity(receipt.unitCount)}
                         </td>
                         <td
                           className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}

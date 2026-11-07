@@ -9,6 +9,7 @@ import type {
 } from "@/modules/purchasing";
 import { formatQuantity } from "@/shared/quantity";
 import {
+  byQuantity,
   lineFieldMessage,
   lineRuleMessage,
   STATUS_LABEL,
@@ -21,6 +22,13 @@ export const GOODS_RECEIPT_NOT_FOUND_MESSAGE = "Esta recepción no existe.";
 export const NO_GOODS_RECEIPTS_MESSAGE = "Todavía no hay recepciones.";
 export const NO_GOODS_RECEIPT_RESULTS_MESSAGE =
   "Ninguna recepción coincide con estos filtros.";
+// La lista, con la forma de la lámina 01 (brief-24.8.1-b, V-3 y V-8).
+export const CURRENT_BADGE_TEXT = "Vigente";
+export const ORDER_FILTER_HINT =
+  "La orden de compra es opcional: se puede recibir mercadería sin ninguna.";
+export const RECEIPTS_LIST_NOTE =
+  "La orden es opcional. Registrar una recepción incorpora stock; el pago se registra aparte.";
+
 export const NO_SUPPLIER_GOODS_RECEIPTS_MESSAGE =
   "Este proveedor no tiene recepciones.";
 export const ORDER_NOT_RECEIVABLE_MESSAGE =
@@ -30,13 +38,19 @@ export const CURRENT_DATA_NOTE =
   "Los productos y el proveedor se muestran con sus datos de hoy. Las cantidades, los costos y los totales son los del día de la recepción.";
 
 // La advertencia de D-7: el producto se vende en otra moneda, y el margen no se calcula entre
-// monedas distintas.
+// monedas distintas. Desde la 24.8.1-b lleva el texto de la lámina 03 en dos renglones
+// (brief-24.8.1-b, V-22): el primero dice el hecho y el segundo, la consecuencia.
+export type CurrencyWarning = { title: string; detail: string };
+
 export function currencyWarning(
   priceCurrency: string | null,
   currency: string,
-): string | null {
+): CurrencyWarning | null {
   return priceCurrency && currency && priceCurrency !== currency
-    ? `Este producto se vende en ${priceCurrency}: con este costo queda sin margen.`
+    ? {
+        title: `El precio de venta está en ${priceCurrency}.`,
+        detail: `Con un costo en ${currency} no se calcula el margen entre monedas.`,
+      }
     : null;
 }
 
@@ -71,8 +85,28 @@ export type GoodsReceiptFormValues = {
   lines: GoodsReceiptFormLine[];
 };
 
+// El paso 2 del alta (brief-24.8.1-b, V-10), con lo que se va a registrar. El recuento de los IMEI
+// lo hace el servidor con la misma regla que usa purchasing al registrar (V-15): sin JavaScript, en
+// el paso 1 no hay recuento vivo.
+export type GoodsReceiptReviewLine = {
+  // La posición en el formulario, desde 1: la misma que usan los errores por línea.
+  position: number;
+  productText: string;
+  quantity: string;
+  unitCost: string;
+  serials: string[];
+};
+
 export type GoodsReceiptFormState =
   | { status: "idle" }
+  // Volver del paso 2 al paso 1: lo cargado vuelve tal cual, sin validar nada.
+  | { status: "edit"; requestId: string; values: GoodsReceiptFormValues }
+  | {
+      status: "review";
+      requestId: string;
+      values: GoodsReceiptFormValues;
+      lines: GoodsReceiptReviewLine[];
+    }
   | {
       status: "error";
       requestId: string;
@@ -80,6 +114,8 @@ export type GoodsReceiptFormState =
       message: string;
       // Errores por línea, por su posición en el formulario (desde 1).
       lineErrors: Record<number, string>;
+      // El error del IMEI duplicado, en el campo de su línea (V-37), por la misma posición.
+      serialErrors: Record<number, string>;
       supplierError: string | null;
       currencyError: string | null;
       referenceError: string | null;
@@ -89,6 +125,7 @@ export type GoodsReceiptRejection = Pick<
   Extract<GoodsReceiptFormState, { status: "error" }>,
   | "message"
   | "lineErrors"
+  | "serialErrors"
   | "supplierError"
   | "currencyError"
   | "referenceError"
@@ -98,6 +135,7 @@ const REVIEW_LINES = "Revisá las líneas marcadas.";
 
 const NONE = {
   lineErrors: {},
+  serialErrors: {},
   supplierError: null,
   currencyError: null,
   referenceError: null,
@@ -109,6 +147,37 @@ export const SUPPLIER_REFERENCE_HINT =
 // Los IMEI de un producto por unidad (brief-29.5, D-6).
 export const SERIALS_HINT =
   "Solo para productos que se llevan por unidad: un IMEI o número de serie por unidad, uno por renglón.";
+
+// El IMEI duplicado, con el texto de la tarjeta 17-2 (brief-24.8.1-b, V-37). «Revisar IMEI» no se
+// dibuja: llevaría a una búsqueda de unidades por IMEI que no existe como pantalla.
+export function serialTakenFieldError(count: number): string {
+  return count === 1
+    ? "Ya está activo en otra unidad."
+    : "Ya están activos en otras unidades.";
+}
+
+export const SERIAL_TAKEN_NOTE =
+  "Este IMEI ya se encuentra registrado y activo en otra unidad. Verificá el equipo o ingresá otro IMEI.";
+
+// El alta en dos pasos, con la forma de las láminas 02, 03 y 05 (brief-24.8.1-b, V-10 a V-24).
+export const RECEIPT_STEP_LABELS = ["Mercadería", "Revisión"] as const;
+export const RECEIPT_SUMMARY_TITLE = "Resumen de la recepción";
+export const RECEIPT_REVIEW_BUTTON = "Revisar recepción";
+export const RECEIPT_NO_PAYMENT_NOTE = "No registra un pago.";
+export const RECEIPT_CLOSES_ORDER_NOTE =
+  "Esta recepción completaría la orden y la cerraría.";
+export const RECEIPT_SALE_PRICE_NOTE = "El precio de venta no cambia.";
+export const RECEIPT_REVIEW_HINT =
+  "Revisá lo que se va a registrar. Nada se guardó todavía.";
+
+// El recuadro de la lámina 03 (V-21): lo que pasa al registrar, con el costo cuando hay una sola
+// línea, que es el único caso en que el costo vigente nuevo es un número y no «el de cada línea».
+export function receiptEffectNote(units: string, cost: string | null): string {
+  const incoming = `Al registrar, se incorporan ${units} ${byQuantity(units, "unidad", "unidades")}`;
+  return cost
+    ? `${incoming} y el costo vigente del producto pasa a ${cost}. ${RECEIPT_SALE_PRICE_NOTE}`
+    : `${incoming} y el costo vigente de cada producto pasa al costo recibido. ${RECEIPT_SALE_PRICE_NOTE}`;
+}
 
 const SERIAL_RULE_MESSAGE: Record<GoodsReceiptSerialRule, string> = {
   serials_count:
@@ -211,11 +280,12 @@ function notFoundRejection(
 
 // Un mensaje general y, si corresponde, uno por línea, para el proveedor, la moneda o la referencia.
 // Las posiciones son las de las líneas enviadas (desde 1); quien llama las lleva a las del
-// formulario. productIds son los productos de las líneas enviadas, en orden, para stock_limit.
+// formulario. `sent` son las líneas enviadas, en orden: su producto, para stock_limit, y sus IMEI,
+// para señalar el duplicado en su campo (V-37).
 export function goodsReceiptRejection(
   result: Exclude<CreateGoodsReceiptResult, { ok: true }>,
   currency: string,
-  productIds: string[],
+  sent: { productId: string; serials: string[] }[],
 ): GoodsReceiptRejection {
   switch (result.code) {
     case "FORBIDDEN":
@@ -251,7 +321,7 @@ export function goodsReceiptRejection(
             ...NONE,
             message: REVIEW_LINES,
             lineErrors: Object.fromEntries(
-              productIds.flatMap((productId, index) =>
+              sent.flatMap(({ productId }, index) =>
                 result.productIds.includes(productId)
                   ? [
                       [
@@ -274,13 +344,30 @@ export function goodsReceiptRejection(
               ]),
             ),
           };
+        // El IMEI duplicado, con el texto y la forma de la tarjeta 17-2 (V-37): el error va en el
+        // campo de la línea que lo escribió, y el mensaje general nombra cuáles son. Si la carga
+        // perdió una carrera, no hay campo que señalar: el IMEI que mandó era válido al escribirlo.
         case "serials_taken":
+          if (result.serials.length === 0) {
+            return {
+              ...NONE,
+              message:
+                "Otra carga registró uno de estos IMEI al mismo tiempo. Revisá las unidades del producto y volvé a intentar.",
+            };
+          }
           return {
             ...NONE,
-            message:
-              result.serials.length > 0
-                ? `Ya hay una unidad cargada con ${result.serials.length === 1 ? "este IMEI" : "estos IMEI"}: ${result.serials.join(", ")}. Revisalos, o dala de baja si se cargó mal.`
-                : "Otra carga registró uno de estos IMEI al mismo tiempo. Revisá las unidades del producto y volvé a intentar.",
+            message: `${result.serials.length === 1 ? "Este IMEI ya está registrado y activo en otra unidad" : "Estos IMEI ya están registrados y activos en otras unidades"}: ${result.serials.join(", ")}.`,
+            serialErrors: Object.fromEntries(
+              sent.flatMap(({ serials }, index) => {
+                const taken = serials.filter((serial) =>
+                  result.serials.includes(serial),
+                );
+                return taken.length > 0
+                  ? [[index + 1, serialTakenFieldError(taken.length)]]
+                  : [];
+              }),
+            ),
           };
       }
   }
@@ -306,6 +393,11 @@ export function goodsReceiptNoticeMessage(
 
 export const VOIDED_BADGE_TEXT = "Anulada";
 
+// La bajada de la confirmación, de la lámina 04 (brief-24.8.1-b, V-32). En presente: lo que
+// pasa al confirmar, no una promesa.
+export const VOID_CONFIRM_SUBTITLE =
+  "Se dan de baja las unidades recibidas y se revierte su impacto en la deuda con el proveedor.";
+
 export const VOID_REASON_LABEL: Record<GoodsReceiptVoidReason, string> = {
   data_entry_error: "Error de carga",
   duplicate: "Cargada dos veces",
@@ -321,6 +413,26 @@ export const VOID_COST_NOTE =
 export const VOID_ORDER_NOTE =
   "La orden deja de contar esta recepción como recibida. Si la orden ya está cerrada, sigue cerrada.";
 
+// El bloqueo de la tarjeta 17-3 (brief-24.8.1-b, V-38): nombra la unidad y su estado, en vez de
+// enumerar las seis causas posibles. El estado no cuesta una lectura: la ficha ya trae las unidades
+// con el suyo (H-3). Como ese estado es el de la última lectura de la página y el bloqueo ocurrió
+// después, el texto dice «figura como» y no afirma el estado de ahora.
+export function voidBlockedHeading(
+  displayNumber: string,
+  serials: string[],
+): string {
+  return `No se puede anular ${displayNumber} · ${serials.join(" · ")}`;
+}
+
+export function voidBlockedDetail(statusLabel: string | null): string {
+  return statusLabel
+    ? `La unidad figura como ${statusLabel.toLowerCase()} y no se puede anular la recepción.`
+    : "La unidad ya no está disponible y no se puede anular la recepción.";
+}
+
+export const VOID_BLOCKED_NOTE =
+  "No se cambia ninguna reserva desde esta anulación.";
+
 export type VoidGoodsReceiptState =
   | { status: "idle" }
   | {
@@ -331,6 +443,8 @@ export type VoidGoodsReceiptState =
       existing: { displayNumber: string } | null;
       // Los productos que no alcanzan, con lo que hay que sacar y lo disponible.
       shortages: GoodsReceiptVoidShortage[];
+      // Los IMEI de las unidades que bloquean la anulación (V-38). La página les pone el estado.
+      blockedSerials: string[];
     };
 
 export function voidUnexpectedErrorMessage(requestId: string): string {
@@ -343,7 +457,7 @@ export function voidGoodsReceiptRejection(
   Extract<VoidGoodsReceiptState, { status: "error" }>,
   "status" | "requestId"
 > {
-  const none = { existing: null, shortages: [] };
+  const none = { existing: null, shortages: [], blockedSerials: [] };
   switch (result.code) {
     case "FORBIDDEN":
       return {
@@ -362,10 +476,13 @@ export function voidGoodsReceiptRejection(
           existing: { displayNumber: result.receiptVoid.displayNumber },
         };
       }
+      // El mensaje lo arma la página, que es la que tiene el estado de cada unidad (V-38). Acá
+      // viaja el hecho: cuáles bloquean.
       if (result.rule === "units_not_available") {
         return {
           ...none,
-          message: `${result.serials.length === 1 ? "Una unidad" : "Unas unidades"} de esta recepción ya no ${result.serials.length === 1 ? "está disponible" : "están disponibles"} (${result.serials.join(", ")}): se reservaron, se vendieron, se dieron de baja o están en reparación o en revisión. La recepción no se puede anular.`,
+          message: `${result.serials.length === 1 ? "Una unidad" : "Unas unidades"} de esta recepción ya no ${result.serials.length === 1 ? "está disponible" : "están disponibles"}: la recepción no se puede anular.`,
+          blockedSerials: result.serials,
         };
       }
       return {

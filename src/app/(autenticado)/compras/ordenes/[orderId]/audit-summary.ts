@@ -2,7 +2,8 @@ import {
   type GoodsReceiptSummary,
   type PurchaseOrderAuditEntry,
 } from "@/modules/purchasing";
-import { formatMoney } from "@/shared/money";
+import { formatQuantity } from "@/shared/quantity";
+import { byQuantity } from "../messages";
 
 // La «Actividad» de una orden de compra (brief-24.8.1, D-6): el rótulo y la oración de la lámina
 // 03 en lugar de la transición —«Alta» / «Orden OC-000004 · 2 líneas · total $ 3.002,49» y
@@ -64,21 +65,23 @@ export function describeAuditEntry(
   return "—";
 }
 
-// La fila de una recepción. La lámina dice «Se registró la recepción RC-000091 por 2 unidades»; acá
-// va el **monto** y no las unidades, porque las unidades de una recepción son la lectura que D-1
-// mandó a la 24.8.1-b: `GoodsReceiptSummary` trae `lineCount` y `total`, no un recuento de
-// unidades. Está declarado en el brief como corrección de V-13.
+// La fila de una recepción, con la oración de la lámina: «Se registró la recepción RC-000091 por 2
+// unidades». Desde la 24.8.1-b dice **las unidades y no el monto** (brief-24.8.1-b, AC-12): el
+// recuento que la 24.8.1 no tenía es la suma de las cantidades de las líneas, que
+// `GoodsReceiptSummary` ahora trae en `unitCount`. No es una lectura nueva de esta pantalla: la
+// ficha ya lee `order.receipts` para la tabla «Recepciones».
 export function receiptActivityRow(
   receipt: GoodsReceiptSummary,
 ): PurchaseOrderActivityRow {
-  const amount = formatMoney(receipt.total, receipt.currency);
+  const units = formatQuantity(receipt.unitCount);
+  const unitText = `${units} ${byQuantity(receipt.unitCount, "unidad", "unidades")}`;
   return {
     id: `recepcion-${receipt.id}`,
     at: receipt.createdAt,
     label: receipt.voidDisplayNumber ? "Recepción anulada" : "Recepción",
     sentence: receipt.voidDisplayNumber
-      ? `Se registró la recepción ${receipt.displayNumber} por ${amount}, anulada con ${receipt.voidDisplayNumber}.`
-      : `Se registró la recepción ${receipt.displayNumber} por ${amount}.`,
+      ? `Se registró la recepción ${receipt.displayNumber} por ${unitText}, anulada con ${receipt.voidDisplayNumber}.`
+      : `Se registró la recepción ${receipt.displayNumber} por ${unitText}.`,
   };
 }
 

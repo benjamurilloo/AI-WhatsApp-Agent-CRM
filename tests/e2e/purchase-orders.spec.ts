@@ -583,6 +583,12 @@ test("un admin cierra con faltante una orden con recepciones, que no se cancela"
   await expect(
     receipts.getByRole("link", { name: "RC-000001", exact: true }),
   ).toBeVisible();
+  // Desde la 24.8.1-b la columna dice «Unidades» y trae el recuento, no la cantidad de líneas
+  // (brief-24.8.1-b, AC-12): se recibió 1 de las 4 unidades pedidas.
+  await expect(
+    receipts.getByRole("columnheader", { name: "Unidades" }),
+  ).toBeVisible();
+  await expect(receipts.getByRole("row").nth(1)).toContainText("1");
   await expect(receipts).toContainText("Vigente");
   await expect(
     page.getByRole("link", { name: "Cancelar la orden" }),

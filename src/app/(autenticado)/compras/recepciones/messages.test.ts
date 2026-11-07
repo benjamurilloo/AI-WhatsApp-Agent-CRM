@@ -4,6 +4,8 @@ import {
   goodsReceiptNoticeMessage,
   goodsReceiptRejection,
   shortageText,
+  voidBlockedDetail,
+  voidBlockedHeading,
   voidGoodsReceiptRejection,
 } from "./messages";
 
@@ -89,11 +91,65 @@ describe("los rechazos del alta", () => {
           productIds: [Q],
         },
         "ARS",
-        [P, Q],
+        [
+          { productId: P, serials: [] },
+          { productId: Q, serials: [] },
+        ],
       ).lineErrors,
     ).toEqual({
       2: "Con esta cantidad, el stock del producto pasaría el máximo que se puede guardar.",
     });
+  });
+
+  // El IMEI duplicado, con el texto y la forma de la tarjeta 17-2 (brief-24.8.1-b, V-37).
+  it("el IMEI duplicado se señala en el campo de su línea", () => {
+    const rejection = goodsReceiptRejection(
+      {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "serials_taken",
+        serials: ["999"],
+      },
+      "ARS",
+      [
+        { productId: P, serials: ["111", "222"] },
+        { productId: Q, serials: ["999"] },
+      ],
+    );
+    expect(rejection.serialErrors).toEqual({
+      2: "Ya está activo en otra unidad.",
+    });
+    expect(rejection.message).toBe(
+      "Este IMEI ya está registrado y activo en otra unidad: 999.",
+    );
+    expect(rejection.lineErrors).toEqual({});
+  });
+
+  it("dos IMEI tomados en la misma línea, y la carrera perdida sin campo que señalar", () => {
+    expect(
+      goodsReceiptRejection(
+        {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "serials_taken",
+          serials: ["111", "222"],
+        },
+        "ARS",
+        [{ productId: P, serials: ["111", "222"] }],
+      ).serialErrors,
+    ).toEqual({ 1: "Ya están activos en otras unidades." });
+    const race = goodsReceiptRejection(
+      {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "serials_taken",
+        serials: [],
+      },
+      "ARS",
+      [{ productId: P, serials: ["111"] }],
+    );
+    expect(race.serialErrors).toEqual({});
+    expect(race.message).toMatch(/al mismo tiempo/);
   });
 
   it("una orden que ya no está abierta, o que no existe", () => {
@@ -134,10 +190,12 @@ describe("los rechazos del alta", () => {
 });
 
 describe("la advertencia de moneda (D-7)", () => {
+  // Desde la 24.8.1-b, con el texto de la lámina 03 en dos renglones (V-22).
   it("solo si el producto se vende en otra moneda", () => {
-    expect(currencyWarning("USD", "ARS")).toBe(
-      "Este producto se vende en USD: con este costo queda sin margen.",
-    );
+    expect(currencyWarning("USD", "ARS")).toEqual({
+      title: "El precio de venta está en USD.",
+      detail: "Con un costo en ARS no se calcula el margen entre monedas.",
+    });
     expect(currencyWarning("ARS", "ARS")).toBeNull();
     expect(currencyWarning(null, "ARS")).toBeNull();
     expect(currencyWarning("USD", "")).toBeNull();
@@ -174,7 +232,30 @@ describe("los rechazos de la anulación", () => {
       message: "Esta recepción ya está anulada, por ARC-000001.",
       existing: { displayNumber: "ARC-000001" },
       shortages: [],
+      blockedSerials: [],
     });
+  });
+
+  // El bloqueo por una unidad que ya no está disponible (brief-24.8.1-b, V-38): el rechazo lleva
+  // los IMEI y el texto nombra la unidad y su estado, en vez de enumerar las seis causas posibles.
+  it("la unidad que bloquea viaja con su IMEI, y el texto la nombra con su estado", () => {
+    const rejection = voidGoodsReceiptRejection({
+      ok: false,
+      code: "BUSINESS_RULE_VIOLATION",
+      rule: "units_not_available",
+      serials: ["350000000005103"],
+    });
+    expect(rejection.blockedSerials).toEqual(["350000000005103"]);
+    expect(rejection.message).not.toMatch(/reparación|revisión/);
+    expect(voidBlockedHeading("RC-000091", rejection.blockedSerials)).toBe(
+      "No se puede anular RC-000091 · 350000000005103",
+    );
+    expect(voidBlockedDetail("Reservada")).toBe(
+      "La unidad figura como reservada y no se puede anular la recepción.",
+    );
+    expect(voidBlockedDetail(null)).toBe(
+      "La unidad ya no está disponible y no se puede anular la recepción.",
+    );
   });
 
   it("la falta de stock lleva cada producto, con lo que hay que sacar y lo disponible", () => {

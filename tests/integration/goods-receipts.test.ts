@@ -284,6 +284,78 @@ async function waitForLockWaiters(expected: number, timeoutMs = 5000) {
   );
 }
 
+// Cuenta las sentencias que la aplicación manda mientras corre `work`, sobre el singleton de
+// `getDb()`. **Copiado de `tests/integration/sales-list-reads.test.ts`**, donde está la versión
+// con sus tres comentarios de por qué: se cuenta solo en el cliente y nunca en el pool (contar en
+// los dos lados cuenta dos veces), los clientes se reusan y hay que desenvolverlos al terminar, y
+// `connect` tiene las dos formas de pg. **No se extrae a un archivo compartido** porque ese
+// archivo nuevo quedaría fuera de la lista cerrada del brief-24.8.1-b; la copia está declarada en
+// su §Cierre.
+async function statementsOf<T>(
+  work: () => Promise<T>,
+): Promise<{ result: T; statements: string[] }> {
+  const pool = getDb().$client as unknown as {
+    query: (...args: unknown[]) => unknown;
+    connect: (...args: unknown[]) => Promise<{
+      query: (...args: unknown[]) => unknown;
+    }>;
+  };
+  const statements: string[] = [];
+  const record = (first: unknown) => {
+    const text =
+      typeof first === "string"
+        ? first
+        : typeof (first as { text?: unknown })?.text === "string"
+          ? (first as { text: string }).text
+          : "";
+    statements.push(text);
+  };
+  const originalQuery = pool.query.bind(pool);
+  const originalConnect = pool.connect.bind(pool);
+  type Client = { query: (...args: unknown[]) => unknown };
+  const wrapped = new Map<Client, Client["query"]>();
+  const wrap = (client: Client) => {
+    if (wrapped.has(client)) return;
+    const clientQuery = client.query.bind(client);
+    wrapped.set(client, client.query);
+    client.query = (...inner: unknown[]) => {
+      record(inner[0]);
+      return clientQuery(...inner);
+    };
+  };
+  pool.query = (...args: unknown[]) => originalQuery(...args);
+  pool.connect = ((...args: unknown[]) => {
+    if (typeof args[0] === "function") {
+      const callback = args[0] as (...inner: unknown[]) => void;
+      return originalConnect((...inner: unknown[]) => {
+        const client = inner[1] as Client | undefined;
+        if (client) wrap(client);
+        callback(...inner);
+      });
+    }
+    return (originalConnect(...args) as Promise<Client>).then((client) => {
+      wrap(client);
+      return client;
+    });
+  }) as typeof pool.connect;
+  try {
+    return { result: await work(), statements };
+  } finally {
+    pool.query = originalQuery;
+    pool.connect = originalConnect;
+    for (const [client, query] of wrapped) client.query = query;
+  }
+}
+
+// Las sentencias que no son del control de la transacción: begin, commit y los set del
+// aislamiento no son lecturas, y contarlas confundiría la medición.
+function reads(statements: string[]): string[] {
+  return statements.filter(
+    (text) =>
+      !/^\s*(begin|commit|rollback|set\b|start transaction)/i.test(text),
+  );
+}
+
 beforeEach(async () => {
   await resetDatabase(getDb());
   storedHash ??= await hashPassword(PASSWORD);
@@ -760,7 +832,9 @@ describe("las lecturas (AC-4; D-11 y D-12)", () => {
         supplierName: "Importaciones Sur",
         purchaseOrderId: o.id,
         purchaseOrderDisplayNumber: "OC-000001",
-        lineCount: 1,
+        // Desde la 24.8.1-b el resumen trae las unidades y no las líneas (brief-24.8.1-b,
+        // D-1 y AC-12): la lista y la tarjeta de la orden las dibujan.
+        unitCount: "1.000",
         currency: "ARS",
       });
 
@@ -789,6 +863,27 @@ describe("las lecturas (AC-4; D-11 y D-12)", () => {
         }),
       ).toMatchObject({ total: 0, receipts: [] });
 
+      // El origen (brief-24.8.1-b, D-5): con orden hay una sola, y sin orden, las veinticinco.
+      const conOrden = await listGoodsReceipts(s.adminA, {
+        supplierId: null,
+        number: "",
+        page: 1,
+        withOrder: "with",
+      });
+      if (!conOrden.ok) throw new Error("lista rechazada");
+      expect(conOrden.total).toBe(1);
+      expect(conOrden.receipts.map((r) => r.displayNumber)).toEqual([
+        "RC-000001",
+      ]);
+      expect(
+        await listGoodsReceipts(s.adminA, {
+          supplierId: null,
+          number: "",
+          page: 1,
+          withOrder: "without",
+        }),
+      ).toMatchObject({ total: 25 });
+
       const recent = await listRecentSupplierGoodsReceipts(
         s.adminA,
         s.supplierA2,
@@ -806,6 +901,7 @@ describe("las lecturas (AC-4; D-11 y D-12)", () => {
           supplier: { name: "Importaciones Sur", cuit: "20123456786" },
           purchaseOrder: { id: o.id, displayNumber: "OC-000001" },
           currency: "ARS",
+          unitCount: "1.000",
           supplierReference: null,
           lines: [
             {
@@ -1395,6 +1491,55 @@ describe("el rendimiento (AC-8; D-12)", () => {
           listGoodsReceipts(s.adminA, query),
         );
       }
+      // M-2 del brief-24.8.1-b: la **forma** de la consulta de la lista, la vieja y la nueva,
+      // sobre estas 2.000 recepciones. Existe porque N-1 de la 24.8.1 quedó razonada y sin medir,
+      // y porque un recuento de sentencias prueba cardinalidad de ida y vuelta y nada más: el
+      // trabajo nuevo de esta subfase viaja **dentro de una sola sentencia**. Las dos consultas
+      // difieren en una sola subconsulta correlacionada —`count(*)` por líneas contra
+      // `sum(quantity)` por unidades (D-7)—, así que el texto se arma una vez y se cambia solo
+      // esa, que es la comparación que la medición pide.
+      const listPlan = async (label: string, aggregate: string) => {
+        const text = `explain (analyze, buffers)
+          select "id", "number", "supplier_id", "purchase_order_id", "currency", "total",
+                 "supplier_reference", "created_by", "created_at",
+                 (select s.name from suppliers s
+                  where s.organization_id = "goods_receipts"."organization_id"
+                    and s.id = "goods_receipts"."supplier_id"),
+                 (select o.number from purchase_orders o
+                  where o.organization_id = "goods_receipts"."organization_id"
+                    and o.id = "goods_receipts"."purchase_order_id"),
+                 (select ${aggregate} from goods_receipt_lines l
+                  where l.organization_id = "goods_receipts"."organization_id"
+                    and l.goods_receipt_id = "goods_receipts"."id"),
+                 (select v.number from goods_receipt_voids v
+                  where v.organization_id = "goods_receipts"."organization_id"
+                    and v.goods_receipt_id = "goods_receipts"."id")
+          from "goods_receipts"
+          where "goods_receipts"."organization_id" = '${s.orgA}'
+          order by "goods_receipts"."created_at" desc, "goods_receipts"."id" desc
+          limit 25`;
+        const explained = await getDb().execute<Record<string, string>>(
+          sql.raw(text),
+        );
+        const rows = explained.rows.map((row) => Object.values(row)[0]);
+        console.info(`M-2 ${label}:\n${rows.join("\n")}`);
+        const plan = rows.join("\n");
+        // Lo que la medición tiene que poder romper. La subconsulta de las líneas se resuelve
+        // **por índice y una vez por fila devuelta**, no una por fila de la tabla: loops=25 con
+        // 2.100 recepciones. Si dejara de usar el índice, o si el límite dejara de recortar
+        // antes, ese número se va a 2.100 y el caso se pone rojo. El nodo externo **sí** es un
+        // Seq Scan con Sort, igual antes y después: el orden de la lista no tiene índice y la
+        // tabla de una organización entra holgada. Queda declarado, no asumido.
+        expect(plan, label).toMatch(
+          /Index Scan using goods_receipt_lines_receipt_position_unique[\s\S]*?loops=25/,
+        );
+      };
+      await listPlan("lista vieja (count de líneas)", "count(*)::int");
+      await listPlan(
+        "lista nueva (suma de cantidades)",
+        "coalesce(sum(l.quantity), 0)::text",
+      );
+
       await measure("detalle de la orden de 50 líneas y 100 recepciones", () =>
         getPurchaseOrder(s.adminA, big.order.id),
       );
@@ -1405,6 +1550,55 @@ describe("el rendimiento (AC-8; D-12)", () => {
         received: "2.000",
         pending: "998.000",
       });
+    },
+    TEST_TIMEOUT,
+  );
+
+  // M-1 del brief-24.8.1-b: el recuento de sentencias **contado en la corrida**, no leído del
+  // código. La lista con 1 y con 25 recepciones, y la ficha, que desde la 24.8.1-b trae además
+  // las unidades con su estado (H-3). Un recuento prueba cardinalidad de ida y vuelta y nada
+  // más: la forma de cada consulta la mide M-2 con `explain`.
+  it(
+    "la lista manda las mismas sentencias con 1 y con 25 recepciones, y la ficha, un número fijo",
+    async () => {
+      const s = await seed();
+      const o = await order(s);
+      const created = await receive(
+        s.adminA,
+        withOrder(o.id, [fromOrder(o.lineA, "1")]),
+      );
+      const query = { supplierId: null, number: "", page: 1 };
+      const one = await statementsOf(() => listGoodsReceipts(s.adminA, query));
+      expect(one.result).toMatchObject({ ok: true, total: 1 });
+      for (let index = 0; index < GOODS_RECEIPTS_PAGE_SIZE - 1; index++) {
+        await receive(
+          s.adminA,
+          withoutOrder(s, [free(s.productA, "1", "100")]),
+        );
+      }
+      const many = await statementsOf(() => listGoodsReceipts(s.adminA, query));
+      expect(many.result).toMatchObject({ ok: true, total: 25 });
+      const oneReads = reads(one.statements);
+      const manyReads = reads(many.statements);
+      console.info(
+        `M-1 lista: ${oneReads.length} sentencias con 1 recepción, ${manyReads.length} con 25`,
+      );
+      expect(manyReads.length).toBe(oneReads.length);
+
+      const detail = await statementsOf(() =>
+        getGoodsReceipt(s.adminA, created.receipt.id),
+      );
+      expect(detail.result).toMatchObject({ ok: true });
+      const detailReads = reads(detail.statements);
+      console.info(`M-1 ficha: ${detailReads.length} sentencias`);
+      // El número exacto se registra en el §Cierre del brief; acá se fija el techo, que es lo
+      // que una regresión rompería: nada por fila ni por unidad.
+      expect(detailReads.length).toBeLessThanOrEqual(8);
+
+      // Para M-2: el texto de la consulta de la lista, que se le pasa a `explain` aparte.
+      if (process.env.CRM_SQL) {
+        for (const text of manyReads) console.info(`M-2 sentencia: ${text}`);
+      }
     },
     TEST_TIMEOUT,
   );

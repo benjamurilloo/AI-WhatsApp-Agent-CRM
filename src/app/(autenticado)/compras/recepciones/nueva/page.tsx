@@ -11,7 +11,6 @@ import {
   HeaderIcon,
 } from "@/app/_components/detail-header";
 import { PageNotice } from "@/app/_components/page-notice";
-import { SectionCard } from "@/app/_components/section-card";
 import { acceptedCurrencies } from "@/shared/money";
 import { FORBIDDEN_PAGE_MESSAGE } from "../../ordenes/messages";
 import type { SearchParams } from "../filters";
@@ -117,6 +116,11 @@ export default async function NewGoodsReceiptPage({
     };
   }
 
+  // El título y la bajada de las láminas 02 y 03 (brief-24.8.1-b, V-12 y V-18). La miga
+  // «Abastecimiento › Recepciones» de la lámina 03 no se dibuja: el patrón de este CRM para volver
+  // es `BackLink`, y una miga nueva sería un componente compartido, fuera de la lista cerrada.
+  // La prosa que estaba acá —lo que la recepción le hace al stock y al costo— se dice ahora en el
+  // recuadro del resumen, que es donde la lámina la pone (V-21).
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
       <BackLink
@@ -124,40 +128,25 @@ export default async function NewGoodsReceiptPage({
         label={order ? "Volver a la orden" : "Volver a recepciones"}
       />
       <DetailHeader
-        title={TITLE}
+        title={order ? "Recibir mercadería" : "Nueva recepción · Sin orden"}
         leading={<HeaderIcon name="package" />}
         subtitle={
-          <p>
-            La recepción suma el stock de cada producto y deja como costo
-            vigente el costo recibido. En un producto que se lleva por unidad,
-            crea una unidad por cada IMEI, con el costo de la línea. Se numera
-            al registrarla y no se edita.
-          </p>
+          order ? (
+            <p>
+              <span className="font-mono">{order.displayNumber}</span>
+              {order.supplierName ? ` · ${order.supplierName}` : null} ·{" "}
+              {order.currency}
+            </p>
+          ) : null
         }
       />
-      <SectionCard
-        id="recepcion-titulo"
-        title={
-          order
-            ? `Lo que llegó de la orden ${order.displayNumber}`
-            : "Proveedor, moneda y líneas"
-        }
-        icon="list"
-        className="mt-6"
-      >
-        {order ? (
-          <p className="mb-4 text-sm text-muted">
-            Las cantidades y los costos arrancan en lo que falta recibir y en el
-            costo esperado de la orden: corregilos con lo que llegó y lo que
-            cobró el proveedor.
-          </p>
-        ) : null}
+      <div className="mt-6">
         <GoodsReceiptForm
           order={order}
           currencies={currencyOptions()}
           maxLines={MAX_GOODS_RECEIPT_LINES}
         />
-      </SectionCard>
+      </div>
     </main>
   );
 }

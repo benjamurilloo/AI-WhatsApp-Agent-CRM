@@ -1,4 +1,14 @@
-import { and, asc, count, desc, eq, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  isNotNull,
+  isNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   goodsReceiptLines,
@@ -6,6 +16,7 @@ import {
   goodsReceiptVoidReason,
   goodsReceiptVoids,
   goodsReceipts,
+  suppliers,
 } from "./schema";
 
 // Acceso a goods_receipts y goods_receipt_lines (ADR 0023, punto 4; brief-22.4) y, desde la 22.5,
@@ -121,9 +132,14 @@ export async function insertGoodsReceiptLineUnits(
 export function findGoodsReceiptLineUnits(
   organizationId: string,
   goodsReceiptId: string,
-): Promise<{ productId: string; unitId: string }[]> {
+): Promise<{ position: number; productId: string; unitId: string }[]> {
   return getDb()
     .select({
+      // Desde la 24.8.1-b: la línea que creó cada unidad, para colgarla de su fila en la ficha
+      // (brief-24.8.1-b, D-2). Agrupar por producto se rompe si dos líneas traen el mismo. Se usa
+      // `position` y no el id porque `GoodsReceiptLineRow` no lo expone: ese tipo también se usa
+      // para insertar, y la posición ya es única dentro de la recepción.
+      position: goodsReceiptLines.position,
       productId: goodsReceiptLines.productId,
       unitId: goodsReceiptLineUnits.unitId,
     })
@@ -266,6 +282,9 @@ export type GoodsReceiptListQuery = {
   voidNumber?: number | null;
   // Todas, las vigentes o las anuladas (brief-22.5, D-9); sin él, todas.
   status?: "all" | "current" | "voided";
+  // Desde la 24.8.1-b (brief-24.8.1-b, D-5): con orden, sin orden o las dos. Sin él, las dos. No
+  // cuesta una sentencia ni una lectura: es una condición sobre una columna que ya está en la fila.
+  withOrder?: "all" | "with" | "without";
 };
 
 function listConditions(query: GoodsReceiptListQuery): SQL | undefined {
@@ -287,6 +306,12 @@ function listConditions(query: GoodsReceiptListQuery): SQL | undefined {
       : undefined,
     query.status === "voided" ? isVoided : undefined,
     query.status === "current" ? isCurrent : undefined,
+    query.withOrder === "with"
+      ? isNotNull(goodsReceipts.purchaseOrderId)
+      : undefined,
+    query.withOrder === "without"
+      ? isNull(goodsReceipts.purchaseOrderId)
+      : undefined,
   );
 }
 
@@ -303,13 +328,16 @@ export async function countGoodsReceipts(
 export type GoodsReceiptListRow = GoodsReceiptRow & {
   supplierName: string;
   purchaseOrderNumber: number | null;
-  lineCount: number;
+  // Las unidades recibidas: **la suma de las cantidades de las líneas**, no el recuento de filas
+  // (brief-24.8.1-b, H-2), con la escala de la base ("20.000"). Desde la 24.8.1-b reemplaza a
+  // `lineCount`, que se fue con la columna «Líneas» que ya no dibuja nadie (D-7).
+  unitCount: string;
   // El número de su anulación; null si está vigente (brief-22.5, D-9).
   voidNumber: number | null;
 };
 
 // De la más reciente a la más vieja, paginada en SQL (D-12). El nombre del proveedor, el número de
-// la orden y la cantidad de líneas son subconsultas sobre tablas del mismo módulo, con alias
+// la orden y las unidades recibidas son subconsultas sobre tablas del mismo módulo, con alias
 // explícitos, como en la lista de órdenes.
 export function findGoodsReceipts(
   query: GoodsReceiptListQuery,
@@ -330,8 +358,8 @@ export function findGoodsReceipts(
         (value: string | number | null) =>
           value === null ? null : Number(value),
       ),
-      lineCount: sql<number>`(
-        select count(*)::int from goods_receipt_lines l
+      unitCount: sql<string>`(
+        select coalesce(sum(l.quantity), 0)::text from goods_receipt_lines l
         where l.organization_id = "goods_receipts"."organization_id"
           and l.goods_receipt_id = "goods_receipts"."id")`,
       voidNumber: voidNumberOf,
@@ -341,6 +369,33 @@ export function findGoodsReceipts(
     .orderBy(desc(goodsReceipts.createdAt), desc(goodsReceipts.id))
     .limit(limit)
     .offset(offset);
+}
+
+// Las opciones del filtro de proveedor de la lista de recepciones (brief-24.8.1-b, D-4): los
+// proveedores que tienen **recepciones**. Es la hermana de `findPurchaseOrderSupplierOptions` y no
+// se puede reemplazar por ella: esa devuelve los que tienen órdenes, y un proveedor con recepciones
+// sin orden no aparecería (H-6).
+//
+// `exists` con `limit`, sin `distinct`: la forma corregida por N-1 de la 24.8.1, donde un `limit`
+// por encima de un `distinct` no acotaba nada porque PostgreSQL evalúa la lista de selección por
+// fila de entrada antes de deduplicar.
+export function findGoodsReceiptSupplierOptions(
+  organizationId: string,
+  limit: number,
+): Promise<{ id: string; name: string }[]> {
+  return getDb()
+    .select({ id: suppliers.id, name: suppliers.name })
+    .from(suppliers)
+    .where(
+      and(
+        eq(suppliers.organizationId, organizationId),
+        sql`exists (
+          select 1 from goods_receipts r
+          where r.organization_id = "suppliers"."organization_id"
+            and r.supplier_id = "suppliers"."id")`,
+      ),
+    )
+    .limit(limit);
 }
 
 // La anulación (ADR 0023, punto 6; brief-22.5, D-1).

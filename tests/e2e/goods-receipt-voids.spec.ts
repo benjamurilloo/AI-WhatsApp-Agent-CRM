@@ -46,6 +46,15 @@ test.beforeEach(async () => {
   await seedBasic(db, E2E_PASSWORD);
 });
 
+// La capacidad que enciende el caso de la unidad bloqueada se apaga **al terminar** y no al
+// empezar: entre archivos de la misma base se filtra, y el truncate de este archivo no la toca.
+test.afterEach(async () => {
+  await db.execute(
+    sql`delete from organization_capabilities where organization_id = ${SEED_ORGANIZATION_ID}
+          and capability = 'serialized_units'`,
+  );
+});
+
 async function login(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
@@ -194,7 +203,10 @@ test("un admin anula con el teclado una recepción sin orden y ve la marca y el 
   await page.getByRole("link", { name: "Anular la recepción" }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\?confirmar=anular$/);
-  await expect(page.getByText("¿Anular la recepción RC-000001?")).toBeFocused();
+  // Desde la 24.8.1-b el título va en afirmación, como lo titula la lámina 04 (brief-24.8.1-b,
+  // V-32). Antes era «¿Anular la recepción RC-000001?». **Lo que este caso comprueba no cambió**:
+  // que el foco cae en el título al abrirse el paso.
+  await expect(page.getByText("Anular recepción RC-000001")).toBeFocused();
   await expect(
     page.getByText(
       "Anular no restaura el costo: si hace falta, corregilo en la ficha del producto.",
@@ -204,17 +216,21 @@ test("un admin anula con el teclado una recepción sin orden y ve la marca y el 
   await expect(leaving).toContainText("Café molido");
   await expect(leaving.getByRole("row").nth(1)).toContainText("3");
   await expectAccessible(page, "confirmación de la anulación");
-  // El primer motivo recibe el foco; la flecha elige el siguiente.
-  await page.getByRole("radio", { name: "Error de carga" }).focus();
+  // Desde la 24.8.1-b el motivo es un `<select>` y no arranca elegido (brief-24.8.1-b, D-6 y
+  // V-32): dos flechas bajan hasta el segundo motivo. Antes eran radios, y el primero venía
+  // con el foco. **Lo que este caso comprueba no cambió**: que se anula sin tocar el mouse.
+  const reason = page.getByLabel("Motivo de anulación");
+  await reason.focus();
   await page.keyboard.press("ArrowDown");
-  await expect(
-    page.getByRole("radio", { name: "Cargada dos veces" }),
-  ).toBeChecked();
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "No, volver" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(reason).toHaveValue("duplicate");
   await page.keyboard.press("Tab");
   await expect(
-    page.getByRole("button", { name: "Sí, anular la recepción" }),
+    page.getByRole("link", { name: "Volver", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Anular recepción" }),
   ).toBeFocused();
   await page.keyboard.press("Enter");
 
@@ -264,9 +280,9 @@ test("el comprobante de la anulación, su vista de impresión y el movimiento en
 
   await page.goto(`/compras/recepciones/${receiptId}?confirmar=anular`);
   await page
-    .getByRole("radio", { name: "Mercadería devuelta al proveedor" })
-    .check();
-  await page.getByRole("button", { name: "Sí, anular la recepción" }).click();
+    .getByLabel("Motivo de anulación")
+    .selectOption({ label: "Mercadería devuelta al proveedor" });
+  await page.getByRole("button", { name: "Anular recepción" }).click();
   await expect(page).toHaveURL(/\?aviso=anulada$/);
   await page
     .getByRole("link", { name: "Ver el comprobante de la anulación" })
@@ -342,8 +358,10 @@ test("anular la recepción de una orden: lo recibido vuelve a cero, la orden se 
   await expect(
     page.getByText(/La orden deja de contar esta recepción como recibida/),
   ).toBeVisible();
-  await page.getByRole("radio", { name: "Error de carga" }).check();
-  await page.getByRole("button", { name: "Sí, anular la recepción" }).click();
+  await page
+    .getByLabel("Motivo de anulación")
+    .selectOption({ label: "Error de carga" });
+  await page.getByRole("button", { name: "Anular recepción" }).click();
   await expect(page).toHaveURL(/\?aviso=anulada$/);
 
   await page.goto(`/compras/ordenes/${orderId}`);
@@ -397,8 +415,8 @@ test("el rechazo por falta de stock dice qué producto no alcanza y no escribe",
   await login(page, ADMIN);
 
   await page.goto(`/compras/recepciones/${receiptId}?confirmar=anular`);
-  await page.getByRole("radio", { name: "Otro" }).check();
-  await page.getByRole("button", { name: "Sí, anular la recepción" }).click();
+  await page.getByLabel("Motivo de anulación").selectOption({ label: "Otro" });
+  await page.getByRole("button", { name: "Anular recepción" }).click();
   const alert = page.getByRole("alert").filter({ hasText: "No alcanza" });
   await expect(alert).toContainText("Corregilo con un ajuste");
   await expect(alert).toContainText(
@@ -431,8 +449,10 @@ test("la lista marca las anuladas, filtra por estado y busca por el número de l
   });
   await login(page, ADMIN);
   await page.goto(`/compras/recepciones/${voided}?confirmar=anular`);
-  await page.getByRole("radio", { name: "Cargada dos veces" }).check();
-  await page.getByRole("button", { name: "Sí, anular la recepción" }).click();
+  await page
+    .getByLabel("Motivo de anulación")
+    .selectOption({ label: "Cargada dos veces" });
+  await page.getByRole("button", { name: "Anular recepción" }).click();
   await expect(page).toHaveURL(/\?aviso=anulada$/);
 
   await page.goto("/compras/recepciones");
@@ -446,17 +466,25 @@ test("la lista marca las anuladas, filtra por estado y busca por el número de l
     table.getByRole("row").filter({ hasText: "RC-000001" }),
   ).not.toContainText("Anulada");
   await page.getByLabel("Estado").selectOption("anulada");
-  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
   await expect(page).toHaveURL(/estado=anulada/);
-  await expect(table.getByRole("link", { name: "RC-000002" })).toBeVisible();
-  await expect(table.getByRole("link", { name: "RC-000001" })).toHaveCount(0);
+  await expect(
+    table.getByRole("link", { name: "RC-000002", exact: true }),
+  ).toBeVisible();
+  await expect(
+    table.getByRole("link", { name: "RC-000001", exact: true }),
+  ).toHaveCount(0);
   await expectAccessible(page, "lista de anuladas");
 
   await page.goto("/compras/recepciones");
   await page.getByLabel("Número").fill("ARC-000001");
   await page.getByLabel("Número").press("Enter");
-  await expect(table.getByRole("link", { name: "RC-000002" })).toBeVisible();
-  await expect(table.getByRole("link", { name: "RC-000001" })).toHaveCount(0);
+  await expect(
+    table.getByRole("link", { name: "RC-000002", exact: true }),
+  ).toBeVisible();
+  await expect(
+    table.getByRole("link", { name: "RC-000001", exact: true }),
+  ).toHaveCount(0);
 
   await page.goto(`/compras/proveedores/${supplierId}`);
   await expect(
@@ -478,8 +506,10 @@ test("un viewer ve el movimiento de la anulación sin costo ni proveedor, y el a
   });
   await login(page, ADMIN);
   await page.goto(`/compras/recepciones/${receiptId}?confirmar=anular`);
-  await page.getByRole("radio", { name: "Error de carga" }).check();
-  await page.getByRole("button", { name: "Sí, anular la recepción" }).click();
+  await page
+    .getByLabel("Motivo de anulación")
+    .selectOption({ label: "Error de carga" });
+  await page.getByRole("button", { name: "Anular recepción" }).click();
   await expect(page).toHaveURL(/\?aviso=anulada$/);
   await page.context().clearCookies();
 
@@ -492,7 +522,7 @@ test("un viewer ve el movimiento de la anulación sin costo ni proveedor, y el a
     await expect(page.getByText(FORBIDDEN_PAGE)).toBeVisible();
     await expect(page.getByText("ARC-000001")).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "Sí, anular la recepción" }),
+      page.getByRole("button", { name: "Anular recepción" }),
     ).toHaveCount(0);
   }
   await expectAccessible(page, "permiso de viewer");
@@ -526,9 +556,107 @@ test.describe("sin JavaScript", () => {
     await login(page, ADMIN);
     await page.goto(`/compras/recepciones/${receiptId}`);
     await page.getByRole("link", { name: "Anular la recepción" }).click();
-    await page.getByRole("radio", { name: "Error de carga" }).check();
-    await page.getByRole("button", { name: "Sí, anular la recepción" }).click();
+    await page
+      .getByLabel("Motivo de anulación")
+      .selectOption({ label: "Error de carga" });
+    await page.getByRole("button", { name: "Anular recepción" }).click();
     await expect(page.getByText(/^Anulada por ARC-000001 el /)).toBeVisible();
     expect(await onHand(coffee)).toBe("0.000");
   });
+});
+
+// Una unidad de una recepción, con su IMEI y su estado, como la deja el alta de un producto que se
+// lleva por unidad. Por SQL, como el resto de los fixtures de este archivo.
+async function insertUnit(values: {
+  receiptId: string;
+  productId: string;
+  serial: string;
+  status: "available" | "reserved" | "sold" | "written_off";
+}) {
+  const line = await db.execute<{ id: string }>(
+    sql`select id from goods_receipt_lines
+        where goods_receipt_id = ${values.receiptId} and position = 1`,
+  );
+  // La unidad solo existe con la capacidad encendida y el producto llevado por unidad: sin eso,
+  // la salida de stock de la anulación no sabe qué hacer con los ids y rompe.
+  await db.execute(
+    sql`insert into organization_capabilities (organization_id, capability, activated_by)
+        values (${SEED_ORGANIZATION_ID}, 'serialized_units', ${ADMIN_SEED.id})
+        on conflict do nothing`,
+  );
+  await db.execute(
+    sql`update products set tracking = 'unit' where id = ${values.productId}`,
+  );
+  const unit = await db.execute<{ id: string }>(
+    sql`insert into stock_units (organization_id, product_id, serial, status, cost, cost_currency,
+                                 origin_type, origin_id, created_by)
+        values (${SEED_ORGANIZATION_ID}, ${values.productId}, ${values.serial}, 'available',
+                '1200.00', 'ARS', 'goods_receipt', ${values.receiptId}, ${ADMIN_SEED.id})
+        returning id`,
+  );
+  // Un disparador exige que una unidad **nazca disponible**, así que el estado se fija
+  // después, como lo hace el sistema cuando se reserva.
+  if (values.status !== "available") {
+    await db.execute(
+      sql`update stock_units set status = ${values.status} where id = ${unit.rows[0]!.id}`,
+    );
+  }
+  await db.execute(
+    sql`insert into goods_receipt_line_units (organization_id, goods_receipt_line_id, unit_id)
+        values (${SEED_ORGANIZATION_ID}, ${line.rows[0]!.id}, ${unit.rows[0]!.id})`,
+  );
+  return unit.rows[0]!.id;
+}
+
+// AC-7 y M-4 del brief-24.8.1-b: el bloqueo **nombra la unidad y su estado real**, en vez de
+// enumerar las seis causas posibles. El estado sale de las unidades que la ficha ya leyó (H-3):
+// la unidad figuraba como reservada cuando se dibujó la pantalla, y por eso el texto dice
+// «figura como» y no afirma el estado de ahora.
+test("el bloqueo de la anulación nombra la unidad reservada y su estado, y no escribe", async ({
+  page,
+}) => {
+  const supplierId = await insertSupplier("Importaciones Sur");
+  const phone = await insertProduct("IP15-128", "iPhone 15 128 GB");
+  await insertCost(phone, "1200.00");
+  const receiptId = await insertReceipt({
+    number: 1,
+    supplierId,
+    productId: phone,
+    quantity: "1",
+    unitCost: "1200.00",
+  });
+  await insertUnit({
+    receiptId,
+    productId: phone,
+    serial: "350000000005103",
+    status: "reserved",
+  });
+  await login(page, ADMIN);
+  await page.goto(`/compras/recepciones/${receiptId}?confirmar=anular`);
+  // La ficha ya muestra la unidad con su estado antes de confirmar (AC-6).
+  await expect(page.getByText("350000000005103").first()).toBeVisible();
+  await page
+    .getByLabel("Motivo de anulación")
+    .selectOption({ label: "Error de carga" });
+  await page.getByRole("button", { name: "Anular recepción" }).click();
+  await expect(
+    page.getByText("No se puede anular RC-000001 · 350000000005103"),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "La unidad figura como reservada y no se puede anular la recepción.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("No se cambia ninguna reserva desde esta anulación."),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ver unidad" })).toHaveAttribute(
+    "href",
+    `/productos/${phone}/unidades`,
+  );
+  // No se enumeran las causas posibles, que es lo que V-38 vino a sacar.
+  await expect(page.getByText(/reparación|revisión/)).toHaveCount(0);
+  await expectAccessible(page, "anulación bloqueada por una unidad reservada");
+  expect(await voidCount()).toBe(0);
+  expect(await onHand(phone)).toBe("1.000");
 });

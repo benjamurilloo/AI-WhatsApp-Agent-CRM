@@ -822,10 +822,14 @@ describe("la recepción de mercadería con IMEI (D-4, AC-2)", () => {
         sql`select distinct origin_id from stock_units`,
       );
       expect(origin.rows).toEqual([{ origin_id: created.receipt.id }]);
-      // El detalle muestra los IMEI de la línea.
+      // El detalle muestra los IMEI de la línea. Desde la 24.8.1-b cada unidad viaja entera, con
+      // su estado (brief-24.8.1-b, D-2): el IMEI es uno de sus campos.
       const detail = await getGoodsReceipt(s.adminA, created.receipt.id);
       expect(
-        detail.ok && detail.receipt.lines.map((line) => line.serials),
+        detail.ok &&
+          detail.receipt.lines.map((line) =>
+            line.units.map((unit) => unit.serial),
+          ),
       ).toEqual([["111", "222"], []]);
     },
     TEST_TIMEOUT,

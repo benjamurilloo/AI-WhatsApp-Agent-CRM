@@ -39,7 +39,7 @@ function receipt(
     supplierName: "Importaciones Sur",
     purchaseOrderId: "o1",
     purchaseOrderDisplayNumber: "OC-000057",
-    lineCount: 1,
+    unitCount: "1.000",
     total: "1020.00",
     currency: "USD",
     createdAt: new Date(1000),
@@ -112,19 +112,24 @@ describe("la actividad de una orden de compra", () => {
     );
   });
 
-  it("la recepción dice su número y su monto, y la anulada, con qué se anuló", () => {
+  // Desde la 24.8.1-b la oración dice **las unidades** y no el monto (brief-24.8.1-b, AC-12): el
+  // monto ya está en la tarjeta «Recepciones», y lo que la actividad no decía es cuánto entró.
+  it("la recepción dice su número y sus unidades, y la anulada, con qué se anuló", () => {
     const current = receiptActivityRow(receipt());
     expect(current.label).toBe("Recepción");
-    // `\s` y no un espacio: formatMoney separa el símbolo de la moneda con un espacio duro.
-    expect(current.sentence).toMatch(
-      /^Se registró la recepción RC-000091 por US\$\s1\.020,00\.$/,
+    expect(current.sentence).toBe(
+      "Se registró la recepción RC-000091 por 1 unidad.",
+    );
+    const many = receiptActivityRow(receipt({ unitCount: "2.500" }));
+    expect(many.sentence).toBe(
+      "Se registró la recepción RC-000091 por 2,5 unidades.",
     );
     const voided = receiptActivityRow(
       receipt({ voidDisplayNumber: "ARC-000012" }),
     );
     expect(voided.label).toBe("Recepción anulada");
-    expect(voided.sentence).toMatch(
-      /^Se registró la recepción RC-000091 por US\$\s1\.020,00, anulada con ARC-000012\.$/,
+    expect(voided.sentence).toBe(
+      "Se registró la recepción RC-000091 por 1 unidad, anulada con ARC-000012.",
     );
   });
 

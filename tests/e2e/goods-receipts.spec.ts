@@ -143,6 +143,17 @@ async function insertOrder(
 const line = (page: Page, position: number) =>
   page.getByRole("group", { name: `Línea ${position}`, exact: true });
 
+const summary = (page: Page) =>
+  page.getByRole("complementary", { name: "Resumen de la recepción" });
+
+// Desde la 24.8.1-b el alta son dos pasos (brief-24.8.1-b, V-10): el primero revisa y el segundo
+// registra. Las reglas las sigue validando `purchasing` al registrar, así que un rechazo vuelve al
+// paso 1 con los campos marcados.
+async function register(page: Page) {
+  await page.getByRole("button", { name: "Revisar recepción" }).click();
+  await page.getByRole("button", { name: "Registrar recepción" }).click();
+}
+
 // Elige una opción de un buscador con el teclado, como en purchase-orders.spec.ts.
 async function pick(scope: Locator | Page, label: string, text: string) {
   const field = scope.getByLabel(label, { exact: true });
@@ -178,26 +189,59 @@ test("un admin recibe una orden en dos recepciones, ve el rechazo de recibir de 
   await page.goto(`/compras/ordenes/${orderId}`);
   await page.getByRole("link", { name: "Recibir mercadería" }).click();
   await expect(page).toHaveURL(`/compras/recepciones/nueva?orden=${orderId}`);
-  // Las filas arrancan en lo que falta y en el costo esperado.
+  // La cabecera y la tira de pasos de la lámina 02 (brief-24.8.1-b, V-10 y V-12).
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Recibir mercadería" }),
+  ).toBeVisible();
+  // El paso vigente de la tira (V-9): en escritorio, la lista numerada con `aria-current`; en
+  // teléfono, el renglón «Paso 1 de 2: Mercadería», que acá está oculto por el ancho.
+  await expect(page.locator('[aria-current="step"]')).toHaveText(
+    "Paso 1 de 2: Mercadería",
+  );
+  // Las filas arrancan en lo que falta y en el costo esperado, con los campos de solo lectura de
+  // la lámina 02 (V-13).
   await expect(line(page, 1)).toContainText("Café molido (CAF-250)");
-  await expect(line(page, 1).getByLabel("Cantidad")).toHaveValue("10");
-  await expect(line(page, 1).getByLabel("Costo unitario")).toHaveValue(
+  await expect(line(page, 1)).toContainText("Falta recibir");
+  await expect(line(page, 1)).toContainText("Costo esperado");
+  await expect(line(page, 1).getByLabel("Cantidad a recibir")).toHaveValue(
+    "10",
+  );
+  await expect(line(page, 1).getByLabel("Costo unitario recibido")).toHaveValue(
     "100,00",
   );
+  // El texto de la lámina 03, en dos renglones (V-22).
+  await expect(line(page, 1)).toContainText("El precio de venta está en USD.");
   await expect(line(page, 1)).toContainText(
-    "Este producto se vende en USD: con este costo queda sin margen.",
+    "Con un costo en ARS no se calcula el margen entre monedas.",
   );
-  await expect(line(page, 2)).not.toContainText("Este producto se vende");
+  await expect(line(page, 2)).not.toContainText("El precio de venta");
   await expectAccessible(page, "alta con orden");
 
-  await line(page, 1).getByLabel("Cantidad").fill("6");
-  await line(page, 1).getByLabel("Costo unitario").fill("110");
-  await line(page, 2).getByLabel("Cantidad").fill("0");
+  await line(page, 1).getByLabel("Cantidad a recibir").fill("6");
+  await line(page, 1).getByLabel("Costo unitario recibido").fill("110");
+  await line(page, 2).getByLabel("Cantidad a recibir").fill("0");
   await page
     .getByLabel("Remito o factura del proveedor")
     .fill("R 0001-00012345");
-  await expect(page.getByText("Total estimado: $ 660,00")).toBeVisible();
-  await page.getByRole("button", { name: "Registrar recepción" }).click();
+  // El resumen de la derecha (V-11), con el aviso de que la recepción no cierra la orden.
+  await expect(summary(page)).toContainText("$ 660,00");
+  await expect(summary(page)).toContainText("6 unidades");
+  await expect(summary(page)).toContainText("No registra un pago.");
+  await expect(summary(page)).not.toContainText("completaría la orden");
+
+  // El paso 2, y la vuelta al paso 1 sin perder lo cargado (AC-3).
+  await page.getByRole("button", { name: "Revisar recepción" }).click();
+  await expect(page.locator('[aria-current="step"]')).toHaveText(
+    "Paso 2 de 2: Revisión",
+  );
+  await expect(page.getByText("¿Registrar esta recepción?")).toBeFocused();
+  await expectAccessible(page, "alta en el paso de revisión");
+  await page.getByRole("button", { name: "Corregir" }).click();
+  await expect(line(page, 1).getByLabel("Cantidad a recibir")).toHaveValue("6");
+  await expect(page.getByLabel("Remito o factura del proveedor")).toHaveValue(
+    "R 0001-00012345",
+  );
+  await register(page);
   await expect(page).toHaveURL(
     /\/compras\/recepciones\/[0-9a-f-]{36}\?aviso=creada$/,
   );
@@ -254,20 +298,20 @@ test("un admin recibe una orden en dos recepciones, ve el rechazo de recibir de 
 
   // Recibir de más se rechaza en la línea, sin escribir.
   await page.getByRole("link", { name: "Recibir mercadería" }).click();
-  await expect(line(page, 1).getByLabel("Cantidad")).toHaveValue("4");
-  await line(page, 1).getByLabel("Cantidad").fill("5");
-  await page.getByRole("button", { name: "Registrar recepción" }).click();
+  await expect(line(page, 1).getByLabel("Cantidad a recibir")).toHaveValue("4");
+  await line(page, 1).getByLabel("Cantidad a recibir").fill("5");
+  await register(page);
   await expect(page.getByText("Revisá las líneas marcadas.")).toBeFocused();
   await expect(line(page, 1)).toContainText(
     "Falta recibir 4: no se puede recibir más que eso con esta orden.",
   );
-  await expect(line(page, 1).getByLabel("Cantidad")).toHaveValue("5");
+  await expect(line(page, 1).getByLabel("Cantidad a recibir")).toHaveValue("5");
   await expectAccessible(page, "alta con el faltante superado");
   expect(await receiptCount()).toBe(1);
 
   // El resto: la orden queda completa y se cierra sola.
-  await line(page, 1).getByLabel("Cantidad").fill("4");
-  await page.getByRole("button", { name: "Registrar recepción" }).click();
+  await line(page, 1).getByLabel("Cantidad a recibir").fill("4");
+  await register(page);
   await expect(page).toHaveURL(/\?aviso=orden-cerrada$/);
   await expect(
     page.getByText(/Con ella la orden quedó completa y se cerró\.$/),
@@ -307,12 +351,18 @@ test("un admin recibe una orden en dos recepciones, ve el rechazo de recibir de 
   const table = page.getByRole("table", {
     name: "Recepciones de la organización",
   });
-  await expect(table.getByRole("link", { name: "RC-000001" })).toBeVisible();
-  await expect(table.getByRole("link", { name: "RC-000002" })).toBeVisible();
+  await expect(
+    table.getByRole("link", { name: "RC-000001", exact: true }),
+  ).toBeVisible();
+  await expect(
+    table.getByRole("link", { name: "RC-000002", exact: true }),
+  ).toBeVisible();
   await expectAccessible(page, "lista de recepciones");
   await page.goto(`/compras/proveedores/${supplierId}`);
   const card = page.getByRole("region", { name: "Recepciones" });
-  await expect(card.getByRole("link", { name: "RC-000002" })).toBeVisible();
+  await expect(
+    card.getByRole("link", { name: "RC-000002", exact: true }),
+  ).toBeVisible();
   await card
     .getByRole("link", { name: "Ver las 2 recepciones de este proveedor" })
     .click();
@@ -339,12 +389,14 @@ test("un admin registra una recepción sin orden con la referencia del remito y 
   await expect(page).toHaveURL("/compras/recepciones/nueva");
   await expectAccessible(page, "alta sin orden vacía");
   await pick(page, "Proveedor", "Norte");
-  await page.getByLabel("Moneda", { exact: true }).selectOption("ARS");
+  await page
+    .getByLabel("Moneda de la recepción", { exact: true })
+    .selectOption("ARS");
   await page.getByLabel("Remito o factura del proveedor").fill("R#1");
   await pick(line(page, 1), "Producto", "Café");
   await line(page, 1).getByLabel("Cantidad").fill("3");
   await line(page, 1).getByLabel("Costo unitario").fill("1200");
-  await page.getByRole("button", { name: "Registrar recepción" }).click();
+  await register(page);
   await expect(
     page.getByText(
       "Escribí hasta 40 letras, números, espacios, guiones o barras.",
@@ -354,7 +406,7 @@ test("un admin registra una recepción sin orden con la referencia del remito y 
   expect(await receiptCount()).toBe(0);
 
   await page.getByLabel("Remito o factura del proveedor").fill("R-0001/77");
-  await page.getByRole("button", { name: "Registrar recepción" }).click();
+  await register(page);
   await expect(
     page.getByRole("heading", { level: 1, name: "Recepción RC-000001" }),
   ).toBeVisible();
@@ -369,7 +421,9 @@ test("un admin registra una recepción sin orden con la referencia del remito y 
   const table = page.getByRole("table", {
     name: "Recepciones de la organización",
   });
-  await expect(table.getByRole("link", { name: "RC-000001" })).toBeVisible();
+  await expect(
+    table.getByRole("link", { name: "RC-000001", exact: true }),
+  ).toBeVisible();
   await expect(table).toContainText("Sin orden");
   await page.getByLabel("Número").fill("OC-000001");
   await page.getByLabel("Número").press("Enter");
@@ -388,8 +442,8 @@ test("un viewer ve el movimiento de la recepción sin costo y las páginas de re
   // La recepción la registra un admin; el viewer solo la ve en el producto.
   await login(page, ADMIN);
   await page.goto(`/compras/recepciones/nueva?orden=${orderId}`);
-  await line(page, 2).getByLabel("Cantidad").fill("0");
-  await page.getByRole("button", { name: "Registrar recepción" }).click();
+  await line(page, 2).getByLabel("Cantidad a recibir").fill("0");
+  await register(page);
   await expect(page).toHaveURL(/\?aviso=creada$/);
   const receiptPath = new URL(page.url()).pathname;
   await page.context().clearCookies();
@@ -443,24 +497,26 @@ test.describe("sin JavaScript", () => {
     await page
       .getByLabel("Proveedor", { exact: true })
       .fill("importaciones sur");
-    await page.getByLabel("Moneda", { exact: true }).selectOption("ARS");
+    await page
+      .getByLabel("Moneda de la recepción", { exact: true })
+      .selectOption("ARS");
     await line(page, 1).getByLabel("Producto").fill("caf-250");
     await line(page, 1).getByLabel("Cantidad").fill("2");
     await line(page, 1).getByLabel("Costo unitario").fill("0");
-    await page.getByRole("button", { name: "Registrar recepción" }).click();
+    await register(page);
     await expect(line(page, 1)).toContainText(
       "Escribí un costo mayor que cero.",
     );
     await expect(line(page, 1).getByLabel("Cantidad")).toHaveValue("2");
     await line(page, 1).getByLabel("Costo unitario").fill("1000");
-    await page.getByRole("button", { name: "Registrar recepción" }).click();
+    await register(page);
     await expect(
       page.getByRole("heading", { level: 1, name: "Recepción RC-000001" }),
     ).toBeVisible();
 
     await page.goto(`/compras/recepciones/nueva?orden=${orderId}`);
-    await line(page, 1).getByLabel("Cantidad").fill("0");
-    await page.getByRole("button", { name: "Registrar recepción" }).click();
+    await line(page, 1).getByLabel("Cantidad a recibir").fill("0");
+    await register(page);
     await expect(
       page.getByRole("heading", { level: 1, name: "Recepción RC-000002" }),
     ).toBeVisible();
@@ -469,4 +525,75 @@ test.describe("sin JavaScript", () => {
       "Café molido",
     );
   });
+});
+
+// M-3 del brief-24.8.1-b. El barrido se mide con `scrollWidth` contra `clientWidth` **del
+// documento**, como lo fijó N-5 de la 24.7.3: `window.innerWidth` incluye la barra de
+// desplazamiento y puede tapar un desbordamiento de su ancho.
+const overflowOf = (page: Page) =>
+  page.evaluate(() => {
+    const root = document.documentElement;
+    return root.scrollWidth - root.clientWidth;
+  });
+
+test("las cinco pantallas entran en 320 y 375 px, con el proveedor más largo elegido", async ({
+  page,
+}) => {
+  // El `<select>` de proveedor es nativo: su menú lo dibuja el sistema y no entra en el
+  // documento, así que lo que puede desbordar es **el control cerrado con la opción más larga
+  // elegida**, y eso es lo que se mide. El nombre es el más largo que admite el alta.
+  const longName = "Importaciones y Distribuciones del Litoral Argentino S.A.";
+  const supplierId = await insertSupplier(longName);
+  const coffee = await insertProduct("CAF-250", "Café molido en grano tostado");
+  const tea = await insertProduct("TE-100", "Té verde en hebras");
+  const orderId = await insertOrder(supplierId, coffee, tea);
+  await login(page, ADMIN);
+  await page.goto(`/compras/recepciones/nueva?orden=${orderId}`);
+  await line(page, 2).getByLabel("Cantidad a recibir").fill("0");
+  await register(page);
+  await expect(page).toHaveURL(/\?aviso=creada$/);
+  const receiptPath = new URL(page.url()).pathname;
+
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const [path, name] of [
+      ["/compras/recepciones", "la lista"],
+      ["/compras/recepciones/nueva", "el alta sin orden"],
+      [`/compras/recepciones/nueva?orden=${orderId}`, "el alta con orden"],
+      [receiptPath, "la ficha"],
+      [`${receiptPath}?confirmar=anular`, "la anulación"],
+    ] as const) {
+      await page.goto(path);
+      expect(
+        await overflowOf(page),
+        `${name} a ${width} px`,
+      ).toBeLessThanOrEqual(0);
+    }
+    // La lista, otra vez, con el proveedor largo elegido en el control.
+    await page.goto("/compras/recepciones");
+    await page
+      .getByLabel("Proveedor", { exact: true })
+      .selectOption(supplierId);
+    await expect(page.getByLabel("Proveedor", { exact: true })).toHaveValue(
+      supplierId,
+    );
+    expect(
+      await overflowOf(page),
+      `la lista con el proveedor largo elegido a ${width} px`,
+    ).toBeLessThanOrEqual(0);
+    await page.getByRole("button", { name: "Aplicar filtros" }).click();
+    await expect(page).toHaveURL(/proveedor=/);
+    expect(
+      await overflowOf(page),
+      `la lista filtrada por el proveedor largo a ${width} px`,
+    ).toBeLessThanOrEqual(0);
+    // El paso 2 del alta, que dibuja el resumen y la tabla de revisión.
+    await page.goto(`/compras/recepciones/nueva?orden=${orderId}`);
+    await page.getByRole("button", { name: "Revisar recepción" }).click();
+    await expect(page.getByText("¿Registrar esta recepción?")).toBeVisible();
+    expect(
+      await overflowOf(page),
+      `el paso de revisión a ${width} px`,
+    ).toBeLessThanOrEqual(0);
+  }
 });

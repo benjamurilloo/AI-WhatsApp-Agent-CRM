@@ -13,11 +13,12 @@ import {
   recordReceivedCosts,
 } from "@/modules/catalog";
 import {
-  getUnitSerials,
+  getUnitSummaries,
   isSerialTakenError,
   parseUnitSerial,
   receiveStock,
   splitUnitSerials,
+  type UnitStatus,
 } from "@/modules/inventory";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
@@ -63,6 +64,9 @@ import {
 
 export const GOODS_RECEIPTS_PAGE_SIZE = 25;
 export const SUPPLIER_GOODS_RECEIPTS_LIMIT = 5;
+// Hasta acá el filtro de proveedor de la lista es un `<select>`; pasado el tope, un campo de texto
+// (brief-24.8.1-b, D-4). Es el mismo número que PURCHASE_ORDER_SUPPLIER_FILTER_LIMIT.
+export const GOODS_RECEIPT_SUPPLIER_FILTER_LIMIT = 50;
 export { MAX_GOODS_RECEIPT_LINES, SUPPLIER_REFERENCE_MAX_LENGTH };
 
 const idSchema = z.uuid();
@@ -765,7 +769,11 @@ export type GoodsReceiptSummary = {
   supplierName: string;
   purchaseOrderId: string | null;
   purchaseOrderDisplayNumber: string | null;
-  lineCount: number;
+  // Las unidades recibidas: la **suma de las cantidades** de las líneas, con la escala de la base
+  // ("20.000"), para formatear con `formatQuantity`. Desde la 24.8.1-b (brief-24.8.1-b, H-2 y D-7)
+  // reemplaza a `lineCount`: la lámina 01 no dibuja «Líneas» y la tarjeta de recepciones de la
+  // ficha de la orden pasa a decir «Unidades», así que la subconsulta vieja no la leía nadie.
+  unitCount: string;
   total: string;
   currency: string;
   createdAt: Date;
@@ -777,6 +785,11 @@ export type GoodsReceiptSummary = {
 export const GOODS_RECEIPT_STATUSES = ["all", "current", "voided"] as const;
 export type GoodsReceiptStatusFilter = (typeof GOODS_RECEIPT_STATUSES)[number];
 
+// Con orden, sin orden o las dos (brief-24.8.1-b, D-5).
+export const GOODS_RECEIPT_ORDER_FILTERS = ["all", "with", "without"] as const;
+export type GoodsReceiptOrderFilter =
+  (typeof GOODS_RECEIPT_ORDER_FILTERS)[number];
+
 export type GoodsReceiptListFilters = {
   supplierId: string | null;
   // Lo que escribió quien busca; vacío no filtra. Acepta el número de la recepción o el de su
@@ -784,6 +797,8 @@ export type GoodsReceiptListFilters = {
   number: string;
   // Sin estado, todas.
   status?: GoodsReceiptStatusFilter;
+  // Sin él, las de con orden y las de sin orden (brief-24.8.1-b, D-5).
+  withOrder?: GoodsReceiptOrderFilter;
   page: number;
 };
 
@@ -809,7 +824,7 @@ function summarize(
       row.purchaseOrderNumber === null
         ? null
         : formatDocumentNumber("purchase_order", row.purchaseOrderNumber),
-    lineCount: row.lineCount,
+    unitCount: row.unitCount,
     total: row.total,
     currency: row.currency,
     createdAt: row.createdAt,
@@ -853,6 +868,11 @@ export async function listGoodsReceipts(
       filters.status && GOODS_RECEIPT_STATUSES.includes(filters.status)
         ? filters.status
         : "all",
+    withOrder:
+      filters.withOrder &&
+      GOODS_RECEIPT_ORDER_FILTERS.includes(filters.withOrder)
+        ? filters.withOrder
+        : "all",
   };
   const total = await receiptRepository.countGoodsReceipts(query);
   const pageCount = Math.max(1, Math.ceil(total / GOODS_RECEIPTS_PAGE_SIZE));
@@ -866,6 +886,35 @@ export async function listGoodsReceipts(
           (page - 1) * GOODS_RECEIPTS_PAGE_SIZE,
         );
   return { ok: true, receipts: rows.map(summarize), total, page, pageCount };
+}
+
+// El filtro de proveedor de la lista (brief-24.8.1-b, D-4). Es el gemelo de
+// `listPurchaseOrderSupplierOptions` y **no se puede reusar**: aquel devuelve los proveedores que
+// tienen una **orden**, y acá hacen falta los que tienen una **recepción** — un proveedor puede
+// tener una y no la otra (H-6). Pasado el tope, el `<select>` no va y queda el campo de texto.
+export type GoodsReceiptSupplierOptions =
+  | { kind: "select"; suppliers: { id: string; name: string }[] }
+  | { kind: "text" };
+
+export async function listGoodsReceiptSupplierOptions(
+  context: AuthContext,
+): Promise<
+  { ok: true; options: GoodsReceiptSupplierOptions } | Failure<"FORBIDDEN">
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const rows = await receiptRepository.findGoodsReceiptSupplierOptions(
+    context.organizationId,
+    GOODS_RECEIPT_SUPPLIER_FILTER_LIMIT + 1,
+  );
+  // Se pidió uno más que el tope: si llegaron más, el `<select>` no va.
+  if (rows.length > GOODS_RECEIPT_SUPPLIER_FILTER_LIMIT) {
+    return { ok: true, options: { kind: "text" } };
+  }
+  const suppliers = [...rows].sort((a, b) =>
+    a.name.localeCompare(b.name, "es"),
+  );
+  return { ok: true, options: { kind: "select", suppliers } };
 }
 
 // Las últimas recepciones de un proveedor, para su ficha (D-11).
@@ -927,8 +976,20 @@ export type GoodsReceiptLine = {
   quantity: string;
   unitCost: string;
   lineTotal: string;
-  // Desde la 29.5: los IMEI de las unidades que creó la línea; vacía en un producto por cantidad.
-  serials: string[];
+  // Desde la 29.5, los IMEI de las unidades que creó la línea; vacía en un producto por cantidad.
+  // Desde la 24.8.1-b cada unidad viene con su **estado de hoy**, su grado y su salud de batería
+  // (brief-24.8.1-b, H-3 y D-2), para la tabla «Productos recibidos» de la lámina 04 y para la
+  // confirmación de la anulación. **No cuesta una sentencia**: `getUnitSerials` y `getUnitSummaries`
+  // leen los dos por `findUnitsByIds`, y la ficha ya llamaba al primero.
+  units: GoodsReceiptLineUnit[];
+};
+
+export type GoodsReceiptLineUnit = {
+  unitId: string;
+  serial: string;
+  status: UnitStatus;
+  gradeName: string | null;
+  batteryHealth: number | null;
 };
 
 export type GoodsReceiptDetail = {
@@ -948,6 +1009,10 @@ export type GoodsReceiptDetail = {
   currency: string;
   total: string;
   supplierReference: string | null;
+  // Las unidades recibidas de la lámina 04: la **suma de las cantidades** de las líneas, con la
+  // convención que fijaron V-23 y V-33 de la 24.8.1 (brief-24.8.1-b, H-2). No cuesta una lectura:
+  // las líneas ya están acá.
+  unitCount: string;
   createdAt: Date;
   lines: GoodsReceiptLine[];
   // Su anulación, si la tiene (brief-22.5, D-9).
@@ -989,15 +1054,26 @@ export async function getGoodsReceipt(
     receiptRepository.findVoidByGoodsReceipt(organizationId, receipt.id),
     receiptRepository.findGoodsReceiptLineUnits(organizationId, receipt.id),
   ]);
-  const serials = await getUnitSerials(
+  // Desde la 24.8.1-b, `getUnitSummaries` en lugar de `getUnitSerials`: **la misma sentencia**, que
+  // trae además el estado, el grado y la salud de batería (brief-24.8.1-b, H-3).
+  const summaries = await getUnitSummaries(
     organizationId,
     lineUnits.map((row) => row.unitId),
   );
-  const serialsByProduct = new Map<string, string[]>();
+  // Por línea y no por producto: dos líneas de la misma recepción pueden traer el mismo producto.
+  const unitsByLine = new Map<number, GoodsReceiptLineUnit[]>();
   for (const row of lineUnits) {
-    const list = serialsByProduct.get(row.productId) ?? [];
-    list.push(serials.get(row.unitId) ?? "");
-    serialsByProduct.set(row.productId, list);
+    const summary = summaries.get(row.unitId);
+    if (!summary) continue;
+    const list = unitsByLine.get(row.position) ?? [];
+    list.push({
+      unitId: row.unitId,
+      serial: summary.serial,
+      status: summary.status,
+      gradeName: summary.gradeName,
+      batteryHealth: summary.batteryHealth,
+    });
+    unitsByLine.set(row.position, list);
   }
   const products = await getProductsByIds(
     context,
@@ -1034,6 +1110,12 @@ export async function getGoodsReceipt(
       total: receipt.total,
       supplierReference: receipt.supplierReference,
       createdAt: receipt.createdAt,
+      unitCount: quantityToDatabase(
+        lines.reduce(
+          (total, line) => total + quantityFromDatabase(line.quantity),
+          0n,
+        ),
+      ),
       lines: lines.map((line) => {
         const product = productsById.get(line.productId);
         return {
@@ -1045,9 +1127,10 @@ export async function getGoodsReceipt(
           quantity: line.quantity,
           unitCost: line.unitCost,
           lineTotal: line.lineTotal,
-          // En orden alfabético: las filas de la línea no guardan el orden en que se escribieron.
-          serials: (serialsByProduct.get(line.productId) ?? []).sort((a, b) =>
-            a.localeCompare(b),
+          // En orden alfabético de IMEI: las filas de la línea no guardan el orden en que se
+          // escribieron.
+          units: (unitsByLine.get(line.position) ?? []).sort((a, b) =>
+            a.serial.localeCompare(b.serial),
           ),
         };
       }),

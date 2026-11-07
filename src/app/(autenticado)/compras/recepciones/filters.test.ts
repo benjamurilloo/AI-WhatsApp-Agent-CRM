@@ -7,25 +7,30 @@ import {
 } from "./filters";
 
 // Los filtros de la lista de recepciones en la URL (brief-22.4, D-12; desde la 22.5, el estado,
-// brief-22.5, D-9).
+// brief-22.5, D-9; desde la 24.8.1-b, el origen, brief-24.8.1-b, D-5).
 
 describe("los filtros de la lista de recepciones", () => {
-  it("lee el proveedor, el número, el estado y la página", () => {
+  it("lee el proveedor, el número, el estado, el origen y la página", () => {
     expect(
       parseGoodsReceiptFilters({
         proveedor: " abc ",
         numero: ["RC-000012", "x"],
         estado: "anulada",
+        orden: "con",
         pagina: "3",
       }),
     ).toEqual({
       supplierId: "abc",
       number: "RC-000012",
       status: "voided",
+      withOrder: "with",
       page: 3,
     });
     expect(parseGoodsReceiptFilters({ estado: "vigente" }).status).toBe(
       "current",
+    );
+    expect(parseGoodsReceiptFilters({ orden: "sin" }).withOrder).toBe(
+      "without",
     );
   });
 
@@ -39,6 +44,10 @@ describe("los filtros de la lista de recepciones", () => {
     );
     expect(parseGoodsReceiptFilters({ estado: "voided" }).status).toBe("all");
     expect(parseGoodsReceiptFilters({ estado: "toString" }).status).toBe("all");
+    expect(parseGoodsReceiptFilters({ orden: "with" }).withOrder).toBe("all");
+    expect(parseGoodsReceiptFilters({ orden: "toString" }).withOrder).toBe(
+      "all",
+    );
   });
 
   it("la URL lleva solo lo que difiere del defecto", () => {
@@ -50,6 +59,7 @@ describe("los filtros de la lista de recepciones", () => {
         supplierId: "p",
         number: "rc12",
         status: "all",
+        withOrder: "all",
         page: 2,
       }),
     ).toBe("/compras/recepciones?proveedor=p&numero=rc12&pagina=2");
@@ -59,6 +69,12 @@ describe("los filtros de la lista de recepciones", () => {
         status: "current",
       }),
     ).toBe("/compras/recepciones?estado=vigente");
+    expect(
+      goodsReceiptFiltersHref({
+        ...DEFAULT_GOODS_RECEIPT_FILTERS,
+        withOrder: "without",
+      }),
+    ).toBe("/compras/recepciones?orden=sin");
   });
 
   it("dice si hay algún filtro activo", () => {
@@ -75,6 +91,12 @@ describe("los filtros de la lista de recepciones", () => {
       hasActiveGoodsReceiptFilters({
         ...DEFAULT_GOODS_RECEIPT_FILTERS,
         status: "voided",
+      }),
+    ).toBe(true);
+    expect(
+      hasActiveGoodsReceiptFilters({
+        ...DEFAULT_GOODS_RECEIPT_FILTERS,
+        withOrder: "with",
       }),
     ).toBe(true);
     expect(
