@@ -34,7 +34,7 @@ import {
   estimatePurchaseLineTotal,
   sumPurchaseEstimates,
 } from "../../ordenes/estimate";
-import { byQuantity } from "../../ordenes/messages";
+import { TRACKING_LABEL, byQuantity } from "../../ordenes/messages";
 import { PurchaseOrderStatusBadge } from "../../ordenes/status-badge";
 import {
   createGoodsReceiptAction,
@@ -118,11 +118,6 @@ function splitProductText(text: string): { name: string; sku: string } {
     ? { name: match[1]!.trim(), sku: match[2]!.trim() }
     : { name: text, sku: "" };
 }
-
-const TRACKING_LABEL: Record<string, string> = {
-  unit: "Por unidad",
-  quantity: "Por cantidad",
-};
 
 export function GoodsReceiptForm(props: Props) {
   const [state, formAction, pending] = useActionState(
@@ -948,7 +943,14 @@ function FreeLineFields({
       <p className="text-sm">
         {row.tracking ? (
           <span className="inline-flex items-center rounded-full bg-surface-muted px-2.5 py-0.5 text-xs font-semibold text-muted">
-            {TRACKING_LABEL[row.tracking] ?? row.tracking}
+            {/* El rótulo sale de `ordenes/messages`, que lo tipa contra `StockTracking` y lo
+                fija con una prueba. `row.tracking` es un `string` del estado del formulario, así
+                que se comprueba antes de indexar, como en `productos/[productId]/audit-summary`.
+                Hallazgo 7 de la revisión independiente de la 24.8.1-b: acá había una tercera copia
+                del rótulo, más floja de tipo y sin prueba que la fijara. */}
+            {Object.hasOwn(TRACKING_LABEL, row.tracking)
+              ? TRACKING_LABEL[row.tracking as keyof typeof TRACKING_LABEL]
+              : row.tracking}
           </span>
         ) : (
           <span className="text-muted">—</span>

@@ -77,7 +77,6 @@ export {
   getUnit,
   // Los costos por unidad para la pantalla de costos (brief-24.5.2-b). Solo admin.
   getProductUnitCosts,
-  getUnitSerials,
   listProductUnits,
   UNIT_COST_ROWS_CAP,
   type ProductUnitCosts,

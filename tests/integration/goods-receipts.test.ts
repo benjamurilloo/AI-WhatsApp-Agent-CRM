@@ -1584,6 +1584,11 @@ describe("el rendimiento (AC-8; D-12)", () => {
         `M-1 lista: ${oneReads.length} sentencias con 1 recepción, ${manyReads.length} con 25`,
       );
       expect(manyReads.length).toBe(oneReads.length);
+      // **La cifra exacta, y no solo la igualdad** (hallazgo 3 de la revisión independiente de la
+      // 24.8.1-b): son `countGoodsReceipts` y `findGoodsReceipts`, y el recuento y las cuatro
+      // subconsultas correlacionadas viajan dentro de la segunda. El filtro de proveedor es una
+      // llamada aparte, que la página hace y esta medición no cuenta.
+      expect(oneReads.length).toBe(2);
 
       const detail = await statementsOf(() =>
         getGoodsReceipt(s.adminA, created.receipt.id),
@@ -1591,9 +1596,10 @@ describe("el rendimiento (AC-8; D-12)", () => {
       expect(detail.result).toMatchObject({ ok: true });
       const detailReads = reads(detail.statements);
       console.info(`M-1 ficha: ${detailReads.length} sentencias`);
-      // El número exacto se registra en el §Cierre del brief; acá se fija el techo, que es lo
-      // que una regresión rompería: nada por fila ni por unidad.
-      expect(detailReads.length).toBeLessThanOrEqual(8);
+      // **El número exacto, no un techo** (hallazgo 3 de la revisión independiente de la
+      // 24.8.1-b). Con un techo de 8 para una cifra de 7, una sentencia de más pasaba en verde y
+      // la mitad «antes» de AC-8 no se podía volver a comprobar.
+      expect(detailReads.length).toBe(7);
 
       // Para M-2: el texto de la consulta de la lista, que se le pasa a `explain` aparte.
       if (process.env.CRM_SQL) {

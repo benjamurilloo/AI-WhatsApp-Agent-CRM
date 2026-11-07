@@ -979,8 +979,10 @@ export type GoodsReceiptLine = {
   // Desde la 29.5, los IMEI de las unidades que creó la línea; vacía en un producto por cantidad.
   // Desde la 24.8.1-b cada unidad viene con su **estado de hoy**, su grado y su salud de batería
   // (brief-24.8.1-b, H-3 y D-2), para la tabla «Productos recibidos» de la lámina 04 y para la
-  // confirmación de la anulación. **No cuesta una sentencia**: `getUnitSerials` y `getUnitSummaries`
-  // leen los dos por `findUnitsByIds`, y la ficha ya llamaba al primero.
+  // confirmación de la anulación. **No cuesta una sentencia**: `getUnitSummaries` lee por
+  // `findUnitsByIds`, la misma del `getUnitSerials` al que reemplaza, y la ficha ya llamaba a ese.
+  // (`getUnitSerials` se borró el 2026-11-06, con autorización del usuario: al mudarse este
+  // consumidor quedó sin ninguno. Hallazgo 4 de la revisión independiente.)
   units: GoodsReceiptLineUnit[];
 };
 

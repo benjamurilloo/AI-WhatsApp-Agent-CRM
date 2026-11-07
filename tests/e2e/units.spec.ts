@@ -145,8 +145,10 @@ async function expectAccessible(page: Page, state: string) {
 const line = (page: Page, position: number) =>
   page.getByRole("group", { name: `Línea ${position}`, exact: true });
 
-// Desde la 24.8.1-b el alta de recepciones tiene dos pasos (brief-24.8.1-b, D-2): la revisión
-// no valida nada, así que el rechazo sigue llegando después de confirmar.
+// Desde la 24.8.1-b el alta de recepciones tiene dos pasos (brief-24.8.1-b, V-10 y V-15, con el
+// recorrido fijado por AC-3): la revisión no valida nada, así que el rechazo sigue llegando después
+// de confirmar. (Antes este comentario citaba D-2, que decide otra cosa —«Productos recibidos», por
+// unidad o por línea—: hallazgo 6 de la revisión independiente.)
 async function registrarRecepcion(page: Page) {
   await page.getByRole("button", { name: "Revisar recepción" }).click();
   await page.getByRole("button", { name: "Registrar recepción" }).click();

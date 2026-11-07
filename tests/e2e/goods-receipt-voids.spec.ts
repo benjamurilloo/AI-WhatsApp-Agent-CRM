@@ -204,7 +204,10 @@ test("un admin anula con el teclado una recepción sin orden y ve la marca y el 
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\?confirmar=anular$/);
   // Desde la 24.8.1-b el título va en afirmación, como lo titula la lámina 04 (brief-24.8.1-b,
-  // V-32). Antes era «¿Anular la recepción RC-000001?». **Lo que este caso comprueba no cambió**:
+  // §Cierre, A-10: es una diferencia que la tabla del brief no tenía y que apareció al comparar
+  // con la lámina. **V-32 decide el contenido de la anulación, no su título**; citarla acá era el
+  // hallazgo 6 de la revisión independiente).
+  // Antes era «¿Anular la recepción RC-000001?». **Lo que este caso comprueba no cambió**:
   // que el foco cae en el título al abrirse el paso.
   await expect(page.getByText("Anular recepción RC-000001")).toBeFocused();
   await expect(

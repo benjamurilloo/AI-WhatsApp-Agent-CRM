@@ -1228,16 +1228,6 @@ export async function getUnit(
   };
 }
 
-// Los IMEI de unas unidades, para el detalle de una recepción (purchasing ya autorizó). Una unidad de
-// otra organización no vuelve.
-export async function getUnitSerials(
-  organizationId: string,
-  unitIds: string[],
-): Promise<Map<string, string>> {
-  const rows = await unitRepository.findUnitsByIds(organizationId, unitIds);
-  return new Map(rows.map((row) => [row.id, row.serial]));
-}
-
 // Las unidades disponibles de un producto, para elegirlas en un pedido o una venta (brief-29.5.2,
 // D-5): el IMEI, el grado, la batería y el precio propio, sin el costo. Los dos roles, como la ficha;
 // solo un admin crea pedidos y ventas.

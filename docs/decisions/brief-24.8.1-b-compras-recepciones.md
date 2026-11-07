@@ -421,8 +421,17 @@ los dos dependen de la lectura nueva:
 
 **La documentación**:
 
-25. `docs/product/Screens.md` (§§46 a 49)
+25. `docs/product/Screens.md` (§§46 a 49, **más la §45, agregada el 2026-11-06 con autorización del
+    usuario en el turno**: ver el §Cierre, AC-20, hallazgo 1)
 26. `docs/decisions/brief-24.8.1-b-compras-recepciones.md` (este archivo)
+
+**Dos ampliaciones más, nacidas de la revisión independiente** y autorizadas por el usuario en el
+turno del 2026-11-06, declaradas acá y en el §Cierre:
+
+27. `src/modules/inventory/units.ts` — se borra `getUnitSerials`, que esta subfase dejó **sin un solo
+    consumidor** al mudar el único a `getUnitSummaries` (hallazgo 4). Se comprobó antes que no hay
+    cascada y que ninguna guarda enumera esos exports por nombre.
+28. `src/modules/inventory/index.ts` — su línea del barrel.
 
 Al cerrar, y **con autorización en el turno**: `CHANGELOG.md`, `docs/decisions/README.md`,
 `docs/planning/Roadmap.md` y `HANDOFF.md`.
@@ -538,25 +547,32 @@ Quedan después **cinco filas**: la 24.8.2, la 24.9.1, la 24.9.2, la 24.9.3 y la
 
 ## Cierre
 
-**Todavía no está cerrada.** Estado al **2026-11-06**: **implementada y verificada localmente**, con
-**nada commiteado, subido ni desplegado**. **AC-19, AC-20 y AC-21 están pendientes**, y los tres
-necesitan autorización del usuario **en el turno**. **El nivel alcanzado hasta acá es «validado en
+**Todavía no está cerrada.** Estado al **2026-11-06**: **implementada, commiteada en `34839a6` y
+con la CI en verde sobre ese SHA, y revisada por un agente independiente**. **AC-19 y AC-20 están
+cumplidos. AC-21 sigue pendiente**, y necesita autorización del usuario **en el turno**. **El nivel alcanzado hasta acá es «validado en
 integración»** —UI ↔ servicio ↔ base en las cuatro pantallas—: «validado en staging» lo da **AC-21 y
 nada más**, y un nivel superior nunca se infiere de uno inferior. Esta sección es **una
 autoevaluación** y no una revisión independiente.
 
-**Y con una salvedad que no se puede leer salteada**: la batería de integración de Vitest **no se
-pudo correr entera en esta máquina**. Lo que sí se corrió, lo que quedó sin identificar y por qué,
-está en §«La batería local, con lo que no se pudo correr dicho», y es **la CI de AC-19 la que
-resuelve esa batería**, no este cierre.
+**La salvedad que esta sección tenía quedó saldada, y se deja escrita con su desenlace**: la
+batería de integración de Vitest **no se pudo correr entera en esta máquina**, y **la CI la corrió
+entera en verde** —115 archivos y 1.931 casos en 479 s— sobre este mismo SHA. Los tres casos en
+rojo de la corrida local **eran fallas de entorno, no regresiones**, y los dos archivos que no se
+pudieron identificar quedan resueltos ahí. El detalle de lo que sí se corrió acá, y de lo que no,
+se conserva en §«La batería local, con lo que no se pudo correr dicho», porque **el hueco de
+instrumentación que lo causó es el hallazgo, y no desaparece porque la CI haya salido verde**.
 
 ### El alcance entregado, contra la tabla de la lista cerrada
 
-`git diff --stat` del árbol de trabajo contra `2871584`: **24 archivos, +3.041/−848**, más el propio
-brief, que todavía no tiene seguimiento. **Los veinticuatro están dentro de la lista cerrada y de su
-única ampliación**, y ninguno fuera.
+**En dos rondas.** La primera es el commit **`34839a6`**: **24 archivos, +3.041/−848**, más el
+propio brief. La segunda son las correcciones de la revisión independiente: **9 archivos,
++132/−49** contra ese commit, de los cuales **dos son archivos nuevos en la entrega**
+—`src/modules/inventory/units.ts` y su barrel, los puntos 27 y 28 de la lista—. **El total contra
+`2871584` es de 27 archivos, +3.915/−859**, y **los veintisiete están dentro de la lista cerrada y
+de sus tres ampliaciones autorizadas**, ninguno fuera. La segunda ronda **todavía no está
+commiteada**.
 
-- **La ampliación**: `tests/integration/units.test.ts`, el punto **24** de la lista, **preguntada y
+- **La primera ampliación**: `tests/integration/units.test.ts`, el punto **24** de la lista, **preguntada y
   autorizada por el usuario antes de tocar el archivo**. Su aserción de los IMEI de la ficha quedó
   vieja con D-2, y su alta, con el paso 2 de V-10. **H-9 contó el radio en las pruebas y no vio este
   archivo**: es el hallazgo que esta subfase deja sobre su propio instrumento.
@@ -594,8 +610,8 @@ brief, que todavía no tiene seguimiento. **Los veinticuatro están dentro de la
 | **AC-16** | **Cumplido y medido (M-3).** `setViewportSize` a 320 y a 375 px y `scrollWidth` contra `clientWidth` en **las cinco pantallas** —lista, alta sin orden, alta con orden, ficha y anulación—, con el proveedor **más largo elegido** en el `<select>`, la lista filtrada y el paso de revisión. **Ninguna desborda**, y el barrido está escrito en la spec, no declarado a ojo. |
 | **AC-17** | **Cumplido.** `Screens.md` queda al día en sus **§§46 a 49**, actualizadas en su lugar según D-8, con las cadenas que esta subfase volvió falsas **jubiladas por nombre**. La **§50 no se tocó**: es de la 24.8.2. |
 | **AC-18** | **Cumplido.** Comparación entrada por entrada **con las seis láminas abiertas**: el detalle, abajo. Las treinta y ocho diferencias de la tabla del brief, más **diez** que aparecieron al mirar: nueve declaradas y **una corregida en el producto**. |
-| **AC-19** | **Pendiente.** Necesita `commit` y `push`, y los dos necesitan autorización del usuario en el turno (condición de detención 6). |
-| **AC-20** | **Pendiente.** La revisión independiente se pide después de AC-19 y antes del despliegue. Un subagente revisor **no otorga ninguna autorización**. |
+| **AC-19** | **Cumplido.** Corrida **42316301814** sobre **`34839a6d0329d01ded58f77fcf1e85e157cc5655`**, leído por `headSha`, en `success`, con «Alcance del cambio» en **«Corre todo: true»**. Los diecisiete pasos en verde: lint, tipos, formato, migraciones al día, **guardas 33 archivos**, **unitarias 123 archivos**, **integración 115 archivos / 1.931 casos**, build y **extremo a extremo 386 casos**. |
+| **AC-20** | **Cumplido, con hallazgos.** Un agente que no participó, de solo lectura, dio **R2**: un bloqueante —una contradicción entre el código y la §45 de `Screens.md` que esta autoevaluación no había visto— y siete no bloqueantes. **Los ocho se verificaron contra el código y los ocho resultaron ciertos**; seis se corrigieron dentro de la lista cerrada y dos, fuera de ella, con autorización del usuario en el turno. El detalle, y el límite que el propio revisor declaró, en §«AC-20 · La revisión independiente». |
 | **AC-21** | **Pendiente.** Despliegue y recorrido del usuario. **Sin AC-21 el nivel es «validado en integración», no «validado en staging»**, y así queda escrito arriba. |
 
 ### AC-10 · Las lecturas nuevas, pantalla por pantalla
@@ -620,11 +636,21 @@ agregada en las cuatro pantallas.** Dos lecturas declaradas, y ninguna tercera.
 **Las cuatro son independientes y ninguna hereda la salvedad de otra.**
 
 - **M-1 · Medido, no razonado.** El recuento de sentencias de la lista es **2 con una recepción y 2
-  con veinticinco** —el `limit 51` del filtro de proveedor y la lista, que trae su recuento y sus
-  cuatro subconsultas correlacionadas dentro de la misma sentencia—, y el de `getGoodsReceipt` es
-  **7 antes y 7 después**. El «antes» no se dedujo: se midió **sobreescribiendo los tres archivos de
+  con veinticinco** —`countGoodsReceipts` y `findGoodsReceipts`, y el recuento de la página y las
+  cuatro subconsultas correlacionadas viajan **dentro de la segunda**—, y el de `getGoodsReceipt` es
+  **7 antes y 7 después**. *Corregido el 2026-11-06, hallazgo 2 de la revisión independiente*: este
+  párrafo atribuía las dos sentencias al `limit 51` del filtro de proveedor y a la lista. **El
+  número es correcto y la atribución era falsa**: el filtro es una llamada aparte, que la página hace
+  y que esta medición no cuenta, así que la **página** manda más de dos. Un lector que hubiera usado
+  el párrafo anterior como línea de base habría medido otra cosa. El «antes» no se dedujo: se midió **sobreescribiendo los tres archivos de
   `purchasing` con `git show HEAD:<ruta>`**, corriendo la medición y restaurándolos, con
   `git diff --stat` devuelto a 67/109/6 líneas como comprobación de que la restauración fue exacta.
+  *Apretado el 2026-11-06, hallazgo 3 de la revisión independiente*: lo versionado fijaba
+  **igualdad** entre las dos corridas de la lista y un **techo de 8** para la ficha, de modo que
+  **una sentencia de más pasaba en verde** y la cifra de 7 quedaba como afirmación de esta
+  autoevaluación. Hoy la prueba fija **`toBe(2)`** y **`toBe(7)`**: las cifras de AC-8 se vuelven a
+  comprobar solas. Lo que sigue sin ser repetible es la mitad **«antes»**, medida una vez
+  sobreescribiendo los tres archivos con `git show`, y queda dicho.
   El arnés envuelve **los clientes que entrega `pool.connect`** —nunca `Pool.query`, que contaría
   doble—, cubre las dos formas de `connect`, de callback y de promesa, y desenvuelve al terminar.
   **Lo que M-1 no mide está declarado**: cuenta sentencias, no filas leídas, y por ese hueco pasó
@@ -655,14 +681,18 @@ la 02, la 03, la 04, la 05 y la de estados con sus tarjetas 2 y 3. De la tabla d
 brief:
 
 - **Adoptadas y verificadas en pantalla**: V-1, V-2, V-3, V-5, V-6, V-7, V-10, V-11, V-12, V-13,
-  V-16, V-19, V-21, V-22, V-25, V-27, V-28, V-30, V-33, V-34, V-38, más V-4 por D-4, V-29 por D-3 y
+  V-16, V-19, V-21, V-22, V-25, V-27, V-28, V-30, V-34, V-38, más V-4 por D-4, V-29 por D-3 y
   V-32 por D-6.
 - **Adoptadas en parte, con lo que falta dicho**: V-8 (el primer aviso del pie sí, el segundo no),
   V-15 (el recuento «{n} de {m} cargados» lo calcula el servidor en el paso 2; en el paso 1, sin
   JavaScript, no hay recuento vivo), V-18 (el título sí, la miga no), V-20 (las columnas y el
   «Quitar» sí, el tacho no: el juego de íconos no tiene uno y `icons.tsx` está fuera de la lista
-  cerrada), V-31 («Imprimir» sí, el menú «⋮» no) y V-37 (el error en su campo y el recuadro sí,
-  «Revisar IMEI» no).
+  cerrada), V-31 («Imprimir» sí, el menú «⋮» no), V-37 (el error en su campo y el recuadro sí,
+  «Revisar IMEI» no) y **V-33** (la tarjeta de la orden con sus campos apilados y la insignia
+  «Abierta» sí; **la insignia «Falta 1» no**: lo que falta aparece como el campo de solo lectura
+  «Falta recibir», que es la forma de V-13). *Reclasificada el 2026-11-06, hallazgo 5 de la revisión
+  independiente*: este cierre tenía V-33 entre las adoptadas enteras, y es **un desvío de fidelidad
+  visual que estaba sin declarar en la lista que existe para declararlos**.
 - **No adoptadas, declaradas**: V-9 (la paginación y «Fechas en {zona}» se conservan), V-14 (sin
   `stepper`: el nativo solo viene con `type="number"` y la cantidad se escribe con coma), V-23 (las
   cinco filas), V-24 (sin «IVA incluido»), V-26 por D-1 (sin pestañas), V-35 por D-9 (la navegación
@@ -754,18 +784,70 @@ el paso 2 del alta). **El título se contaba de menos a sí mismo**; hoy dice «
 Es una cadena del propio nombre del caso, no una aserción: no cambia conducta y no mueve el recuento
 del `git diff`, porque la línea pertenece a un bloque que esta subfase agregó.
 
+
+### AC-20 · La revisión independiente, y qué se hizo con cada hallazgo
+
+Un agente que **no participó del trabajo**, con acceso de solo lectura, revisó la entrega contra este
+brief y contra las reglas vigentes. **Veredicto: R2** —un bloqueante y siete no bloqueantes—, y
+**ningún defecto bloqueante en el código entregado**: el bloqueante era una contradicción entre el
+código y `docs/product/Screens.md` que **ninguna parte de esta autoevaluación había visto**.
+
+**El revisor no otorgó ninguna autorización**, y así lo declaró. Los ocho hallazgos se verificaron
+**uno por uno contra el código** antes de aceptarse, y **los ocho resultaron ciertos**. Seis caían
+dentro de la lista cerrada y se corrigieron; los dos que caían fuera se le preguntaron al usuario
+**antes** de tocar nada, y los autorizó en el turno.
+
+| # | Hallazgo | Verificación | Qué se hizo |
+|---|---|---|---|
+| **1** | **BLOQUEANTE.** `Screens.md` §45 sigue diciendo en presente cuatro cosas que esta entrega volvió falsas: la tarjeta «Recepciones» con **«Líneas»**, la oración «Se registró la recepción RC-000091 **por US$ 1.020,00**.», «su oración dice **el monto y no las unidades**» y «**las columnas «Unidades» … no se dibujan**». | **Cierto.** Las cuatro están en `Screens.md:934`. Y la §45 las había escrito como *todavía no*: dice que ese recuento «es la lectura que **la 24.8.1-b** trae», que es esta subfase. | **Corregido, fuera de la lista cerrada y con autorización del usuario en el turno.** Una viñeta fechada en la §45 jubila las cuatro cadenas nombrándolas, con el mismo patrón que la propia sección ya usaba. D-8 había acotado el permiso a las §§46–49: **la ampliación se declara acá y en la lista cerrada**. |
+| **2** | El relato de M-1 atribuye las dos sentencias al `limit 51` del filtro de proveedor y a la lista. | **Cierto.** El arnés mide **solo `listGoodsReceipts`** (`tests/integration/goods-receipts.test.ts:1571`), cuyas dos sentencias son `countGoodsReceipts` y `findGoodsReceipts`; el filtro es una llamada aparte que la medición no cuenta. **El número 2 era correcto y la atribución falsa.** | **Corregido** en §«Las cuatro mediciones». Importa porque quien usara ese párrafo como línea de base habría medido otra cosa. |
+| **3** | El artefacto repetible de M-1 es más débil que las cifras que AC-8 afirma: fijaba **igualdad** y un **techo de 8** para una cifra de 7. | **Cierto.** Una sentencia de más pasaba en verde. | **Corregido en código**: la prueba fija **`toBe(2)`** y **`toBe(7)`**, y **se volvió a correr en verde**, así que las cifras de AC-8 se comprueban solas. La mitad «antes» sigue sin ser repetible, y queda dicho. |
+| **4** | `getUnitSerials` quedó **sin un solo consumidor** —esta subfase mudó el único a `getUnitSummaries`— con su comentario diciendo todavía «para el detalle de una recepción». | **Cierto.** Cero llamadas en todo el repositorio. Es la misma lección que el cierre de la 24.8.1 registró por `lineCount`, repetida sobre una función. | **Borrada, fuera de la lista cerrada y con autorización del usuario en el turno**: la función y su línea del barrel. Se comprobó antes que **no hay cascada** —`findUnitsByIds` conserva consumidor en `getUnitSummaries`— y que **ninguna guarda enumera esos exports por nombre**. El comentario de `goods-receipts.ts` que la nombraba en presente también se corrigió. |
+| **5** | **V-33** está clasificada entre las «adoptadas y verificadas en pantalla», y su insignia **«Falta 1» no se dibuja**. | **Cierto.** `OrderCard` dibuja solo la insignia «Abierta»; la única aparición de «Falta» en el formulario es el campo de solo lectura «Falta recibir», que es la forma de **V-13**. | **Reclasificada** a «adoptadas en parte». Era **un desvío de fidelidad visual sin declarar, en la lista que existe para declararlos**. |
+| **6** | Dos citas equivocadas en comentarios nuevos: `units.spec.ts` atribuye los dos pasos a **D-2**, y `goods-receipt-voids.spec.ts` atribuye el título en afirmación a **V-32**. | **Cierto.** D-2 decide «"Productos recibidos", por unidad o por línea»; V-32 decide el contenido de la anulación, no su título. | **Corregidas**: los dos pasos citan **V-10, V-15 y AC-3**; el título cita **A-10 de este §Cierre**. Una cita que apunta a la decisión equivocada manda a releer la decisión equivocada. |
+| **7** | Tercera copia local de `TRACKING_LABEL`, tipada `Record<string, string>` y sin prueba que la fije. | **Cierto.** Ya existían dos, las dos tipadas contra `StockTracking`, y la de `compras/ordenes/messages.ts` **fijada por `messages.test.ts:203`**. El formulario **ya importaba de esa carpeta vecina**, así que compartirla no cruzaba ninguna frontera. | **Unificada**: se importa la de `ordenes/messages`, con la comprobación antes de indexar que ya usa `productos/[productId]/audit-summary`. La pantalla hereda la prueba que fija el rótulo. |
+| **8** | El §Cierre se fechaba **2026-11-07**. | **Cierto.** Lo escribí tomando la hora **UTC** de la CI; en hora local era el **2026-11-06**. | **Corregido.** Las fechas de los cierres son el eje con el que este proyecto ordena qué afirmación es vigente. |
+
+**El límite que el propio revisor declaró, y que no se tapa**: no tuvo herramienta `Bash`, así que
+**no pudo correr un solo comando de `git`** y dejó explícitamente sin verificar todo lo que depende
+del diff —el recuento de 24 archivos, que no haya nada fuera de la lista cerrada, las tres entradas
+de `purchasing`, la tabla de AC-10 y que el comprobante de la anulación no cambiara—. **Esa mitad
+sigue siendo autoevaluación.** Lo que sí se puede ofrecer como evidencia independiente del alcance
+es el cruce que se corrió antes de commitear: el conjunto preparado contra la tabla de la lista
+cerrada dio **nada fuera de ella**, y las cinco entradas sin preparar fueron `CHANGELOG.md`,
+`HANDOFF.md`, `docs/planning/Roadmap.md` y los dos archivos autorizados que no hicieron falta.
+
+**Lo que el revisor buscó y no encontró**, que es tan informativo como lo que encontró: ninguna
+coincidencia de Airtable en `src/` ni en el brief; ninguna referencia al repositorio del agente de
+WhatsApp; ninguna migración, tabla, valor de enum ni contrato nuevo; ninguna tabla vacía ni módulo
+especulativo; ninguna lista de tareas viva agregada; nada de ERP fuera de la fila abierta;
+`purchasing` **no importa `cash`**; **ninguna acción ni ruta nueva** en la superficie expuesta; el
+estado derivado de la orden **sin riesgo de decir dos cosas en dos pantallas**; la §50 intacta; y
+—lo que más importaba de todo el encargo— **ninguna de las cinco aserciones que cambiaron se
+debilitó para pasar**.
+
+**Deuda documental que el revisor midió y que este cierre no podía tocar todavía**, porque los cuatro
+archivos están autorizados «al cerrar, y con autorización en el turno»: `HANDOFF.md:6`, `:26` y `:68`
+siguen diciendo que la 24.8.1-b está «**todavía sin brief**»; `CHANGELOG.md:30` dice que la columna
+«Unidades» «**no se dibuja**»; y la fila del `Roadmap.md:483` sigue descrita como abierta. **Las
+cinco son falsas hoy** y se saldan en el cierre administrativo, después del despliegue.
+
 ### Lo que falta para cerrar, y de quién depende
 
 Nada de esto lo puede hacer el asistente por su cuenta: **los tres primeros necesitan autorización
 del usuario en el turno** (condición de detención 6).
 
-1. **`commit` y `push`** de los 24 archivos más este brief. **AC-19** se cumple con la CI en verde
-   sobre el **SHA exacto**, con «Corre todo: true», y es también **lo que resuelve la batería de
-   integración** que esta máquina no pudo terminar.
-2. **AC-20**, la revisión independiente, con un agente que no participó y acceso de solo lectura,
-   contra este brief y contra las reglas vigentes. La subfase **abre el bloque de Abastecimiento en
-   su segunda fila y cierra la fila original de la 24.8.1**, así que no se cierra con autoevaluación.
-   El revisor **no otorga ninguna autorización**: sus hallazgos se verifican contra el código.
+1. ~~`commit` y `push`, y con ellos AC-19.~~ **Hecho el 2026-11-07, con autorización del usuario en
+   el turno**: commit **`34839a6`** con 25 archivos —los 24 de la subfase más este brief—, empujado
+   a `main`, y la CI **42316301814** en `success` sobre el SHA exacto con «Corre todo: true». Con
+   eso quedó resuelta también **la batería de integración completa** que esta máquina no pudo
+   terminar.
+2. ~~**AC-20**, la revisión independiente.~~ **Hecha el 2026-11-06**: veredicto **R2**, ocho
+   hallazgos, los ocho ciertos, los ocho resueltos. La subfase **abre el bloque de Abastecimiento en
+   su segunda fila y cierra la fila original de la 24.8.1**, así que no podía cerrarse con
+   autoevaluación, y el bloqueante demuestra por qué: **lo encontró el revisor y no este cierre**.
+   El revisor **no otorgó ninguna autorización**. Queda **un segundo `commit` y una segunda corrida
+   de CI** por las correcciones, y los dos necesitan autorización del usuario en el turno.
 3. **AC-21**, el despliegue y el recorrido del usuario. **Hasta que ocurra, el nivel es «validado en
    integración» y no «validado en staging».**
 4. Después del despliegue, el cierre administrativo: **CHANGELOG, Roadmap, HANDOFF**, el estado en
