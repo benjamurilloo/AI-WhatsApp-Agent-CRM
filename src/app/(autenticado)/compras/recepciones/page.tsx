@@ -98,7 +98,7 @@ function SupplierFilter({
     );
   }
   return (
-    <div className="flex min-w-0 flex-col gap-1 sm:w-64">
+    <div className="flex min-w-0 flex-col gap-1 sm:w-52">
       <label htmlFor="proveedor" className={labelClass}>
         Proveedor
       </label>
@@ -195,7 +195,7 @@ export default async function GoodsReceiptsPage({
               defaultValue={filters.number}
               placeholder="RC-000123 o ARC-000001"
               autoComplete="off"
-              className={`${inputClass} w-48 pl-9`}
+              className={`${inputClass} w-44 pl-9`}
             />
             <SearchIcon />
           </div>
@@ -244,23 +244,27 @@ export default async function GoodsReceiptsPage({
             <option value="sin">Sin orden</option>
           </select>
         </div>
-        <button type="submit" className={inlineButtonClass}>
-          <Icon name="filter" className="size-4" />
-          Aplicar filtros
-        </button>
-        {filtered ? (
-          <Link href="/compras/recepciones" className={`${linkClass} py-2`}>
-            Limpiar filtros
+        {/* Los tres controles de acción van juntos en un mismo bloque. Sueltos en el `flex-wrap`,
+            «+ Nueva recepción» llevaba `ml-auto` y, cuando la fila no entraba —que era **a todo
+            ancho**, medido a 1.280, 1.440 y 1.680 px—, caía sola a un renglón propio pegada al
+            borde derecho, lejos de todo. Agrupados, o entran los tres en la fila de filtros como en
+            la lámina, o bajan los tres juntos. */}
+        <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
+          <button type="submit" className={inlineButtonClass}>
+            <Icon name="filter" className="size-4" />
+            Aplicar filtros
+          </button>
+          {filtered ? (
+            <Link href="/compras/recepciones" className={`${linkClass} py-2`}>
+              Limpiar filtros
+            </Link>
+          ) : null}
+          {/* La lámina lo pone en la fila de filtros y no en la cabecera (V-6). Es un enlace, no un
+              control del formulario: `type` no aplica y no lo envía. */}
+          <Link href="/compras/recepciones/nueva" className={primaryLinkClass}>
+            + Nueva recepción
           </Link>
-        ) : null}
-        {/* La lámina lo pone en la fila de filtros y no en la cabecera (V-6). Es un enlace, no un
-            control del formulario: `type` no aplica y no lo envía. */}
-        <Link
-          href="/compras/recepciones/nueva"
-          className={`${primaryLinkClass} sm:ml-auto`}
-        >
-          + Nueva recepción
-        </Link>
+        </div>
       </form>
 
       {/* Con el `<select>` dibujado, el control ya dice de quién es la lista y cómo volver a

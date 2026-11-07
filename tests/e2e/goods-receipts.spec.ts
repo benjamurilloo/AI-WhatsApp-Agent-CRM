@@ -597,3 +597,115 @@ test("las cinco pantallas entran en 320 y 375 px, con el proveedor más largo el
     ).toBeLessThanOrEqual(0);
   }
 });
+
+// La tabla de productos del alta, a los anchos de escritorio. Existe porque **el barrido de M-3 no
+// podía encontrar lo que el recorrido del usuario encontró**: mide `scrollWidth` del documento a
+// 320 y 375 px, anchos donde esta tabla ni siquiera se dibuja, y un desbordamiento **dentro** de una
+// tarjeta no mueve el `scrollWidth` del documento. La primera versión de la tabla pedía 680 px de
+// columnas fijas donde hay 670 de contenido: a «Producto» le quedaban 2 px, el campo quedaba de
+// 26 px, el rótulo se desbordaba encima de «SKU» —«ProdSKUto»— y la fila se salía de su contenedor,
+// que es por donde «Quitar» se escapaba de la tarjeta. Las aserciones de abajo fallan contra aquella
+// versión, y se comprobó corriéndolas contra su build: devuelven **12 problemas a 1.280 px**, entre
+// ellos «la fila (714 px) se sale de su contenedor (574 px)», «"Quitar la línea 1" se sale de la
+// fila», «el campo de producto mide 26 px, menos de 9rem» y los seis rótulos corridos de su columna.
+const DESKTOP_WIDTHS = [1280, 1440, 1536, 1680] as const;
+
+async function productTableProblems(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const problems: string[] = [];
+    const row = document.querySelector("fieldset.grid");
+    if (!row) return ["no se dibujó ninguna línea de producto"];
+    const parent = row.parentElement;
+    if (!parent) return ["la línea no tiene contenedor"];
+
+    // 1. La fila entra en su tarjeta.
+    const rowBox = row.getBoundingClientRect();
+    const parentBox = parent.getBoundingClientRect();
+    if (rowBox.width > parentBox.width + 1) {
+      problems.push(
+        `la fila (${Math.round(rowBox.width)} px) se sale de su contenedor (${Math.round(parentBox.width)} px)`,
+      );
+    }
+
+    // 2. Nada de la fila se sale de la fila: es por donde «Quitar» se escapaba.
+    for (const el of row.querySelectorAll("input, button, select")) {
+      const box = el.getBoundingClientRect();
+      if (box.width === 0) continue;
+      if (box.right > rowBox.right + 1 || box.left < rowBox.left - 1) {
+        const name = el.getAttribute("name") ?? el.textContent ?? el.tagName;
+        problems.push(`"${name.trim().slice(0, 24)}" se sale de la fila`);
+      }
+    }
+
+    // 3. El campo de producto es usable: nunca menos de 9rem.
+    const product = row.querySelector(
+      'input[name="productText"]:not([type="hidden"])',
+    );
+    if (!product) {
+      problems.push("la línea no tiene campo de producto");
+    } else {
+      const width = product.getBoundingClientRect().width;
+      if (width < 144) {
+        problems.push(
+          `el campo de producto mide ${Math.round(width)} px, menos de 9rem`,
+        );
+      }
+    }
+
+    // 4. Cada rótulo de la cabecera arranca donde arranca su columna. Si no, el rótulo cae fuera
+    //    de su celda y se dibuja encima del de al lado.
+    const header = [...document.querySelectorAll("div[aria-hidden]")].find(
+      (node) =>
+        (node.textContent ?? "").startsWith("Producto") &&
+        (node.textContent ?? "").includes("SKU"),
+    );
+    if (!header) {
+      problems.push("no se dibujó la cabecera de la tabla");
+    } else {
+      const headerX = [...header.children].map((cell) =>
+        Math.round(cell.getBoundingClientRect().x),
+      );
+      const cellX = [...row.children]
+        .filter((cell) => {
+          const box = cell.getBoundingClientRect();
+          return (
+            box.width > 0 &&
+            cell.tagName !== "LEGEND" &&
+            cell.tagName !== "INPUT" &&
+            getComputedStyle(cell).position !== "absolute"
+          );
+        })
+        .map((cell) => Math.round(cell.getBoundingClientRect().x));
+      headerX.forEach((x, index) => {
+        const label = (header.children[index]?.textContent ?? "").slice(0, 16);
+        if (cellX[index] === undefined) {
+          problems.push(`la columna "${label}" no tiene celda`);
+        } else if (Math.abs(cellX[index] - x) > 1) {
+          problems.push(
+            `el rótulo "${label}" arranca en ${x} y su celda en ${cellX[index]}`,
+          );
+        }
+      });
+    }
+    return problems;
+  });
+}
+
+test("la tabla de productos entra en su tarjeta a los anchos de escritorio", async ({
+  page,
+}) => {
+  await login(page, ADMIN);
+  for (const width of DESKTOP_WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/compras/recepciones/nueva");
+    await expect(line(page, 1)).toBeVisible();
+    expect(
+      await productTableProblems(page),
+      `el alta sin orden a ${width} px`,
+    ).toEqual([]);
+    expect(
+      await overflowOf(page),
+      `el alta sin orden a ${width} px`,
+    ).toBeLessThanOrEqual(0);
+  }
+});

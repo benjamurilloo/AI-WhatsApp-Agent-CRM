@@ -259,7 +259,14 @@ function GoodsReceiptFields({
 
       <input type="hidden" name="orderId" value={order?.id ?? ""} />
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+      {/* El resumen va al costado **desde 1.536 px** y no desde 1.024. Midiendo: `main` lleva
+          `max-w-6xl`, así que con el resumen de 20rem al lado a la tabla de productos le quedan
+          670 px de contenido, y las siete columnas de la lámina necesitan 694. Entre 1.024 y 1.535
+          el resumen baja y la tabla toma el ancho completo —920 px a 1.280—, que es lo que deja
+          dibujarla desde una laptop común. De 1.536 para arriba el contenido topea en 1.152, a la
+          fila le quedan 702 y vuelve a ser exactamente la lámina. Decisión del usuario, en el turno
+          del 2026-11-07, al corregir lo que encontró su recorrido. */}
+      <div className="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:items-start">
         <div className="flex min-w-0 flex-col gap-6">
           {review ? (
             <ReviewStep
@@ -281,7 +288,10 @@ function GoodsReceiptFields({
                   <h2 className="text-base font-bold">Datos de la recepción</h2>
                   <div className="grid gap-4 sm:grid-cols-3">
                     <div className="flex min-w-0 flex-col gap-1">
-                      <label htmlFor="proveedor" className={labelClass}>
+                      <label
+                        htmlFor="proveedor"
+                        className={`${labelClass} ${FIELD_LABEL_ALIGN}`}
+                      >
                         Proveedor
                       </label>
                       <Picker
@@ -317,7 +327,10 @@ function GoodsReceiptFields({
                       error={failed?.referenceError ?? null}
                     />
                     <div className="flex min-w-0 flex-col gap-1">
-                      <label htmlFor="moneda" className={labelClass}>
+                      <label
+                        htmlFor="moneda"
+                        className={`${labelClass} ${FIELD_LABEL_ALIGN}`}
+                      >
                         Moneda de la recepción
                       </label>
                       {/* `w-full min-w-0`: el desbordamiento del `<select>` de H-6 no se repite. */}
@@ -581,7 +594,10 @@ function ReferenceField({
 }) {
   return (
     <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
-      <label htmlFor="referencia" className={labelClass}>
+      <label
+        htmlFor="referencia"
+        className={`${labelClass} ${FIELD_LABEL_ALIGN}`}
+      >
         Remito o factura del proveedor{" "}
         <span className="font-normal text-muted">(opcional)</span>
       </label>
@@ -832,8 +848,27 @@ function OrderLineFields({
 
 // La cabecera de la tabla de la lámina 03 (V-20), solo en pantalla ancha: abajo de `lg` cada fila se
 // apila y lleva su propia etiqueta.
+//
+// Los anchos se fijaron **midiendo**, no copiando la lámina. `main` lleva `max-w-6xl`, así que el
+// contenido nunca pasa de 1.152 px y, con el resumen de 20rem al lado, a esta fila le quedan **670 px
+// de contenido a cualquier ancho de pantalla, de 1.280 a 1.920**. La primera versión pedía
+// 7+7+6+8+7+3 rem de columnas fijas más seis espacios de 12 px —680 px— y dejaba **2 px** para
+// «Producto»: el campo quedaba de 26 px, el rótulo se desbordaba encima de «SKU» —«ProdSKUto»— y la
+// fila entera, de 714 px, se salía de su contenedor de 702, que es por donde «Quitar» se escapaba de
+// la tarjeta. Lo encontró el recorrido del usuario; **ninguna prueba lo buscaba**, porque el barrido
+// de M-3 mide `scrollWidth` a 320 y 375 px, anchos donde esta tabla ni siquiera se dibuja.
+//
+// Ahora las columnas fijas suman 28,25rem (452 px) y el espacio horizontal baja a 8 px: a «Producto»
+// le quedan unos 170 px y **nunca menos de 10rem**. La lámina está dibujada a 1.680 px, sin ese tope.
+// Un piso de alto compartido para los tres rótulos de «Datos de la recepción»: dos renglones de
+// `text-sm`. «Remito o factura del proveedor (opcional)» ocupa dos y los otros uno, y sin el piso
+// cada campo arranca a una altura distinta. Es `block` y no `flex`: un `label` es `inline` y no
+// respeta `min-height`, pero con `flex` el texto y el `<span>` de «(opcional)» pasan a ser dos
+// ítems del flex —«(opcional)» se va al costado del bloque y se come el espacio que los separa—.
+const FIELD_LABEL_ALIGN = "sm:block sm:min-h-10";
+
 const FREE_LINE_GRID =
-  "lg:grid-cols-[minmax(0,1fr)_7rem_7rem_6rem_8rem_7rem_3rem]";
+  "xl:gap-x-2 xl:grid-cols-[minmax(10rem,1fr)_5rem_5.5rem_4rem_5rem_4rem_4.75rem]";
 
 function FreeLineHeader({ currency }: { currency: string }) {
   const labels = [
@@ -848,7 +883,10 @@ function FreeLineHeader({ currency }: { currency: string }) {
   return (
     <div
       aria-hidden
-      className={`hidden gap-3 px-1 text-sm font-semibold text-muted lg:grid ${FREE_LINE_GRID}`}
+      // `px-[17px]`: las filas son `fieldset` con `p-4` y un borde de 1 px, así que su contenido
+      // arranca 17 px adentro. Con `px-1` la cabecera quedaba 13 px corrida a la izquierda y cada
+      // rótulo caía fuera de su columna. Igualados, el ancho útil es el mismo en las dos.
+      className={`hidden gap-3 px-[17px] text-sm font-semibold text-muted xl:grid ${FREE_LINE_GRID}`}
     >
       {labels.map((label, index) => (
         <span key={index}>{label}</span>
@@ -890,9 +928,9 @@ function FreeLineFields({
   const { sku } = splitProductText(row.productText);
   return (
     <fieldset
-      className={`grid gap-3 rounded-xl border border-border p-4 lg:items-start ${FREE_LINE_GRID}`}
+      className={`grid gap-3 rounded-xl border border-border p-4 xl:items-start ${FREE_LINE_GRID}`}
     >
-      <legend className="px-1 text-sm font-semibold lg:sr-only">
+      <legend className="px-1 text-sm font-semibold xl:sr-only">
         Línea {position}
       </legend>
       <input type="hidden" name="orderLineId" value={row.orderLineId} />
@@ -904,7 +942,7 @@ function FreeLineFields({
       <div className="flex min-w-0 flex-col gap-1">
         <label
           htmlFor={`producto-${row.key}`}
-          className={`${labelClass} lg:sr-only`}
+          className={`${labelClass} xl:sr-only`}
         >
           Producto
         </label>
@@ -937,7 +975,7 @@ function FreeLineFields({
         <input type="hidden" name="productId" value={row.productId} />
       </div>
       <p className="min-w-0 text-sm text-muted">
-        <span className="font-semibold lg:hidden">SKU: </span>
+        <span className="font-semibold xl:hidden">SKU: </span>
         <span className="font-mono break-all">{sku || "—"}</span>
       </p>
       <p className="text-sm">
@@ -959,7 +997,7 @@ function FreeLineFields({
       <div className="flex flex-col gap-1">
         <label
           htmlFor={`cantidad-${row.key}`}
-          className={`${labelClass} lg:sr-only`}
+          className={`${labelClass} xl:sr-only`}
         >
           Cantidad
         </label>
@@ -980,7 +1018,7 @@ function FreeLineFields({
       <div className="flex flex-col gap-1">
         <label
           htmlFor={`costo-${row.key}`}
-          className={`${labelClass} lg:sr-only`}
+          className={`${labelClass} xl:sr-only`}
         >
           Costo unitario{currency ? ` (${currency})` : ""}
         </label>
@@ -999,7 +1037,7 @@ function FreeLineFields({
         />
       </div>
       <p className="text-sm font-semibold tabular-nums">
-        <span className="font-normal text-muted lg:hidden">Total: </span>
+        <span className="font-normal text-muted xl:hidden">Total: </span>
         {estimate && currency ? formatMoney(estimate, currency) : "—"}
       </p>
       <div className="flex items-start">
@@ -1055,7 +1093,7 @@ function ReceiptSummary({
     <aside
       aria-live="polite"
       aria-labelledby="resumen-alta"
-      className={`${cardClass} flex flex-col gap-3 p-5 lg:sticky lg:top-6`}
+      className={`${cardClass} flex flex-col gap-3 p-5 2xl:sticky 2xl:top-6`}
     >
       <h2 id="resumen-alta" className="text-base font-bold">
         {RECEIPT_SUMMARY_TITLE}
@@ -1309,7 +1347,7 @@ function FooterBar({
           {cancelLabel}
         </Link>
       )}
-      <p className="text-sm lg:hidden">
+      <p className="text-sm 2xl:hidden">
         <span className="text-muted">
           Total a recibir{currency ? ` (${currency})` : ""}
         </span>

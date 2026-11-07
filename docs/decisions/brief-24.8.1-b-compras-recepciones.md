@@ -832,6 +832,144 @@ siguen diciendo que la 24.8.1-b está «**todavía sin brief**»; `CHANGELOG.md:
 «Unidades» «**no se dibuja**»; y la fila del `Roadmap.md:483` sigue descrita como abierta. **Las
 cinco son falsas hoy** y se saldan en el cierre administrativo, después del despliegue.
 
+**La segunda corrida de CI, que es la que prueba estas correcciones.** Las ocho fueron al commit
+**`ccb980d`** —9 archivos, +140/−53—, empujado a `main` el 2026-11-07 con autorización del usuario
+en el turno, y la CI **42374240790** volvió en **`success`** sobre
+`ccb980d9c6cb7430a56c9539f40dd4c88f6704af`, con **«Corre todo: true»**: **21 pasos en verde**, y el
+único no exitoso **salteado** —«Subir artefactos de Playwright», que solo corre cuando algo falla—.
+Las cifras: **guardas 33/33**, **unitarias 123/123**, **integración 115/115** y **e2e 386 en
+17,4 min**.
+
+**Por qué esta corrida no era una formalidad**: de los ocho arreglos, el del formulario —la
+unificación de `TRACKING_LABEL`, hallazgo 7— **no estaba probado en extremo a extremo en ninguna
+parte**. Editar el formulario dejó viejo el build local, y `playwright` **no construye**, así que una
+corrida local en verde habría estado probando el código anterior. **Esta corrida de CI es la única
+evidencia de que la pantalla sigue dibujando el rótulo correcto**, y por eso AC-20 no se declaró
+cumplido antes de tenerla.
+
+
+### AC-21 · El despliegue y las siete verificaciones
+
+Desplegado el **2026-11-07** en `ccb980d9c6cb7430a56c9539f40dd4c88f6704af`, con autorización del
+usuario en el turno. `rc=0`, `BUILD_ID` presente, **cero reinicios** del servicio y **163 segundos de
+caída** (13:47:10 → 13:49:53 UTC, un solo `Stopped` y un solo `Started`, **leídos del journal y no
+inferidos** del tiempo total del script). HEAD igual al SHA pedido. Y **67 migraciones aplicadas
+contra 67 versionadas**: es AC-15 comprobado también del lado de producción —`db:migrate` corrió y no
+tenía nada que aplicar—, que es lo que una subfase sin migraciones tiene que mostrar.
+
+Es la **quinta prueba real** de las correcciones que dejó la 24.7.2 —swap de 2 GB, build desacoplado
+del `ssh` y arranque decidido por el `BUILD_ID` y no por el código de salida del build— y las tres
+volvieron a funcionar. **El swap no siguió la serie que la 24.8.1 dejó anotada**: 78 MB en la
+24.7.2-b, 84,7 en la 24.7.3, 160 en la 24.8.1, y ahora **79 MB antes del build y 96 después**. La
+cifra **bajó** en vez de subir, así que esa serie **no describe una fuga** y no conviene leerla como
+una: el `used` de swap baja cuando el kernel recupera páginas o mueren los procesos que las tenían.
+Lo único que esta medición afirma es que **el pico de este build costó 17 MB** de swap, con 1.459 MB
+disponibles al empezar y 1.640 al terminar.
+
+Las siete verificaciones, todas en verde:
+
+1. **18 de 18** archivos de configuración desplegados **idénticos** a los versionados.
+2. **Un solo salto de proxy, medido por consecuencia** sobre `login_attempts.key_hash`: **dos filas
+   en la ventana de quince minutos**, las dos de recién (13:52:44 y 13:52:47 UTC), con **dos claves
+   distintas**; la del operador **igual** al `sha256` de su IP pública —o sea que la aplicación ve la
+   IP del cliente y no una interna—, la del control negativo **distinta**, y **ninguna igual al
+   `sha256` de `'sin-proxy'`**, que es lo que `src/modules/auth/service.ts` hashea cuando no recibe
+   IP. El control negativo fue **la variante del README** —el mismo `curl` del intento, corrido
+   **dentro del droplet** contra el dominio público, que sale a internet y vuelve por nginx—, y **no
+   se gastó el intento del túnel SOCKS**, como el propio runbook aconseja desde que el clasificador
+   de permisos del asistente lo rechaza.
+3. **HSTS** presente sobre HTTPS (`max-age=31536000; includeSubDomains`) y **ausente** sobre HTTP,
+   que devuelve **301** al dominio seguro. El segundo es el que le da valor al primero.
+4. La aplicación escucha **solo en `127.0.0.1:3000`**.
+5. El rol de la aplicación **no es el dueño**: `crm_app_login` contra `crm_owner`, con **`INSERT=t`,
+   `UPDATE=f` y `DELETE=f`** sobre `audit_logs`, leído del catálogo y sin mandar ninguna escritura.
+6. **Ingestión y lectura desde afuera en `401`** en las tres rutas: `POST /api/ingestion/v1/events`,
+   `POST /api/ingestion/v2/events` y `GET /api/read/v1/products`.
+7. **Ningún dato real de un cliente**, comprobado **por organización** y no en total: **«Vixora» en
+   0 clientes, 0 mensajes y 0 productos**, y las otras dos son de demostración —«Demostración
+   Vixora» en 2/130/13 e «iPhone Demo» en 2/157/38—.
+
+**Ni la IP ni su hash salieron de la shell ni entran acá**: el script de la verificación 2 imprime
+solo la hora de cada fila y el veredicto de la comparación, nunca un hash. Un `sha256` de una IPv4
+sin sal se revierte en minutos y **este repositorio es público desde el 2026-10-30**.
+
+Además, `/compras`, `/compras/ordenes`, `/compras/recepciones` y `/compras/recepciones/nueva`
+responden **`307` al ingreso** desde afuera, que es lo correcto sin sesión y prueba que **el build
+nuevo las sirve**.
+
+### El recorrido del usuario, primer tramo: cuatro defectos visuales y su corrección
+
+El usuario abrió las pantallas desplegadas y **paró en las primeras**: «a simple vista se ve que
+estéticamente hay cosas fuera de su lugar, todo improlijo, los botones salidos de las tarjetas o
+desalineadas, también cuadros para insertar texto deformes, texto encima de otro». Los cuatro
+defectos son reales, están medidos y **ninguna prueba de esta subfase los buscaba**. Esto es
+exactamente lo que el punto 3 de la lista de abajo anticipaba de la 24.7.3: una revisión contra el
+diseño no encuentra un defecto del diseño.
+
+**Antes de corregir se midió, y la primera explicación que dio el asistente resultó falsa.** Dijo
+que las siete columnas no entraban «en la ventana del usuario», con una cuenta de anchos. El
+navegador lo desmintió: la fila medía **714 px tanto a 1.280 como a 1.920**. La causa real es que
+`main` lleva `max-w-6xl` —1.152 px— y el contenido no crece nunca: la fila ya se salía de su
+contenedor, y a 1.280, con el resumen de 20rem al costado, el contenedor eran **574 px**. La
+corrección se decidió sobre la medición, no sobre la cuenta.
+
+| # | Lo que se veía | Lo medido | La corrección |
+|---|---|---|---|
+| 1 | «ProdSKUto»: el rótulo «Producto» encima del de «SKU» | Las siete columnas fijas pedían **680 px** de ancho más gaps donde la fila tiene **670** de contenido: a «Producto» le quedaban **2 px** y el campo quedaba de **26 px** | `FREE_LINE_GRID` pasa a columnas fluidas, `minmax(10rem,1fr)` para «Producto» y el resto ajustado al contenido real, con `gap-x-2` |
+| 2 | «Quitar» afuera de la tarjeta | Fila de **714 px** en un contenedor de **574** a 1.280 px | La tabla se dibuja **desde `xl` (1.280)** y el resumen **baja hasta `2xl` (1.536)**: decisión del usuario en el turno, entre tres opciones medidas |
+| 3 | Los tres campos de «Datos de la recepción» arrancando a alturas distintas | «Remito o factura del proveedor (opcional)» ocupa dos renglones y los otros uno | `FIELD_LABEL_ALIGN`, un piso de alto compartido de `sm:min-h-10` |
+| 4 | «+ Nueva recepción» solo, en un renglón propio, pegado al borde | Caía **a todo ancho medido**: 1.280, 1.440 y 1.680 px | Los tres controles de acción agrupados en un bloque con `sm:ml-auto`: o entran los tres, o bajan los tres juntos |
+
+Se arregló además la cabecera de la tabla, que estaba corrida de sus celdas: las filas son
+`fieldset` con `p-4` y un borde de 1 px, así que su contenido arranca a 17 px y la cabecera
+necesita `px-[17px]`, no `px-1`.
+
+**El defecto 3 se corrigió dos veces en el mismo turno.** La primera versión del piso de alto usaba
+`sm:flex`, y un `label` en `flex` convierte el texto y el `<span>` de «(opcional)» en **dos ítems
+del flex**: «(opcional)» se iba al costado del bloque y se comía el espacio que los separa. Se vio
+en la captura posterior a la corrección, se midió y quedó en `sm:block sm:min-h-10` —`block` porque
+un `label` es `inline` y un `inline` no respeta `min-height`—.
+
+**Lo medido después de corregir**, sobre el build de producción servido localmente:
+
+- **Sin desbordes en ningún ancho**: 375, 768, 1.024, 1.280, 1.440, 1.536, 1.680 y 1.920 px. La fila
+  mide exactamente lo que su contenedor en los ocho —301, 694, 662, 918, 1.046, 702, 702 y 702—.
+- **Los tres campos alineados** a 768, 1.024, 1.280, 1.440 y 1.680 px: los tres arrancan en la misma
+  `y` (408 o 410) en los cinco anchos.
+- **La cabecera arranca donde arranca cada columna**, con una desviación tolerada de 1 px.
+
+**La prueba que faltaba.** El defecto pasó porque el barrido de M-3 **no podía encontrarlo**: mide
+`scrollWidth` del documento a 320 y 375 px, anchos donde la tabla ni siquiera se dibuja, y un
+desbordamiento *dentro* de una tarjeta no mueve el `scrollWidth` del documento. Se agregó a
+`tests/e2e/goods-receipts.spec.ts` el caso **«la tabla de productos entra en su tarjeta a los anchos
+de escritorio»**, que a 1.280, 1.440, 1.536 y 1.680 px comprueba cuatro cosas: la fila entra en su
+contenedor, ningún control se sale de la fila, el campo de producto nunca baja de 9rem y cada rótulo
+de la cabecera arranca donde arranca su celda.
+
+**Se demostró que falla.** Se puso en su lugar el `goods-receipt-form.tsx` de `ccb980d`, se
+construyó, y el caso nuevo devolvió **12 problemas a 1.280 px**: «la fila (714 px) se sale de su
+contenedor (574 px)», «"Quitar la línea 1" se sale de la fila», «el campo de producto mide 26 px,
+menos de 9rem» y los seis rótulos corridos de su columna. Después se restituyó la versión corregida
+y se volvió a construir.
+
+**Las baterías, sobre el build final:** `tsc --noEmit` **0 errores**, `eslint` sobre los tres
+archivos **0**, `prettier --check` limpio, y Playwright **26 de 26** sobre `goods-receipts`,
+`goods-receipt-voids`, `order-receipts` y `receipts` —incluido el barrido de M-3 y el caso nuevo—,
+revalidadas 14 de 14 después de la segunda corrección del rótulo.
+
+**Nada de esto salió de la lista cerrada de archivos**: los tres tocados son el 1
+(`recepciones/page.tsx`), el 8 (`nueva/goods-receipt-form.tsx`) y el 18
+(`tests/e2e/goods-receipts.spec.ts`).
+
+**Lo que no se tocó, y por qué:** el botón «Quitar» sigue siendo texto y no un ícono de tacho,
+porque el set de íconos no tiene uno y `icons.tsx` está fuera de la lista cerrada; y el rótulo
+«Remito o factura del proveedor» conserva su texto, que está registrado en `Screens.md:954` y lo
+afirman cuatro casos e2e.
+
+Estas correcciones **no están desplegadas**: viven en el árbol de trabajo, sin commit. El recorrido
+del usuario sigue abierto, y no puede continuar en producción hasta que se autoricen `commit`,
+`push`, CI y un despliegue nuevo.
+
 ### Lo que falta para cerrar, y de quién depende
 
 Nada de esto lo puede hacer el asistente por su cuenta: **los tres primeros necesitan autorización
@@ -846,10 +984,21 @@ del usuario en el turno** (condición de detención 6).
    hallazgos, los ocho ciertos, los ocho resueltos. La subfase **abre el bloque de Abastecimiento en
    su segunda fila y cierra la fila original de la 24.8.1**, así que no podía cerrarse con
    autoevaluación, y el bloqueante demuestra por qué: **lo encontró el revisor y no este cierre**.
-   El revisor **no otorgó ninguna autorización**. Queda **un segundo `commit` y una segunda corrida
-   de CI** por las correcciones, y los dos necesitan autorización del usuario en el turno.
-3. **AC-21**, el despliegue y el recorrido del usuario. **Hasta que ocurra, el nivel es «validado en
-   integración» y no «validado en staging».**
+   El revisor **no otorgó ninguna autorización**. Las ocho correcciones fueron al commit
+   **`ccb980d`**, empujado a `main` el 2026-11-07 con autorización del usuario en el turno, y la CI
+   **42374240790** volvió en `success` sobre ese SHA. El detalle, al final de §«AC-20».
+3. **AC-21**. ~~El despliegue~~ **hecho el 2026-11-07**, con las **siete verificaciones en verde**
+   (§«AC-21 · El despliegue y las siete verificaciones»). Falta **el recorrido del usuario**, que es
+   la mitad que ninguna revisión puede hacer por él: en la 24.7.3 encontró dos defectos que las dos
+   revisiones no habían visto, porque una revisión contra el diseño no puede encontrar un defecto
+   del diseño. Su **primer tramo ocurrió el 2026-11-07 y encontró cuatro defectos visuales**, los
+   cuatro ciertos y ninguno visto por la revisión independiente ni por las cuatro mediciones:
+   están corregidos, medidos y con una prueba de regresión que se demostró **roja contra el build
+   de `ccb980d`** (§«El recorrido del usuario, primer tramo»). Faltan entonces dos cosas: **llevar
+   esas correcciones a producción** —`commit`, `push`, CI sobre el SHA exacto y un despliegue
+   nuevo, cada uno con autorización del usuario en su turno— y **que el usuario termine el
+   recorrido** sobre lo desplegado. **Hasta que ocurra, el nivel es «validado en integración» y no
+   «validado en staging».**
 4. Después del despliegue, el cierre administrativo: **CHANGELOG, Roadmap, HANDOFF**, el estado en
    **Notion** —la subfase a «Completado» y su espejo— y el **Knowledge Capture** en el vault y en el
    hub del CRM.
