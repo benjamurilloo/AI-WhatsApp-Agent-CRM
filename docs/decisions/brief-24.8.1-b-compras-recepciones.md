@@ -547,12 +547,20 @@ Quedan después **cinco filas**: la 24.8.2, la 24.9.1, la 24.9.2, la 24.9.3 y la
 
 ## Cierre
 
-**Todavía no está cerrada.** Estado al **2026-11-06**: **implementada, commiteada en `34839a6` y
-con la CI en verde sobre ese SHA, y revisada por un agente independiente**. **AC-19 y AC-20 están
-cumplidos. AC-21 sigue pendiente**, y necesita autorización del usuario **en el turno**. **El nivel alcanzado hasta acá es «validado en
-integración»** —UI ↔ servicio ↔ base en las cuatro pantallas—: «validado en staging» lo da **AC-21 y
-nada más**, y un nivel superior nunca se infiere de uno inferior. Esta sección es **una
-autoevaluación** y no una revisión independiente.
+**CERRADA el 2026-11-16.** **Los veintiún criterios están cumplidos**: implementada y commiteada
+en tres rondas —`34839a6`, `ccb980d` y `25e006e`—, con la CI en verde sobre cada SHA exacto,
+revisada por un agente que no participó, **desplegada en `25e006e`** con las siete verificaciones
+del runbook pasadas y **con el recorrido del usuario hecho y declarado sin observaciones** (AC-21).
+**Nivel alcanzado: validado en staging.** No es «preparado para producción»: eso pide además
+seguridad, observabilidad, backups probados, vuelta atrás ejercitada y limitaciones aceptadas, y
+**un nivel superior nunca se infiere de uno inferior**. Esta sección es **una autoevaluación** y no
+una revisión independiente; la independiente es AC-20 y está más abajo.
+
+**El recorrido del usuario se hizo en dos tramos.** El primero, el **2026-11-07**, **encontró
+cuatro defectos visuales** que ni la revisión independiente ni las cuatro mediciones habían visto;
+se corrigieron, se midieron, se cubrieron con una prueba de regresión que se demostró roja contra el
+build anterior y se desplegaron. El segundo, el **2026-11-16**, **no encontró nada**: el usuario lo
+declaró sin observaciones. El detalle, en §«El recorrido del usuario, primer tramo».
 
 **La salvedad que esta sección tenía quedó saldada, y se deja escrita con su desenlace**: la
 batería de integración de Vitest **no se pudo correr entera en esta máquina**, y **la CI la corrió
@@ -564,13 +572,16 @@ instrumentación que lo causó es el hallazgo, y no desaparece porque la CI haya
 
 ### El alcance entregado, contra la tabla de la lista cerrada
 
-**En dos rondas.** La primera es el commit **`34839a6`**: **24 archivos, +3.041/−848**, más el
-propio brief. La segunda son las correcciones de la revisión independiente: **9 archivos,
-+132/−49** contra ese commit, de los cuales **dos son archivos nuevos en la entrega**
-—`src/modules/inventory/units.ts` y su barrel, los puntos 27 y 28 de la lista—. **El total contra
-`2871584` es de 27 archivos, +3.915/−859**, y **los veintisiete están dentro de la lista cerrada y
-de sus tres ampliaciones autorizadas**, ninguno fuera. La segunda ronda **todavía no está
-commiteada**.
+**En tres rondas.** La primera es el commit **`34839a6`**: **24 archivos, +3.041/−848**, más el
+propio brief. La segunda son las correcciones de la revisión independiente, el commit
+**`ccb980d`**: **9 archivos, +132/−49** contra la primera, de los cuales **dos son archivos nuevos
+en la entrega** —`src/modules/inventory/units.ts` y su barrel, los puntos 27 y 28 de la lista—. La
+tercera son las correcciones del recorrido del usuario, el commit **`25e006e`**: **5 archivos,
++341/−38**, ninguno de ellos nuevo. **El total contra `2871584` es de 27 archivos, +4.229/−866**,
+medido con `git diff --stat 2871584..25e006e`, y **los veintisiete están dentro de la lista cerrada
+y de sus tres ampliaciones autorizadas**, ninguno fuera. Las tres rondas están commiteadas y
+empujadas, cada una con la CI en verde sobre su SHA exacto, y **la tercera es la que corre en
+producción**.
 
 - **La primera ampliación**: `tests/integration/units.test.ts`, el punto **24** de la lista, **preguntada y
   autorizada por el usuario antes de tocar el archivo**. Su aserción de los IMEI de la ficha quedó
@@ -612,7 +623,7 @@ commiteada**.
 | **AC-18** | **Cumplido.** Comparación entrada por entrada **con las seis láminas abiertas**: el detalle, abajo. Las treinta y ocho diferencias de la tabla del brief, más **diez** que aparecieron al mirar: nueve declaradas y **una corregida en el producto**. |
 | **AC-19** | **Cumplido.** Corrida **42316301814** sobre **`34839a6d0329d01ded58f77fcf1e85e157cc5655`**, leído por `headSha`, en `success`, con «Alcance del cambio» en **«Corre todo: true»**. Los diecisiete pasos en verde: lint, tipos, formato, migraciones al día, **guardas 33 archivos**, **unitarias 123 archivos**, **integración 115 archivos / 1.931 casos**, build y **extremo a extremo 386 casos**. |
 | **AC-20** | **Cumplido, con hallazgos.** Un agente que no participó, de solo lectura, dio **R2**: un bloqueante —una contradicción entre el código y la §45 de `Screens.md` que esta autoevaluación no había visto— y siete no bloqueantes. **Los ocho se verificaron contra el código y los ocho resultaron ciertos**; seis se corrigieron dentro de la lista cerrada y dos, fuera de ella, con autorización del usuario en el turno. El detalle, y el límite que el propio revisor declaró, en §«AC-20 · La revisión independiente». |
-| **AC-21** | **Pendiente.** Despliegue y recorrido del usuario. **Sin AC-21 el nivel es «validado en integración», no «validado en staging»**, y así queda escrito arriba. |
+| **AC-21** | **Cumplido.** Desplegada en **`25e006e`** el 2026-11-07 con las **siete verificaciones del runbook en verde**, y antes en `ccb980d` con las siete también. El **recorrido del usuario** se hizo en dos tramos: el primero encontró **cuatro defectos visuales**, corregidos, medidos, cubiertos con un caso de regresión que se demostró **rojo contra el build anterior** y desplegados; el segundo, el **2026-11-16**, lo declaró **sin observaciones**. **Con AC-21 cumplido, el nivel alcanzado es «validado en staging».** |
 
 ### AC-10 · Las lecturas nuevas, pantalla por pantalla
 
@@ -966,14 +977,44 @@ porque el set de íconos no tiene uno y `icons.tsx` está fuera de la lista cerr
 «Remito o factura del proveedor» conserva su texto, que está registrado en `Screens.md:954` y lo
 afirman cuatro casos e2e.
 
-Estas correcciones **no están desplegadas**: viven en el árbol de trabajo, sin commit. El recorrido
-del usuario sigue abierto, y no puede continuar en producción hasta que se autoricen `commit`,
-`push`, CI y un despliegue nuevo.
+**Desplegadas el 2026-11-07**, con autorización del usuario en el turno. Commit **`25e006e`** —5
+archivos, +341/−38—, empujado a `main`, y la CI **42390376839** en `success` sobre
+`25e006e949acb83f3fe067246b3a4417b7563a03` con «Corre todo: true»: **21 pasos en verde de 22** —el
+único que no corre es la subida de artefactos de Playwright, condicionada a una falla—, **guardas
+33/33**, **unitarias 123/123**, **integración 115/115** y **e2e 387 en 23,8 min**, una más que las
+386 de `ccb980d`, que es exactamente el caso de regresión nuevo.
 
-### Lo que falta para cerrar, y de quién depende
+El despliegue tardó **77 s** y dejó **54 s sin servicio** —17:24:07 a 17:25:01 UTC, leídos del
+journal, contra los 163 s del despliegue anterior—, con `rc=0`, `BUILD_ID` presente, **0 reinicios**
+y HEAD igual al SHA pedido. Las **migraciones siguen en 67**: este commit no trae ninguna. El swap
+pasó de 89 a 93 MB usados, que es ruido y no describe una fuga.
 
-Nada de esto lo puede hacer el asistente por su cuenta: **los tres primeros necesitan autorización
-del usuario en el turno** (condición de detención 6).
+**Las siete verificaciones, otra vez en verde:**
+
+1. Los **18 archivos de configuración** iguales a los versionados: `iguales=18 distintos=0`.
+2. **Un solo salto de proxy**, medido por consecuencia: **2 filas** en la ventana de 15 minutos,
+   **2 claves distintas entre sí**, la del operador y la del droplet diferentes, y **ninguna igual
+   al `sha256('sin-proxy')`**. El control negativo volvió a hacerse con la **variante desde dentro
+   del droplet** contra el dominio público —tercera vez consecutiva sin túnel SOCKS—.
+3. **HSTS** presente sobre HTTPS (`max-age=31536000; includeSubDomains`), ausente sobre HTTP, que
+   además redirige con `301`.
+4. La aplicación escucha **solo en `127.0.0.1:3000`**.
+5. El rol es **`crm_app_login`**, el dueño **`crm_owner`**, y sobre `audit_logs` tiene
+   `INSERT=t`, `DELETE=f`, `UPDATE=f`.
+6. Ingestión **v1**, **v2** y lectura **v1** responden **`401`** desde afuera, que es lo correcto
+   mientras estén encendidas para `agente-demo`.
+7. **Ningún dato real**: «Vixora» en **0/0/0** y las dos organizaciones de demostración como únicas
+   con datos —«Demostración Vixora» en 2/130/13 e «iPhone Demo» en 2/157/38—.
+
+Las cuatro rutas de compras responden **`307` al ingreso** desde afuera. **Ni la IP ni su hash
+salieron de la shell**, por el mismo motivo que la primera vez.
+
+Falta **que el usuario termine el recorrido** sobre lo desplegado.
+
+### Lo que faltaba para cerrar, y cómo terminó
+
+Nada de esto lo podía hacer el asistente por su cuenta: **los tres primeros necesitaron
+autorización del usuario en el turno** (condición de detención 6), y los tres la tuvieron.
 
 1. ~~`commit` y `push`, y con ellos AC-19.~~ **Hecho el 2026-11-07, con autorización del usuario en
    el turno**: commit **`34839a6`** con 25 archivos —los 24 de la subfase más este brief—, empujado
@@ -994,12 +1035,12 @@ del usuario en el turno** (condición de detención 6).
    del diseño. Su **primer tramo ocurrió el 2026-11-07 y encontró cuatro defectos visuales**, los
    cuatro ciertos y ninguno visto por la revisión independiente ni por las cuatro mediciones:
    están corregidos, medidos y con una prueba de regresión que se demostró **roja contra el build
-   de `ccb980d`** (§«El recorrido del usuario, primer tramo»). Faltan entonces dos cosas: **llevar
-   esas correcciones a producción** —`commit`, `push`, CI sobre el SHA exacto y un despliegue
-   nuevo, cada uno con autorización del usuario en su turno— y **que el usuario termine el
-   recorrido** sobre lo desplegado. **Hasta que ocurra, el nivel es «validado en integración» y no
-   «validado en staging».**
-4. Después del despliegue, el cierre administrativo: **CHANGELOG, Roadmap, HANDOFF**, el estado en
+   de `ccb980d`** (§«El recorrido del usuario, primer tramo»). ~~Falta llevar esas correcciones a
+   producción.~~ **Desplegadas el 2026-11-07** en `25e006e`, con CI en `success` sobre el SHA
+   exacto y las **siete verificaciones en verde** otra vez. ~~Falta que el usuario termine el
+   recorrido.~~ **Terminado el 2026-11-16 y declarado sin observaciones**: con eso AC-21 queda
+   cumplido y el nivel alcanzado es **«validado en staging»**.
+4. El cierre administrativo, hecho el **2026-11-16**: **CHANGELOG, Roadmap, HANDOFF**, el estado en
    **Notion** —la subfase a «Completado» y su espejo— y el **Knowledge Capture** en el vault y en el
    hub del CRM.
 
