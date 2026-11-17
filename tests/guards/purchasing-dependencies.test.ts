@@ -67,9 +67,12 @@ const SNAPSHOT_READS: Record<string, string[]> = {
     "getGoodsReceiptPaymentForm",
     "getSupplierAccountPaymentForm",
   ],
+  // Desde la 24.8.2 (brief-24.8.2, D-4), la vista previa del pago a cuenta: simula la imputación
+  // sobre la cuenta, así que lee lo mismo que las otras y en la misma foto.
   "src/modules/cash/supplier-accounts.ts": [
     "getSupplierAccountSummary",
     "getSupplierStatement",
+    "previewSupplierAccountPayment",
     "readOwed",
   ],
 };

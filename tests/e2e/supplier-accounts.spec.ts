@@ -166,6 +166,26 @@ test("un admin va con el teclado de «A pagar» al estado de cuenta y a un compr
   await expect(rows.nth(1)).toContainText("30.000");
   await expect(rows.nth(2)).toContainText("Lácteos Oeste");
   await expect(rows.nth(3)).toContainText("USD");
+  // Los totales por moneda de la lámina 10 (brief-24.8.2, V-18): uno por moneda, nunca sumadas.
+  const totals = page.getByRole("listitem");
+  await expect(totals.filter({ hasText: "Total a pagar (ARS)" })).toContainText(
+    "38.000,00",
+  );
+  await expect(totals.filter({ hasText: "Total a pagar (USD)" })).toContainText(
+    "40,00",
+  );
+  // «Cantidad» cuenta los comprobantes con saldo, y dice de qué tipo son (V-19).
+  // Importaciones Sur tiene dos recepciones, pero el pago a cuenta canceló la más vieja: con saldo
+  // queda una. Sin técnicos, ninguna fila habla de trabajos.
+  await expect(rows.nth(1)).toContainText("1 comprobante");
+  await expect(rows.nth(2)).toContainText("1 comprobante");
+  await expect(page.getByText(/trabajos?$/)).toHaveCount(0);
+  // Y lo que la lista incluye está dicho en la pantalla (V-23).
+  await expect(
+    page.getByText(
+      "Incluye recepciones vigentes y trabajos reparados de técnicos.",
+    ),
+  ).toBeVisible();
   await expectAccessible(page, "la lista a pagar");
 
   // El filtro por moneda.
@@ -178,8 +198,17 @@ test("un admin va con el teclado de «A pagar» al estado de cuenta y a un compr
   await page.getByLabel("Moneda").selectOption("");
   await page.getByRole("button", { name: "Filtrar" }).click();
 
+  // «Ver cuenta» por fila (V-21): el botón de la lámina lleva a la misma cuenta que el nombre.
+  await page
+    .getByRole("link", { name: /Ver cuenta de Importaciones Sur en ARS/ })
+    .click();
+  await expect(page).toHaveURL(`/compras/proveedores/${south}/cuenta`);
+  await page.goBack();
+
   // Con el teclado, al estado de cuenta.
-  await page.getByRole("link", { name: "Importaciones Sur" }).focus();
+  await page
+    .getByRole("link", { name: "Importaciones Sur", exact: true })
+    .focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(`/compras/proveedores/${south}/cuenta`);
   await expect(

@@ -732,6 +732,9 @@ export async function listSupplierPayments(
   query: {
     status: SupplierPaymentStatusFilter;
     supplierId: string | null;
+    // El código de la moneda **aplicada a la cuenta** (brief-24.8.2, H-4). Una moneda que no existe
+    // no es un error: la lista vuelve vacía, como con un número que no está.
+    currency: string | null;
     search: string;
     page: number;
   },
@@ -760,10 +763,17 @@ export async function listSupplierPayments(
       },
     };
   }
+  // El mismo criterio que «A pagar» (`listSuppliersOwed`): tres letras mayúsculas. Un código que no
+  // existe filtra por él y la lista vuelve vacía, que es lo que hace hoy un número inexistente.
+  const currency =
+    query.currency !== null && /^[A-Z]{3}$/.test(query.currency.toUpperCase())
+      ? query.currency.toUpperCase()
+      : null;
   const listQuery: paymentRepository.SupplierPaymentListQuery = {
     organizationId,
     status: query.status,
     supplierId,
+    currency,
     number,
   };
   const [total, rows] = await Promise.all([
@@ -781,6 +791,52 @@ export async function listSupplierPayments(
       total,
       page,
       pageSize: SUPPLIER_PAYMENTS_PAGE_SIZE,
+    },
+  };
+}
+
+// El tope del `<select>` de proveedores del filtro, el mismo que usan la lista de órdenes y la de
+// recepciones (brief-24.8.2, D-5). Pasado el tope queda el filtro de texto por número.
+export const SUPPLIER_PAYMENT_SUPPLIER_FILTER_LIMIT = 50;
+
+// Las opciones de los dos filtros nuevos de la lista (H-3 y H-4).
+//
+// Devuelve **identificadores de proveedor, no nombres**: los nombres son de purchasing y los compone
+// la página con `getSupplierNames`, que es la que ya los pide para las filas. Por eso tampoco los
+// ordena por nombre: ordenar sin los nombres no se puede, y traerlos acá sería un JOIN entre
+// módulos.
+export type SupplierPaymentFilterOptions = {
+  suppliers: { kind: "select"; supplierIds: string[] } | { kind: "text" };
+  currencies: string[];
+};
+
+export async function listSupplierPaymentFilterOptions(
+  context: AuthContext,
+): Promise<
+  { ok: true; options: SupplierPaymentFilterOptions } | Failure<"FORBIDDEN">
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const { organizationId } = context;
+  const [supplierRows, currencyRows] = await Promise.all([
+    // Uno más que el tope: si llegan más, el `<select>` no va.
+    paymentRepository.findSupplierPaymentSupplierIds(
+      organizationId,
+      SUPPLIER_PAYMENT_SUPPLIER_FILTER_LIMIT + 1,
+    ),
+    paymentRepository.findSupplierPaymentCurrencies(organizationId),
+  ]);
+  return {
+    ok: true,
+    options: {
+      suppliers:
+        supplierRows.length > SUPPLIER_PAYMENT_SUPPLIER_FILTER_LIMIT
+          ? { kind: "text" }
+          : {
+              kind: "select",
+              supplierIds: supplierRows.map((row) => row.supplierId),
+            },
+      currencies: currencyRows.map((row) => row.currency),
     },
   };
 }

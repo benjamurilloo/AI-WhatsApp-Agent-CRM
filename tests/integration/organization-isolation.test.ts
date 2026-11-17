@@ -845,13 +845,35 @@ describe("los pagos a proveedores no alcanzan a otra organización", () => {
         sessionId,
       ),
     ).toEqual([]);
+    // Las dos lecturas nuevas de los filtros (brief-24.8.2, H-3 y H-4): el proveedor y la moneda de
+    // un pago de B no asoman en las opciones de A.
+    expect(
+      await supplierPaymentRepository.findSupplierPaymentSupplierIds(a, 51),
+    ).toEqual([]);
+    expect(
+      await supplierPaymentRepository.findSupplierPaymentCurrencies(a),
+    ).toEqual([]);
     for (const query of [
-      { status: "all" as const, supplierId: null, number: null },
-      { status: "voided" as const, supplierId, number: null },
       {
         status: "all" as const,
         supplierId: null,
+        currency: null,
+        number: null,
+      },
+      { status: "voided" as const, supplierId, currency: null, number: null },
+      {
+        status: "all" as const,
+        supplierId: null,
+        currency: null,
         number: { kind: "void" as const, value: 1 },
+      },
+      // El filtro de moneda tampoco deja ver los pagos de otra organización
+      // (brief-24.8.2, H-4): se pide la moneda con la que A pagó.
+      {
+        status: "all" as const,
+        supplierId: null,
+        currency: "ARS",
+        number: null,
       },
     ]) {
       const ofA = { organizationId: a, ...query };
@@ -934,6 +956,7 @@ describe("los pagos a proveedores no alcanzan a otra organización", () => {
     const list = await listSupplierPayments(admin, {
       status: "all",
       supplierId,
+      currency: null,
       search: "PP-000001",
       page: 1,
     });

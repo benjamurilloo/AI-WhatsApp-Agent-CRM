@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { Icon } from "@/app/_components/icons";
 import {
   dangerButtonClass,
   formMessageClass,
@@ -17,6 +18,12 @@ import { PAYMENT_VOID_REASON_LABEL, type VoidPaymentState } from "../messages";
 // comprobante, con el molde de la anulación de la recepción: funciona sin JavaScript. El motivo es un
 // grupo de opciones obligatorio, de la lista cerrada (D-4). Dice antes de confirmar qué pasa con la
 // caja. El foco va a la pregunta al abrirse. Si ya está anulado, enlaza la anulación.
+//
+// De la tarjeta 4 de la lámina 17 se adopta **lo que dice** y no su forma (brief-24.8.2, H-10, V-24
+// a V-26): el ícono de aviso junto a la pregunta y el aviso de la caja en su propio recuadro. Sigue
+// sin ser un diálogo modal —es el paso `?confirmar=anular`, que es lo único que anda sin
+// JavaScript— y el motivo **no viene elegido**: elegir por quien anula, en algo que no se deshace,
+// es justamente lo que no se hace.
 
 const initialState: VoidPaymentState = { status: "idle" };
 
@@ -47,18 +54,27 @@ export function VoidSupplierPaymentConfirm({
       aria-labelledby="confirmar-anulacion"
       className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4"
     >
-      <p
-        id="confirmar-anulacion"
-        ref={titleRef}
-        tabIndex={-1}
-        className="font-semibold"
-      >
-        ¿Anular el pago {displayNumber}?
-      </p>
+      <div className="flex items-start gap-3">
+        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-danger-soft text-on-danger-soft">
+          <Icon name="alert" className="size-5" />
+        </span>
+        <p
+          id="confirmar-anulacion"
+          ref={titleRef}
+          tabIndex={-1}
+          className="font-semibold"
+        >
+          Anular pago {displayNumber}
+        </p>
+      </div>
       <p className="text-sm">
         La anulación es otro comprobante, con su propio número, y anula el pago
-        entero: lo que se le debe al proveedor vuelve a crecer. {cashNote} Una
-        anulación no se deshace.
+        entero: lo que se le debe al proveedor vuelve a crecer. Una anulación no
+        se deshace.
+      </p>
+      <p className="flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-on-primary-soft">
+        <Icon name="info" className="mt-0.5 size-4 shrink-0" />
+        <span>{cashNote}</span>
       </p>
       {state.status === "error" ? (
         <div role="alert" className={formMessageClass}>
@@ -97,14 +113,14 @@ export function VoidSupplierPaymentConfirm({
             href={`/compras/pagos/${paymentId}`}
             className={secondaryLinkClass}
           >
-            No, volver
+            Volver
           </Link>
           <button
             type="submit"
             disabled={pending}
             className={dangerButtonClass}
           >
-            {pending ? "Anulando…" : "Sí, anular el pago"}
+            {pending ? "Anulando…" : "Anular pago"}
           </button>
         </div>
       </form>

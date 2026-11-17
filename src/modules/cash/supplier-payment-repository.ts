@@ -310,11 +310,14 @@ export function findLateSupplierPaymentVoids(
     .orderBy(supplierPaymentVoids.createdAt);
 }
 
-// La lista (D-13): el estado, el proveedor y el número, de un pago o de su anulación.
+// La lista (D-13): el estado, el proveedor, la moneda y el número, de un pago o de su anulación.
+// La moneda es la del pago aplicado a la cuenta, no la que salió de la caja cuando hubo conversión
+// (brief-24.8.2, H-4): es la que la lista muestra en «Monto» y la que la cuenta del proveedor usa.
 export type SupplierPaymentListQuery = {
   organizationId: string;
   status: "all" | "current" | "voided";
   supplierId: string | null;
+  currency: string | null;
   number: { kind: "payment" | "void"; value: number } | null;
 };
 
@@ -330,6 +333,9 @@ function listConditions(query: SupplierPaymentListQuery): SQL | undefined {
     query.status === "current" ? sql`not ${isVoided}` : undefined,
     query.supplierId !== null
       ? eq(supplierPayments.supplierId, query.supplierId)
+      : undefined,
+    query.currency !== null
+      ? eq(supplierPayments.currency, query.currency)
       : undefined,
     query.number?.kind === "payment"
       ? eq(supplierPayments.number, query.number.value)
@@ -352,6 +358,41 @@ export async function countSupplierPayments(
     .from(supplierPayments)
     .where(listConditions(query));
   return rows[0]!.total;
+}
+
+// Los proveedores con algún pago, para el filtro de la lista (brief-24.8.2, H-3 y D-5). Devuelve
+// **solo los identificadores**: los nombres viven en purchasing y los compone la página, porque un
+// JOIN entre módulos no está permitido (ADR 0023, punto 11).
+//
+// No se puede reemplazar por `findPurchaseOrderSupplierOptions` ni por
+// `findGoodsReceiptSupplierOptions`: esas devuelven los proveedores con órdenes y con recepciones,
+// y un proveedor puede tener un pago a cuenta sin ninguna de las dos.
+//
+// `group by` con `limit`, no `distinct` con `limit`: la forma que corrigió N-1 de la 24.8.1. El
+// `limit` acota **lo que vuelve**, no lo que se recorre; el plan está medido en el §Cierre.
+export function findSupplierPaymentSupplierIds(
+  organizationId: string,
+  limit: number,
+): Promise<{ supplierId: string }[]> {
+  return getDb()
+    .select({ supplierId: supplierPayments.supplierId })
+    .from(supplierPayments)
+    .where(eq(supplierPayments.organizationId, organizationId))
+    .groupBy(supplierPayments.supplierId)
+    .limit(limit);
+}
+
+// Las monedas con algún pago, para el filtro de moneda (H-4). Son pocas por definición —las de la
+// organización— así que vuelven todas, ordenadas por su código.
+export function findSupplierPaymentCurrencies(
+  organizationId: string,
+): Promise<{ currency: string }[]> {
+  return getDb()
+    .select({ currency: supplierPayments.currency })
+    .from(supplierPayments)
+    .where(eq(supplierPayments.organizationId, organizationId))
+    .groupBy(supplierPayments.currency)
+    .orderBy(asc(supplierPayments.currency));
 }
 
 // Del más nuevo al más viejo.

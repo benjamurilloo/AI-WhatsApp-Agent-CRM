@@ -8,6 +8,7 @@ import {
   labelClass,
   linkClass,
   secondaryButtonClass,
+  secondaryLinkClass,
   selectClass,
   tableCellClass,
   tableHeadCellClass,
@@ -16,6 +17,7 @@ import { EmptyState } from "@/app/_components/empty-state";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
+import { Icon } from "@/app/_components/icons";
 import { formatDate } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
 import { UNKNOWN_SUPPLIER_TEXT } from "../ordenes/messages";
@@ -43,7 +45,37 @@ function hrefFor(currency: string | null, page: number): string {
   return query ? `/compras/a-pagar?${query}` : "/compras/a-pagar";
 }
 
-// Pantalla 56 (brief-22.7, D-7; ADR 0023, punto 9): los proveedores a los que se les debe, una fila
+// Cuántos comprobantes con saldo tiene la fila, separados por tipo (brief-24.8.2, H-6 y V-19): las
+// recepciones de compra y los trabajos reparados del técnico se cuentan aparte, porque son dos cosas
+// distintas aunque la deuda sea la misma. Sin trabajos, la celda dice solo los comprobantes.
+function countParts(row: {
+  receiptsWithBalance: number;
+  chargesWithBalance: number;
+}): { icon: "fileText" | "wrench"; text: string }[] {
+  const parts: { icon: "fileText" | "wrench"; text: string }[] = [];
+  if (row.receiptsWithBalance > 0) {
+    parts.push({
+      icon: "fileText",
+      text:
+        row.receiptsWithBalance === 1
+          ? "1 comprobante"
+          : `${row.receiptsWithBalance} comprobantes`,
+    });
+  }
+  if (row.chargesWithBalance > 0) {
+    parts.push({
+      icon: "wrench",
+      text:
+        row.chargesWithBalance === 1
+          ? "1 trabajo"
+          : `${row.chargesWithBalance} trabajos`,
+    });
+  }
+  return parts;
+}
+
+// Pantalla 56 (brief-22.7, D-7; ADR 0023, punto 9; rediseñada en la 24.8.2 con la lámina 10): los
+// proveedores a los que se les debe, una fila
 // por proveedor y moneda, de lo que se le debe más a lo que se le debe menos, con la recepción con
 // saldo más vieja y cuántas tienen saldo; filtro por moneda. Un proveedor desactivado al que se le debe
 // también está. Cada fila lleva al estado de cuenta. Lo que se le debe sale de la misma regla que el
@@ -119,6 +151,32 @@ export default async function SuppliersOwedPage({
         </form>
       ) : null}
 
+      {/* Lo que se debe por moneda (brief-24.8.2, V-18 y H-7). No cuesta ninguna consulta: la lista
+          ya se lee y se pagina en memoria. Dos monedas nunca se suman acá: para eso está el total de
+          referencia, que dice con qué tasa lo hace. */}
+      {suppliers.totals.length > 0 ? (
+        <ul className="mt-6 grid gap-4 sm:grid-cols-2">
+          {suppliers.totals.map((total) => (
+            <li
+              key={total.currency}
+              className={`${cardClass} flex items-center gap-4 p-5`}
+            >
+              <span className="grid size-12 shrink-0 place-items-center rounded-full bg-primary-soft text-on-primary-soft">
+                <Icon name="banknote" className="size-6" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm text-muted">
+                  Total a pagar ({total.currency})
+                </span>
+                <span className="block text-2xl font-bold tabular-nums">
+                  {formatMoney(total.owed, total.currency)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       {/* El total de referencia en la moneda principal (brief-29.4.3, D-6), como el de los deudores. */}
       <ReferenceTotal
         reference={suppliers.reference}
@@ -139,13 +197,13 @@ export default async function SuppliersOwedPage({
               ? `No se le debe nada a ningún proveedor en ${currency}.`
               : "No se le debe nada a ningún proveedor."
           }
-          description="Acá aparecen los proveedores con recepciones que todavía falta pagar."
+          description="Acá aparecen los proveedores con recepciones o trabajos de técnicos que todavía falta pagar."
           className="mt-6"
         />
       ) : (
         <>
           <div
-            className={`mt-6 overflow-x-auto ${cardClass}`}
+            className={`relative mt-6 overflow-x-auto ${cardClass}`}
             tabIndex={0}
             role="region"
             aria-label={TITLE}
@@ -171,11 +229,11 @@ export default async function SuppliersOwedPage({
                   <th scope="col" className={tableHeadCellClass}>
                     Desde
                   </th>
-                  <th
-                    scope="col"
-                    className={`${tableHeadCellClass} text-right`}
-                  >
-                    Comprobantes con saldo
+                  <th scope="col" className={tableHeadCellClass}>
+                    Cantidad
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    <span className="sr-only">Acciones</span>
                   </th>
                 </tr>
               </thead>
@@ -201,8 +259,34 @@ export default async function SuppliersOwedPage({
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatDate(row.oldestOutstandingAt, timeZone)}
                     </td>
-                    <td className={`${tableCellClass} text-right tabular-nums`}>
-                      {row.receiptsWithBalance}
+                    <td className={`${tableCellClass} whitespace-nowrap`}>
+                      <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {countParts(row).map((part) => (
+                          <span
+                            key={part.icon}
+                            className="flex items-center gap-1.5"
+                          >
+                            <Icon
+                              name={part.icon}
+                              className="size-4 shrink-0 text-muted"
+                            />
+                            {part.text}
+                          </span>
+                        ))}
+                      </span>
+                    </td>
+                    <td className={`${tableCellClass} text-right`}>
+                      <Link
+                        href={`/compras/proveedores/${row.supplierId}/cuenta`}
+                        className={secondaryLinkClass}
+                      >
+                        Ver cuenta
+                        <span className="sr-only">
+                          {" "}
+                          de {row.name ?? UNKNOWN_SUPPLIER_TEXT} en{" "}
+                          {row.currency}
+                        </span>
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -224,8 +308,17 @@ export default async function SuppliersOwedPage({
           />
         </>
       )}
-      <p className="mt-6 text-sm text-muted">
-        «Desde» es la fecha de la recepción con saldo más vieja. Fechas en{" "}
+      {/* V-23: lo que la lista incluye, dicho en la pantalla y no solo en el brief. */}
+      <p className="mt-6 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-on-primary-soft">
+        <Icon name="info" className="mt-0.5 size-4 shrink-0" />
+        <span>
+          Incluye recepciones vigentes y trabajos reparados de técnicos. El
+          saldo a favor del negocio se consulta en cada cuenta.
+        </span>
+      </p>
+
+      <p className="mt-4 text-sm text-muted">
+        «Desde» es la fecha del comprobante con saldo más viejo. Fechas en{" "}
         {timeZone}.
       </p>
     </main>

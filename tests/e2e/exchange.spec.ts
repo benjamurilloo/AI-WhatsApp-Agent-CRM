@@ -715,10 +715,20 @@ test("un admin paga en pesos una recepción en dólares, la caja resta pesos y l
   ).toBeVisible();
 
   await page.goto("/compras/pagos");
+  // Desde la 24.8.2 la lista abre el pago en un panel (brief-24.8.2, D-2), y se anula desde ahí.
   await page.getByRole("link", { name: "PP-000001" }).click();
-  await page.getByRole("link", { name: "Anular el pago" }).click();
+  // Un pago convertido muestra en el panel los tres bloques de la lámina 08 (V-8 y AC-4).
+  const panel = page.getByRole("complementary", { name: /Pago PP-000001/ });
+  await expect(panel).toContainText("Aplicado a la recepción");
+  await expect(panel).toContainText("Salida registrada");
+  await expect(panel).toContainText("Cotización guardada");
+  await expect(panel).toContainText("1 USD = ARS 1.570,00");
+  await page
+    .getByRole("complementary")
+    .getByRole("link", { name: "Anular pago" })
+    .click();
   await page.getByRole("radio", { name: "El pago no se hizo" }).check();
-  await page.getByRole("button", { name: "Sí, anular el pago" }).click();
+  await page.getByRole("button", { name: "Anular pago", exact: true }).click();
   await expect(page).toHaveURL(/\?aviso=anulado$/);
   await page.goto("/caja");
   await expect(

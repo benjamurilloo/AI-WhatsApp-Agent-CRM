@@ -10,6 +10,7 @@ import {
   getSupplierStatement,
   listPaymentMethods,
   listSuppliersOwed,
+  previewSupplierAccountPayment,
   voidSupplierPayment,
   type SupplierPaymentInput,
 } from "@/modules/cash";
@@ -366,6 +367,48 @@ async function owedRows(
   return result.suppliers;
 }
 
+// Un trabajo reparado de un técnico: una orden de servicio con su técnico y su costo, que la cuenta
+// del proveedor toma como una deuda más (brief-29.6, D-7). Va por SQL, como en el resto de las
+// pruebas que necesitan una orden ya reparada.
+async function repairedOrder(
+  s: Seed,
+  technicianId: string,
+  input: { number: number; currency: string; total: string },
+): Promise<string> {
+  const clientId = await returningId(
+    sql`insert into clients (organization_id, display_name)
+        values (${s.orgId}, ${`Cliente ${input.number}`}) returning id`,
+  );
+  const id = await returningId(
+    sql`with m as (
+          insert into product_models (organization_id, name)
+          values (${s.orgId}, ${`Modelo ${input.number}`}) returning id
+        )
+        insert into service_orders (organization_id, number, client_id, model_id, reported_issue,
+                                    created_by)
+        select ${s.orgId}, ${input.number}, ${clientId}, m.id, 'No carga', ${s.admin.userId}
+        from m returning id`,
+  );
+  // Un estado por vez: el guard de service_orders no admite saltarse la transición.
+  await getDb().execute(
+    sql`update service_orders set status = 'sent', sent_at = now(),
+          technician_id = ${technicianId} where id = ${id}`,
+  );
+  await getDb().execute(
+    sql`update service_orders set status = 'quoted', quoted_at = now(),
+          customer_currency = ${input.currency}, customer_total = ${input.total},
+          technician_currency = ${input.currency}, technician_total = ${input.total}
+        where id = ${id}`,
+  );
+  await getDb().execute(
+    sql`update service_orders set status = 'approved', approved_at = now() where id = ${id}`,
+  );
+  await getDb().execute(
+    sql`update service_orders set status = 'repaired', repaired_at = now() where id = ${id}`,
+  );
+  return id;
+}
+
 async function otherOrganization() {
   const orgB = await returningId(
     sql`insert into organizations (name) values ('Negocio B') returning id`,
@@ -572,6 +615,7 @@ describe("el estado de cuenta del proveedor (brief-22.7, AC-2 y AC-3)", () => {
           owed: "70.00",
           oldestOutstandingAt: expect.any(Date),
           receiptsWithBalance: 1,
+          chargesWithBalance: 0,
         },
       ]);
     },
@@ -715,7 +759,10 @@ describe("la lista de proveedores a los que se les debe (brief-22.7, AC-1 y AC-4
           currency: currency.currency,
           owed: currency.owed,
           oldestOutstandingAt: currency.oldestOutstandingAt,
+          // Sin trabajos de técnico, lo que cuenta el estado de cuenta son todas recepciones
+          // (brief-24.8.2, V-19).
           receiptsWithBalance: currency.receiptsWithBalance,
+          chargesWithBalance: 0,
         });
         expect(currency.inFavor).toBe("0.00");
       }
@@ -731,6 +778,81 @@ describe("la lista de proveedores a los que se les debe (brief-22.7, AC-1 y AC-4
       expect((await owedRows(b.adminB)).rows.map((row) => row.name)).toEqual([
         "Proveedor de B",
       ]);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "separa las recepciones de los trabajos del técnico y suma un total por moneda",
+    async () => {
+      const s = await seed();
+      // Importaciones Sur: dos recepciones con saldo en ARS.
+      await receipt(s, "100");
+      await receipt(s, "50");
+      // Taller Centro: una recepción y dos trabajos reparados, todo en ARS.
+      const workshop = await namedSupplier(s, "Taller Centro");
+      await receipt(s, "30", "ARS", workshop);
+      await repairedOrder(s, workshop, {
+        number: 1,
+        currency: "ARS",
+        total: "20",
+      });
+      await repairedOrder(s, workshop, {
+        number: 2,
+        currency: "ARS",
+        total: "10",
+      });
+      // Y uno en otra moneda, que nunca se suma con los pesos (ADR 0019, punto 3).
+      await repairedOrder(s, workshop, {
+        number: 3,
+        currency: "USD",
+        total: "7",
+      });
+
+      const all = await owedRows(s.admin);
+      expect(
+        all.rows.map((row) => [
+          row.name,
+          row.currency,
+          row.owed,
+          row.receiptsWithBalance,
+          row.chargesWithBalance,
+        ]),
+      ).toEqual([
+        ["Importaciones Sur", "ARS", "150.00", 2, 0],
+        ["Taller Centro", "ARS", "60.00", 1, 2],
+        ["Taller Centro", "USD", "7.00", 0, 1],
+      ]);
+      // V-18: un total por moneda, en el orden de los códigos, sin mezclar monedas.
+      expect(all.totals).toEqual([
+        { currency: "ARS", owed: "210.00" },
+        { currency: "USD", owed: "7.00" },
+      ]);
+      // El total filtrado es el de lo que se ve.
+      expect(
+        (await owedRows(s.admin, { currency: "USD", page: 1 })).totals,
+      ).toEqual([{ currency: "USD", owed: "7.00" }]);
+      // Un pago a cuenta cancela lo más viejo primero —acá la recepción, que es anterior a los dos
+      // trabajos— y la cuenta de cada tipo se mueve con él.
+      await pay(s, {
+        target: "account",
+        supplierId: workshop,
+        currency: "ARS",
+        amount: "30",
+      });
+      const after = await owedRows(s.admin, { currency: "ARS", page: 1 });
+      expect(
+        after.rows.map((row) => [
+          row.name,
+          row.owed,
+          row.receiptsWithBalance,
+          row.chargesWithBalance,
+        ]),
+      ).toEqual([
+        ["Importaciones Sur", "150.00", 2, 0],
+        ["Taller Centro", "30.00", 0, 2],
+      ]);
+      expect(after.totals).toEqual([{ currency: "ARS", owed: "180.00" }]);
     },
     TEST_TIMEOUT,
   );
@@ -811,6 +933,113 @@ describe("la lista de proveedores a los que se les debe (brief-22.7, AC-1 y AC-4
           getGoodsReceiptForPayment(tx, s.orgId, a.id),
         ),
       ).toMatchObject({ voided: false, voidedAt: null });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+describe("la vista previa del pago a cuenta (brief-24.8.2, D-4)", () => {
+  it(
+    "aplica lo propuesto de lo más viejo a lo más nuevo, y lo que sobra queda a favor",
+    async () => {
+      const s = await seed();
+      const first = await receipt(s, "100");
+      const second = await receipt(s, "40");
+      await receipt(s, "9", "USD");
+
+      const partial = await previewSupplierAccountPayment(
+        s.admin,
+        s.supplierId,
+        { currency: "ARS", amount: "120.00" },
+      );
+      if (!partial.ok)
+        throw new Error(`vista previa rechazada: ${partial.code}`);
+      expect(
+        partial.preview.rows.map((row) => [
+          row.kind,
+          row.displayNumber,
+          row.outstanding,
+          row.applied,
+        ]),
+      ).toEqual([
+        ["goods_receipt", first.displayNumber, "100.00", "100.00"],
+        ["goods_receipt", second.displayNumber, "40.00", "20.00"],
+      ]);
+      expect(partial.preview.inFavor).toBe("0.00");
+      // La otra moneda sigue pendiente: una moneda nunca cancela otra.
+      expect(
+        partial.preview.others.map((row) => [row.currency, row.owed]),
+      ).toEqual([["USD", "9.00"]]);
+
+      // Lo que exceda queda a favor del negocio, sin tope (IN_FAVOR_NOTE).
+      const over = await previewSupplierAccountPayment(s.admin, s.supplierId, {
+        currency: "ARS",
+        amount: "200.00",
+      });
+      if (!over.ok) throw new Error("vista previa rechazada");
+      expect(over.preview.rows.map((row) => row.applied)).toEqual([
+        "100.00",
+        "40.00",
+      ]);
+      expect(over.preview.inFavor).toBe("60.00");
+
+      // Y lo previsualizado es lo que de verdad pasa al confirmar (D-4: la misma regla).
+      await pay(s, {
+        target: "account",
+        supplierId: s.supplierId,
+        currency: "ARS",
+        amount: "200",
+      });
+      expect(await account(s)).toEqual([
+        { currency: "ARS", owed: "0.00", inFavor: "60.00" },
+        { currency: "USD", owed: "9.00", inFavor: "0.00" },
+      ]);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "también previsualiza un trabajo de técnico, y rechaza lo que no es de la organización o no es admin",
+    async () => {
+      const s = await seed();
+      const workshop = await namedSupplier(s, "Taller Centro");
+      await repairedOrder(s, workshop, {
+        number: 1,
+        currency: "ARS",
+        total: "25",
+      });
+      const preview = await previewSupplierAccountPayment(s.admin, workshop, {
+        currency: "ARS",
+        amount: "25.00",
+      });
+      if (!preview.ok) throw new Error("vista previa rechazada");
+      expect(
+        preview.preview.rows.map((row) => [row.kind, row.applied]),
+      ).toEqual([["charge", "25.00"]]);
+
+      const viewer = await member(s.orgId, "viewer-a@example.com", "viewer");
+      expect(
+        await previewSupplierAccountPayment(viewer, s.supplierId, {
+          currency: "ARS",
+          amount: "1.00",
+        }),
+      ).toMatchObject({ ok: false, code: "FORBIDDEN" });
+      const b = await otherOrganization();
+      expect(
+        await previewSupplierAccountPayment(s.admin, b.supplierB, {
+          currency: "ARS",
+          amount: "1.00",
+        }),
+      ).toMatchObject({ ok: false, code: "NOT_FOUND" });
+      for (const bad of [
+        { currency: "pesos", amount: "1.00" },
+        { currency: "ARS", amount: "1" },
+        { currency: "ARS", amount: "0.00" },
+      ]) {
+        expect(
+          await previewSupplierAccountPayment(s.admin, s.supplierId, bad),
+        ).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+      }
     },
     TEST_TIMEOUT,
   );

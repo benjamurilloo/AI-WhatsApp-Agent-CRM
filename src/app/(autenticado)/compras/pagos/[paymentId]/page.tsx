@@ -90,7 +90,12 @@ export default async function SupplierPaymentPage({
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8 print:max-w-none print:p-0">
       <div className="print:hidden">
-        <BackLink href="/compras/pagos" label="Volver a pagos" />
+        {/* Vuelve a la lista **con el panel de este pago abierto** (brief-24.8.2, D-2): de ahí se
+            llega acá, y volver a una lista que no muestra lo que se estaba mirando pierde el lugar. */}
+        <BackLink
+          href={`/compras/pagos?pago=${payment.id}`}
+          label="Volver a pagos"
+        />
         <DetailHeader
           title={`Pago ${payment.displayNumber}`}
           leading={<HeaderIcon name="banknote" />}

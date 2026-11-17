@@ -30,6 +30,32 @@ export const NO_PAYMENT_RESULTS_MESSAGE =
   "Ningún pago coincide con estos filtros.";
 export const VOIDED_BADGE_TEXT = "Anulado";
 export const ACCOUNT_TARGET_TEXT = "A cuenta";
+// Los dos avisos del panel, dichos por la lámina 08 (brief-24.8.2, V-10). El segundo solo va cuando
+// el pago tuvo conversión: sin ella no hay cotización guardada de la que hablar.
+export const NOT_A_TRANSFER_NOTE =
+  "Este comprobante registra el pago; no ejecuta una transferencia bancaria.";
+export const PANEL_RATE_NOTE =
+  "No se usa el tipo de cambio actual: se conserva la cotización guardada.";
+
+// Qué pasó con la caja en un pago **vigente**, para el panel. No es lo mismo que `voidCashNote`,
+// que dice qué pasaría al anularlo.
+export function panelCashNote(
+  isCash: boolean,
+  session: { displayNumber: string; open: boolean } | null,
+): string {
+  if (!isCash || session === null) {
+    return "No afecta el efectivo de caja.";
+  }
+  return `Salió del efectivo de la sesión ${session.displayNumber}.`;
+}
+
+// La vista previa del pago a cuenta (brief-24.8.2, D-4): lo que previsualiza es **lo propuesto**, y
+// la cuenta puede moverse entre esta pantalla y el confirmar.
+export const PREVIEW_NOTE =
+  "Es la aplicación de lo propuesto sobre la cuenta de hoy: al confirmar se vuelve a calcular.";
+
+export const PREVIEW_IN_FAVOR_ROW = "A favor del negocio";
+
 export const IN_FAVOR_NOTE =
   "Un pago a cuenta no tiene tope: lo que exceda lo que se le debe queda a favor del negocio y se imputa a las recepciones que vengan, de la más vieja a la más nueva.";
 

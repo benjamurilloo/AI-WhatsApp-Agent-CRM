@@ -17,6 +17,7 @@ import {
   getSupplierPayment,
   getSupplierStatement,
   listPaymentMethods,
+  listSupplierPaymentFilterOptions,
   listSupplierPayments,
   listSuppliersOwed,
   openCashSession,
@@ -31,8 +32,13 @@ import {
   createGoodsReceipt,
   createSupplier,
   deactivateSupplier,
+  getSupplier,
   voidGoodsReceipt,
 } from "@/modules/purchasing";
+import {
+  findSupplierPaymentCurrencies,
+  findSupplierPaymentSupplierIds,
+} from "@/modules/cash/supplier-payment-repository";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
 
@@ -185,6 +191,78 @@ async function paid(context: AuthContext, input: SupplierPaymentInput) {
   const result = await createSupplierPayment(context, input);
   if (!result.ok) throw new Error(`pago rechazado: ${JSON.stringify(result)}`);
   return result.payment;
+}
+
+// Cuenta las sentencias que la aplicación manda mientras corre `work`, sobre el singleton de
+// `getDb()`. **Copiado de `tests/integration/goods-receipts.test.ts`**, que a su vez lo copió de
+// `sales-list-reads.test.ts`, donde está la versión con sus tres comentarios de por qué: se cuenta
+// solo en el cliente y nunca en el pool, los clientes se reusan y hay que desenvolverlos al
+// terminar, y `connect` tiene las dos formas de pg. **No se extrae a un archivo compartido**
+// porque ese archivo nuevo quedaría fuera de la lista cerrada del brief-24.8.2; la copia está
+// declarada en su §Cierre.
+async function statementsOf<T>(
+  work: () => Promise<T>,
+): Promise<{ result: T; statements: string[] }> {
+  const pool = getDb().$client as unknown as {
+    query: (...args: unknown[]) => unknown;
+    connect: (...args: unknown[]) => Promise<{
+      query: (...args: unknown[]) => unknown;
+    }>;
+  };
+  const statements: string[] = [];
+  const record = (first: unknown) => {
+    const text =
+      typeof first === "string"
+        ? first
+        : typeof (first as { text?: unknown })?.text === "string"
+          ? (first as { text: string }).text
+          : "";
+    statements.push(text);
+  };
+  const originalQuery = pool.query.bind(pool);
+  const originalConnect = pool.connect.bind(pool);
+  type Client = { query: (...args: unknown[]) => unknown };
+  const wrapped = new Map<Client, Client["query"]>();
+  const wrap = (client: Client) => {
+    if (wrapped.has(client)) return;
+    const clientQuery = client.query.bind(client);
+    wrapped.set(client, client.query);
+    client.query = (...inner: unknown[]) => {
+      record(inner[0]);
+      return clientQuery(...inner);
+    };
+  };
+  pool.query = (...args: unknown[]) => originalQuery(...args);
+  pool.connect = ((...args: unknown[]) => {
+    if (typeof args[0] === "function") {
+      const callback = args[0] as (...inner: unknown[]) => void;
+      return originalConnect((...inner: unknown[]) => {
+        const client = inner[1] as Client | undefined;
+        if (client) wrap(client);
+        callback(...inner);
+      });
+    }
+    return (originalConnect(...args) as Promise<Client>).then((client) => {
+      wrap(client);
+      return client;
+    });
+  }) as typeof pool.connect;
+  try {
+    return { result: await work(), statements };
+  } finally {
+    pool.query = originalQuery;
+    pool.connect = originalConnect;
+    for (const [client, query] of wrapped) client.query = query;
+  }
+}
+
+// Las sentencias que no son del control de la transacción: begin, commit y los set del aislamiento
+// no son lecturas, y contarlas confundiría la medición.
+function reads(statements: string[]): string[] {
+  return statements.filter(
+    (text) =>
+      !/^\s*(begin|commit|rollback|set\b|start transaction)/i.test(text),
+  );
 }
 
 async function outstanding(context: AuthContext, goodsReceiptId: string) {
@@ -933,9 +1011,11 @@ describe("los rechazos (AC-6; D-10)", () => {
         await listSupplierPayments(s.viewerA, {
           status: "all",
           supplierId: null,
+          currency: null,
           search: "",
           page: 1,
         }),
+        await listSupplierPaymentFilterOptions(s.viewerA),
         await getGoodsReceiptPayments(s.viewerA, rc.id),
         await getGoodsReceiptPaymentForm(s.viewerA, rc.id),
         await getSupplierAccountPaymentForm(s.viewerA, s.supplierA),
@@ -970,11 +1050,13 @@ describe("la lista y el detalle (AC-3; D-13)", () => {
       const list = async (query: {
         status?: "all" | "current" | "voided";
         supplierId?: string | null;
+        currency?: string | null;
         search?: string;
       }) => {
         const result = await listSupplierPayments(s.adminA, {
           status: query.status ?? "all",
           supplierId: query.supplierId ?? null,
+          currency: query.currency ?? null,
           search: query.search ?? "",
           page: 1,
         });
@@ -1005,6 +1087,62 @@ describe("la lista y el detalle (AC-3; D-13)", () => {
           voided: null,
         },
       });
+    },
+    TEST_TIMEOUT,
+  );
+  it(
+    "filtra por moneda, y ofrece los proveedores y las monedas que tienen algún pago",
+    async () => {
+      const s = await seed();
+      const north = await supplier(s.adminA, "Distribuidora Norte");
+      await paid(s.adminA, toAccount(s.supplierA, s.methods.transfer, "10"));
+      await paid(s.adminA, toAccount(north, s.methods.transfer, "20", "USD"));
+      await paid(s.adminA, toAccount(north, s.methods.transfer, "30", "USD"));
+      // El de la otra organización no entra en ninguna de las dos lecturas.
+      await paid(s.adminB, toAccount(s.supplierB, s.methodsB.transfer, "99"));
+
+      const list = async (currency: string | null) => {
+        const result = await listSupplierPayments(s.adminA, {
+          status: "all",
+          supplierId: null,
+          currency,
+          search: "",
+          page: 1,
+        });
+        if (!result.ok) throw new Error("lista rechazada");
+        return result.payments.items.map((row) => [
+          row.displayNumber,
+          row.currency,
+        ]);
+      };
+      expect(await list("USD")).toEqual([
+        ["PP-000003", "USD"],
+        ["PP-000002", "USD"],
+      ]);
+      expect(await list("ARS")).toEqual([["PP-000001", "ARS"]]);
+      // La moneda es la **aplicada a la cuenta**, y una que no tiene pagos no trae nada.
+      expect(await list("EUR")).toEqual([]);
+      // Una moneda mal escrita —que la URL ya no deja pasar— no filtra: la lista es la de todos,
+      // igual que `listSuppliersOwed`. Lo que vuelve vacío es un código bien escrito sin pagos.
+      expect(await list("pesos")).toHaveLength(3);
+
+      const options = await listSupplierPaymentFilterOptions(s.adminA);
+      if (!options.ok) throw new Error("opciones rechazadas");
+      if (options.options.suppliers.kind !== "select") {
+        throw new Error("con dos proveedores el filtro es un select");
+      }
+      // Ids, no nombres: los nombres son de purchasing y los compone la página (H-3).
+      expect([...options.options.suppliers.supplierIds].sort()).toEqual(
+        [s.supplierA, north].sort(),
+      );
+      expect(options.options.currencies).toEqual(["ARS", "USD"]);
+      // Y la lectura acota de verdad: con el tope en uno, trae uno solo.
+      expect(await findSupplierPaymentSupplierIds(s.orgA, 1)).toHaveLength(1);
+      expect(
+        (await findSupplierPaymentCurrencies(s.orgB)).map(
+          (row) => row.currency,
+        ),
+      ).toEqual(["ARS"]);
     },
     TEST_TIMEOUT,
   );
@@ -1374,12 +1512,55 @@ describe("el rendimiento (AC-8; D-14)", () => {
       ),
     );
     for (const query of [
-      { status: "all", supplierId: null, search: "", page: 200 },
-      { status: "current", supplierId: null, search: "", page: 100 },
-      { status: "voided", supplierId: null, search: "", page: 5 },
-      { status: "all", supplierId: s.supplierA, search: "", page: 50 },
-      { status: "all", supplierId: null, search: "PP-009999", page: 1 },
-      { status: "all", supplierId: null, search: "APP-000150", page: 1 },
+      {
+        status: "all",
+        supplierId: null,
+        currency: null,
+        search: "",
+        page: 200,
+      },
+      {
+        status: "current",
+        supplierId: null,
+        currency: null,
+        search: "",
+        page: 100,
+      },
+      {
+        status: "voided",
+        supplierId: null,
+        currency: null,
+        search: "",
+        page: 5,
+      },
+      {
+        status: "all",
+        supplierId: s.supplierA,
+        currency: null,
+        search: "",
+        page: 50,
+      },
+      {
+        status: "all",
+        supplierId: null,
+        currency: "ARS",
+        search: "",
+        page: 20,
+      },
+      {
+        status: "all",
+        supplierId: null,
+        currency: null,
+        search: "PP-009999",
+        page: 1,
+      },
+      {
+        status: "all",
+        supplierId: null,
+        currency: null,
+        search: "APP-000150",
+        page: 1,
+      },
     ] as const) {
       await measure(`lista ${JSON.stringify(query)}`, () =>
         listSupplierPayments(s.adminA, query),
@@ -1441,4 +1622,74 @@ describe("el rendimiento (AC-8; D-14)", () => {
     ).toBe(Number(current.rows[0]!.count));
     console.info(timings.join("\n"));
   }, 120000);
+});
+
+// La medición 2 del brief-24.8.2: **cuánto cuesta abrir el panel contra no abrirlo**, contado en la
+// corrida y no leído del código. El panel hace lo mismo que `SupplierPaymentPanel`: el pago, y
+// además el estado de la recepción (D-3) y el nombre del proveedor.
+describe("el costo de abrir el panel del pago (medición 2 del brief-24.8.2)", () => {
+  it(
+    "abrir el panel cuesta un número fijo de lecturas, y el estado de la recepción es una sola",
+    async () => {
+      const s = await seed();
+      const r = await receipt(s.adminA, s.supplierA, s.productA, "2", "50.00");
+      const onReceipt = await paid(
+        s.adminA,
+        toReceipt(r.id, s.methods.transfer, "20"),
+      );
+      const onAccount = await paid(
+        s.adminA,
+        toAccount(s.supplierA, s.methods.transfer, "10"),
+      );
+
+      // No abrirlo: la lista sola, que es la línea de base.
+      const closed = await statementsOf(() =>
+        listSupplierPayments(s.adminA, {
+          status: "all",
+          supplierId: null,
+          currency: null,
+          search: "",
+          page: 1,
+        }),
+      );
+
+      const panel = async (
+        paymentId: string,
+        goodsReceiptId: string | null,
+      ) => {
+        const found = await getSupplierPayment(s.adminA, paymentId);
+        if (!found.ok) throw new Error("pago no encontrado");
+        await Promise.all([
+          goodsReceiptId
+            ? getGoodsReceiptPaymentForm(s.adminA, goodsReceiptId)
+            : null,
+          getSupplier(s.adminA, found.payment.supplierId),
+        ]);
+      };
+      const openedOnReceipt = await statementsOf(() =>
+        panel(onReceipt.id, r.id),
+      );
+      const openedOnAccount = await statementsOf(() =>
+        panel(onAccount.id, null),
+      );
+
+      const base = reads(closed.statements).length;
+      const conRecepcion = reads(openedOnReceipt.statements).length;
+      const aCuenta = reads(openedOnAccount.statements).length;
+      console.info(
+        [
+          `M-2 lista sin panel: ${base} lecturas`,
+          `M-2 panel de un pago contra recepción: ${conRecepcion} lecturas`,
+          `M-2 panel de un pago a cuenta: ${aCuenta} lecturas`,
+        ].join("\n"),
+      );
+      // Las cifras van fijas, no con un techo: un techo deja pasar una lectura de más, que es
+      // justamente lo que la revisión independiente de la 24.8.1-b apretó (su hallazgo 3). De las
+      // trece del panel de un pago contra recepción, **ocho son de `getGoodsReceiptPaymentForm`**:
+      // es el precio de que el estado de la recepción salga de la misma cuenta que limita el pago
+      // (D-3), y se paga solo al abrir el panel de un pago contra recepción.
+      expect([base, conRecepcion, aCuenta]).toEqual([4, 13, 5]);
+    },
+    TEST_TIMEOUT,
+  );
 });

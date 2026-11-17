@@ -293,13 +293,15 @@ test("un pago a cuenta mayor que la deuda: se imputa a la recepción más vieja 
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: "Pago a cuenta de Importaciones Sur",
+      name: "Pago a cuenta · Importaciones Sur",
     }),
   ).toBeVisible();
-  const account = page.getByRole("table", {
-    name: "Cuenta de Importaciones Sur por moneda",
-  });
+  // La situación por moneda, en tarjetas (lámina 12).
+  const account = page
+    .getByRole("listitem")
+    .filter({ hasText: "Saldo pendiente en ARS" });
   await expect(account).toContainText("$ 100,00");
+  await expect(account).toContainText("1 comprobante con saldo");
   await expect(page.getByRole("combobox", { name: /^Moneda/ })).toHaveValue(
     "ARS",
   );
@@ -310,6 +312,20 @@ test("un pago a cuenta mayor que la deuda: se imputa a la recepción más vieja 
     }),
   ).toHaveCount(1);
   await expect(page.getByLabel(/^Monto/)).toHaveValue("100.00");
+  // La vista previa de lo propuesto (D-4): los 100 van a la recepción y no sobra nada.
+  const preview = page.getByRole("region", {
+    name: "Aplicación del pago propuesto",
+  });
+  await expect(preview.getByRole("row")).toHaveCount(2);
+  await expect(preview.getByRole("row").nth(1)).toContainText(
+    "Recepción de compra",
+  );
+  await expect(preview.getByRole("row").nth(1)).toContainText("RC-000001");
+  await expect(
+    page.getByText(
+      "Es la aplicación de lo propuesto sobre la cuenta de hoy: al confirmar se vuelve a calcular.",
+    ),
+  ).toBeVisible();
   await expectAccessible(page, "formulario del pago a cuenta");
   await page.getByRole("radio", { name: "Transferencia" }).check();
   await page.getByLabel(/^Monto/).fill("150");
@@ -327,7 +343,7 @@ test("un pago a cuenta mayor que la deuda: se imputa a la recepción más vieja 
 
   await page.goto(`/compras/proveedores/${supplierId}/pagar`);
   await expect(
-    page.getByRole("table", { name: "Cuenta de Importaciones Sur por moneda" }),
+    page.getByRole("listitem").filter({ hasText: "A favor del negocio" }),
   ).toContainText("$ 50,00");
 });
 
@@ -345,13 +361,13 @@ test("un admin anula un pago en efectivo con la caja abierta y ve los dos compro
   await page.getByRole("link", { name: "Anular el pago" }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\?confirmar=anular$/);
-  await expect(page.getByText("¿Anular el pago PP-000001?")).toBeFocused();
+  await expect(page.getByText("Anular pago PP-000001")).toBeFocused();
   await expect(
     page.getByText(/vuelve a lo esperado de la sesión abierta C-000001/),
   ).toBeVisible();
   await expectAccessible(page, "confirmación de la anulación del pago");
   await page.getByRole("radio", { name: "El pago no se hizo" }).check();
-  await page.getByRole("button", { name: "Sí, anular el pago" }).click();
+  await page.getByRole("button", { name: "Anular pago", exact: true }).click();
 
   await expect(page).toHaveURL(/\?aviso=anulado$/);
   await expect(page.getByText(/^Anulado por APP-000001 el /)).toBeVisible();
@@ -403,7 +419,7 @@ test("la lista filtra por estado y por proveedor, y busca por PP y APP", async (
   await expect(page).toHaveURL(/\?aviso=creado$/);
   await page.goto(`${page.url().replace(/\?.*$/, "")}?confirmar=anular`);
   await page.getByRole("radio", { name: "Otro" }).check();
-  await page.getByRole("button", { name: "Sí, anular el pago" }).click();
+  await page.getByRole("button", { name: "Anular pago", exact: true }).click();
   await expect(page).toHaveURL(/\?aviso=anulado$/);
 
   await page.goto("/compras/pagos");
@@ -425,10 +441,98 @@ test("la lista filtra por estado y por proveedor, y busca por PP y APP", async (
   await page.goto("/compras/pagos?numero=pp-000001");
   await expect(table).toContainText("PP-000001");
 
+  // Desde la 24.8.2 el proveedor es un control y no un campo oculto (D-5): el enlace que viene de
+  // su ficha es el mismo parámetro, y el `<select>` queda puesto en él.
   await page.goto(`/compras/pagos?proveedor=${south}`);
-  await expect(page.getByText(/^Pagos a Importaciones Sur\./)).toBeVisible();
+  await expect(page.getByLabel("Proveedor", { exact: true })).toHaveValue(
+    south,
+  );
   await expect(table.getByRole("row")).toHaveCount(2);
   await expect(table).toContainText("PP-000001");
+  await page.getByLabel("Proveedor", { exact: true }).selectOption(north);
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`proveedor=${north}`));
+  await expect(table).toContainText("PP-000002");
+  await expect(table).not.toContainText("PP-000001");
+});
+
+// El detalle del pago en un panel que abre y cierra por la URL (brief-24.8.2, D-2 y lámina 08).
+test("el panel del pago abre y cierra por la URL, conserva los filtros y lleva al comprobante", async ({
+  page,
+}) => {
+  const south = await insertSupplier("Importaciones Sur");
+  const north = await insertSupplier("Distribuidora Norte");
+  const first = await insertReceipt(south, 1, "100.00");
+  const second = await insertReceipt(north, 2, "100.00");
+  await login(page, ADMIN);
+  await payFromReceipt(page, first, /Transferencia/, "40");
+  await payFromReceipt(page, second, /Transferencia/, "20");
+
+  await page.goto(`/compras/pagos?proveedor=${south}`);
+  const table = page.getByRole("table", {
+    name: "Pagos a proveedores de la organización",
+  });
+  await expect(table.getByRole("row")).toHaveCount(2);
+  // Ningún panel abierto: la lista sola.
+  await expect(page.getByRole("heading", { name: /^Pago PP-/ })).toHaveCount(0);
+  await table.getByRole("link", { name: "PP-000001" }).click();
+
+  const panel = page.getByRole("complementary", { name: /Pago PP-000001/ });
+  await expect(panel).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`proveedor=${south}.*pago=`));
+  // El filtro sigue puesto con el panel abierto.
+  await expect(table.getByRole("row")).toHaveCount(2);
+  await expect(panel).toContainText("Importaciones Sur");
+  await expect(panel).toContainText("Transferencia");
+  await expect(panel).toContainText("Vigente");
+  // «Estado de la recepción» (D-3), con la misma cuenta que limita el pago: 100 de total, 40
+  // pagados y 60 que faltan.
+  await expect(panel).toContainText("Estado de la recepción");
+  await expect(panel).toContainText("$ 100,00");
+  await expect(panel).toContainText("$ 40,00");
+  await expect(panel).toContainText("$ 60,00");
+  await expect(panel).toContainText("No afecta el efectivo de caja.");
+  // AC-4: sin conversión no hay qué mostrar de la salida ni de la cotización (V-8).
+  await expect(panel).not.toContainText("Salida registrada");
+  await expect(panel).not.toContainText("Cotización guardada");
+  await expectAccessible(page, "lista de pagos con el panel abierto");
+
+  // Cerrar devuelve a la lista con el filtro donde estaba.
+  await page.getByRole("link", { name: "Cerrar el pago" }).click();
+  await expect(page).toHaveURL(new RegExp(`proveedor=${south}$`));
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+
+  // «Imprimir» lleva al comprobante, que sigue siendo una pantalla propia, y de ahí se vuelve a la
+  // lista **con el panel abierto**.
+  await table.getByRole("link", { name: "PP-000001" }).click();
+  await page
+    .getByRole("complementary")
+    .getByRole("link", { name: /Imprimir/ })
+    .click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Pago PP-000001" }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Volver a pagos" }).click();
+  await expect(
+    page.getByRole("complementary", { name: /Pago PP-000001/ }),
+  ).toBeVisible();
+
+  // Un pago que no existe no dibuja nada, y la lista sigue estando.
+  await page.goto("/compras/pagos?pago=00000000-0000-4000-8000-000000000000");
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+  await expect(table.getByRole("row")).toHaveCount(3);
+
+  // Y desde el panel se anula, con el paso de la URL de siempre (H-10).
+  await page.goto("/compras/pagos");
+  await table.getByRole("link", { name: "PP-000002" }).click();
+  await page
+    .getByRole("complementary")
+    .getByRole("link", { name: "Anular pago" })
+    .click();
+  await expect(page).toHaveURL(/confirmar=anular/);
+  await page.getByRole("radio", { name: "Otro" }).check();
+  await page.getByRole("button", { name: "Anular pago", exact: true }).click();
+  await expect(page).toHaveURL(/\?aviso=anulado$/);
 });
 
 test("un viewer ve el total de los pagos en la caja, sin la lista, y el aviso en las páginas de pagos", async ({
@@ -491,8 +595,174 @@ test("un viewer ve el total de los pagos en la caja, sin la lista, y el aviso en
 });
 
 // Sin JavaScript (AC-9): el pago es un formulario común.
+// El reflujo **dentro de las tarjetas** (brief-24.8.2, AC-14 y medición 3). Existe porque medir el
+// `scrollWidth` del documento no alcanza: en la 24.8.1-b la CI estaba verde, M-3 medía 320 y 375 px,
+// y el recorrido del usuario encontró cuatro desbordamientos **adentro** de una tarjeta a anchos de
+// escritorio. Acá se mide con `getBoundingClientRect` en el navegador, no razonando sobre una
+// captura, y se comparan los hijos contra la caja de su tarjeta.
+const REFLOW_WIDTHS = [320, 375, 1280, 1440, 1536, 1680] as const;
+
+async function overflowProblems(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const problems: string[] = [];
+    const root = document.querySelector("main") ?? document.body;
+    if (document.documentElement.scrollWidth > window.innerWidth + 1) {
+      problems.push(
+        `el documento pide ${document.documentElement.scrollWidth} px en ${window.innerWidth}`,
+      );
+    }
+    // Lo que desplaza a propósito —una tabla ancha en su contenedor— no es un desbordamiento.
+    const scrolls = (el: Element) => {
+      const style = getComputedStyle(el);
+      return style.overflowX === "auto" || style.overflowX === "scroll";
+    };
+    const cards = [...root.querySelectorAll(".rounded-xl")].filter(
+      (card) => !scrolls(card) && getComputedStyle(card).position === "static",
+    );
+    for (const card of cards) {
+      const box = card.getBoundingClientRect();
+      if (box.width === 0) continue;
+      for (const el of card.querySelectorAll(
+        "input, select, button, a, dd, dt, td, th, h1, h2, h3, p, li",
+      )) {
+        let node = el.parentElement;
+        let skip = false;
+        while (node && node !== card) {
+          if (scrolls(node)) skip = true;
+          node = node.parentElement;
+        }
+        const style = getComputedStyle(el);
+        if (
+          skip ||
+          style.position === "absolute" ||
+          style.position === "fixed"
+        ) {
+          continue;
+        }
+        const inner = el.getBoundingClientRect();
+        if (inner.width === 0) continue;
+        if (inner.right > box.right + 1 || inner.left < box.left - 1) {
+          const name = (el.textContent ?? el.tagName).trim().slice(0, 28);
+          problems.push(`«${name}» se sale de su tarjeta`);
+        }
+      }
+    }
+    return [...new Set(problems)];
+  });
+}
+
+test("las seis pantallas entran en su tarjeta a los seis anchos", async ({
+  page,
+}) => {
+  const supplierId = await insertSupplier("Importaciones del Sur y Asociados");
+  const receiptId = await insertReceipt(supplierId, 1, "123456.78");
+  const other = await insertReceipt(supplierId, 2, "99.00");
+  await login(page, ADMIN);
+  await payFromReceipt(page, receiptId, /Transferencia/, "23456.78");
+  const paymentId = new URL(page.url()).pathname.split("/").at(-1)!;
+
+  const screens: [string, string][] = [
+    ["la lista con el panel abierto", `/compras/pagos?pago=${paymentId}`],
+    ["el comprobante del pago", `/compras/pagos/${paymentId}`],
+    ["la anulación", `/compras/pagos/${paymentId}?confirmar=anular`],
+    ["pagar la recepción", `/compras/recepciones/${other}/pagar`],
+    ["el pago a cuenta", `/compras/proveedores/${supplierId}/pagar`],
+    ["a pagar", "/compras/a-pagar"],
+  ];
+  for (const width of REFLOW_WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const [name, href] of screens) {
+      await page.goto(href);
+      expect(await overflowProblems(page), `${name} a ${width} px`).toEqual([]);
+    }
+  }
+});
+
+// Los otros dos rechazos que AC-6 nombra: la caja cerrada y el medio desactivado. Los dos llegan
+// del servidor, y el segundo se provoca desactivando el medio **con el formulario ya dibujado**.
+test("los rechazos por la caja cerrada y por el medio desactivado", async ({
+  page,
+}) => {
+  const supplierId = await insertSupplier("Importaciones Sur");
+  const receiptId = await insertReceipt(supplierId, 1, "500.00");
+  await login(page, ADMIN);
+
+  await payFromReceipt(page, receiptId, /Efectivo/, "100");
+  await expect(
+    page.getByText(
+      "La caja está cerrada: un pago en efectivo necesita una sesión abierta.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Abrir caja" })).toBeVisible();
+
+  await page.goto(`/compras/recepciones/${receiptId}/pagar`);
+  await page.getByRole("radio", { name: /Transferencia/ }).check();
+  await page.getByLabel(/^Monto/).fill("100");
+  await db.execute(
+    sql`update payment_methods set is_active = false
+        where organization_id = ${SEED_ORGANIZATION_ID} and name = 'Transferencia'`,
+  );
+  await page.getByRole("button", { name: "Registrar pago" }).click();
+  await expect(
+    page.getByText(
+      "Ese medio de pago está desactivado. Elegí otro de la lista.",
+    ),
+  ).toBeVisible();
+});
+
 test.describe("sin JavaScript", () => {
   test.use({ javaScriptEnabled: false });
+
+  test("el panel del pago abre y cierra con un enlace", async ({ page }) => {
+    const supplierId = await insertSupplier("Importaciones Sur");
+    const receiptId = await insertReceipt(supplierId, 2, "80.00");
+    await login(page, ADMIN);
+    await payFromReceipt(page, receiptId, /Transferencia/, "80");
+    await page.goto("/compras/pagos");
+    await page
+      .getByRole("table", { name: "Pagos a proveedores de la organización" })
+      .getByRole("link", { name: "PP-000001" })
+      .click();
+    await expect(
+      page.getByRole("complementary", { name: /Pago PP-000001/ }),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "Cerrar el pago" }).click();
+    await expect(page.getByRole("complementary")).toHaveCount(0);
+  });
+
+  test("los filtros buscan y la anulación confirma", async ({ page }) => {
+    const south = await insertSupplier("Importaciones Sur");
+    const north = await insertSupplier("Distribuidora Norte");
+    const first = await insertReceipt(south, 1, "100.00");
+    const second = await insertReceipt(north, 2, "100.00");
+    await login(page, ADMIN);
+    await payFromReceipt(page, first, /Transferencia/, "40");
+    await payFromReceipt(page, second, /Transferencia/, "20");
+
+    // El filtro es un formulario GET: elegir y enviar deja el parámetro en la URL.
+    await page.goto("/compras/pagos");
+    await page.getByLabel("Proveedor", { exact: true }).selectOption(south);
+    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`proveedor=${south}`));
+    const table = page.getByRole("table", {
+      name: "Pagos a proveedores de la organización",
+    });
+    await expect(table.getByRole("row")).toHaveCount(2);
+    await expect(table).toContainText("PP-000001");
+
+    // Y la anulación: el paso de la URL y el formulario de la acción de servidor.
+    await table.getByRole("link", { name: "PP-000001" }).click();
+    await page
+      .getByRole("complementary")
+      .getByRole("link", { name: "Anular pago" })
+      .click();
+    await expect(page).toHaveURL(/confirmar=anular/);
+    await page.getByRole("radio", { name: "Otro" }).check();
+    await page
+      .getByRole("button", { name: "Anular pago", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\?aviso=anulado$/);
+  });
 
   test("un admin paga una recepción", async ({ page }) => {
     const supplierId = await insertSupplier("Importaciones Sur");

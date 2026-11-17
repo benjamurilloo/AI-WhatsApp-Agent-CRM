@@ -346,7 +346,12 @@ export type SupplierOwedRow = {
   currency: string;
   owed: string;
   oldestOutstandingAt: Date;
+  // Desde la 24.8.2 (H-6), los dos comprobantes con saldo se cuentan por separado: las recepciones
+  // de compra por un lado y los trabajos reparados de los técnicos por el otro. Antes era un solo
+  // número con los dos mezclados, porque `AccountSale` no lleva de qué tipo es. Se separan como lo
+  // hace el estado de cuenta: con un conjunto armado **afuera** de `imputeAccount`, que no cambia.
   receiptsWithBalance: number;
+  chargesWithBalance: number;
 };
 
 export type SuppliersOwedPage = {
@@ -356,6 +361,9 @@ export type SuppliersOwedPage = {
   pageSize: number;
   // Las monedas con algún proveedor al que se le debe, para el filtro.
   currencies: string[];
+  // Lo que se debe por moneda, sobre la lista filtrada **entera** y no sobre la página (H-7), como
+  // el total de referencia. No cuesta ninguna consulta: la lista ya se lee y se pagina en memoria.
+  totals: { currency: string; owed: string }[];
   // El total de referencia de la lista filtrada entera, no de la página (brief-29.4.3, D-6), como el
   // de los deudores.
   reference: ReferenceView | null;
@@ -405,20 +413,168 @@ async function readOwed(organizationId: string): Promise<Owed[]> {
       paymentsOf.get(supplierId) ?? [],
       chargesOf.get(supplierId) ?? [],
     );
+    // Los identificadores de los trabajos del técnico, para contarlos aparte de las recepciones
+    // (H-6). `supplierAccountInput` los mapea con `charge.id` como `id`, así que son los mismos
+    // `saleId` que devuelve la imputación.
+    const chargeIds = new Set(
+      (chargesOf.get(supplierId) ?? []).map((charge) => charge.id),
+    );
     for (const account of imputeAccount(input)) {
       const summary = summarizeSupplierAccount(account);
       if (summary.receiptsWithBalance === 0) continue;
+      const chargesWithBalance = account.sales.filter(
+        (row) => row.outstanding > 0n && chargeIds.has(row.saleId),
+      ).length;
       owed.push({
         supplierId,
         currency: summary.currency,
         owed: summary.owed,
         owedAmount: moneyFromDatabase(summary.owed),
         oldestOutstandingAt: summary.oldestOutstandingAt!,
-        receiptsWithBalance: summary.receiptsWithBalance,
+        // El resumen cuenta los dos juntos: las recepciones son las que quedan.
+        receiptsWithBalance: summary.receiptsWithBalance - chargesWithBalance,
+        chargesWithBalance,
       });
     }
   }
   return owed;
+}
+
+// La vista previa de la aplicación de un pago a cuenta (brief-24.8.2, D-4 y lámina 12): a qué
+// comprobantes iría y cuánto quedaría a favor del negocio. **No cambia ninguna regla**: corre la
+// misma `imputeAccount` sobre la misma entrada que arma `supplierLedger`, con un pago a cuenta más,
+// y resta. Lo que se ve, entonces, no puede contradecir a lo que pasa al confirmar, salvo porque la
+// cuenta puede moverse entre una pantalla y la otra —por eso la pantalla dice que se revalida—.
+//
+// Sin JavaScript, previsualiza **lo propuesto** y no lo que se está escribiendo.
+export type SupplierAccountPreviewRow = {
+  kind: "goods_receipt" | "charge";
+  id: string;
+  displayNumber: string;
+  // Lo que falta hoy, antes de este pago.
+  outstanding: string;
+  // Lo que este pago le aplicaría.
+  applied: string;
+};
+
+export type SupplierAccountPreview = {
+  currency: string;
+  amount: string;
+  rows: SupplierAccountPreviewRow[];
+  // Lo que quedaría a favor del negocio **por este pago**, no el total a favor de la cuenta.
+  inFavor: string;
+  // Las otras monedas con saldo, que este pago no toca: una moneda nunca cancela otra (ADR 0019).
+  others: SupplierCurrencySummary[];
+};
+
+const AMOUNT = /^[0-9]+.[0-9]{2}$/;
+
+export async function previewSupplierAccountPayment(
+  context: AuthContext,
+  supplierId: string,
+  payment: { currency: string; amount: string },
+): Promise<
+  | { ok: true; preview: SupplierAccountPreview }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(supplierId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const currency = payment.currency.toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency) || !AMOUNT.test(payment.amount)) {
+    return failure("VALIDATION_ERROR");
+  }
+  const amount = moneyFromDatabase(payment.amount);
+  if (amount <= 0n) return failure("VALIDATION_ERROR");
+  const id = supplierId.toLowerCase();
+  if (!(await supplierName(context, id))) return failure("NOT_FOUND");
+  const ledger = await repository.withSnapshot((tx) =>
+    supplierLedger(tx, context.organizationId, id),
+  );
+  const before = ledger.accounts.find((row) => row.currency === currency);
+  const after = imputeAccount({
+    ...ledger.input,
+    receipts: [
+      ...ledger.input.receipts,
+      { target: "account", currency, amount },
+    ],
+  }).find((row) => row.currency === currency);
+  if (!after) {
+    // Solo si la moneda no quedó en la cuenta ni con el pago puesto, que no puede pasar.
+    return failure("VALIDATION_ERROR");
+  }
+  const outstandingBefore = new Map(
+    (before?.sales ?? []).map((sale) => [sale.saleId, sale.outstanding]),
+  );
+  const documents = new Map<
+    string,
+    { kind: "goods_receipt" | "charge"; displayNumber: string }
+  >([
+    ...ledger.receipts.map(
+      (receipt) =>
+        [
+          receipt.id,
+          {
+            kind: "goods_receipt" as const,
+            displayNumber: receipt.displayNumber,
+          },
+        ] as const,
+    ),
+    ...ledger.charges.map(
+      (charge) =>
+        [
+          charge.id,
+          { kind: "charge" as const, displayNumber: charge.displayNumber },
+        ] as const,
+    ),
+  ]);
+  const rows: SupplierAccountPreviewRow[] = [];
+  for (const sale of after.sales) {
+    const was = outstandingBefore.get(sale.saleId) ?? 0n;
+    const applied = was - sale.outstanding;
+    if (applied <= 0n) continue;
+    const document = documents.get(sale.saleId);
+    rows.push({
+      kind: document?.kind ?? "goods_receipt",
+      id: sale.saleId,
+      displayNumber: document?.displayNumber ?? "",
+      outstanding: moneyToDatabase(was),
+      applied: moneyToDatabase(applied),
+    });
+  }
+  return {
+    ok: true,
+    preview: {
+      currency,
+      amount: payment.amount,
+      rows,
+      inFavor: moneyToDatabase(after.inFavor - (before?.inFavor ?? 0n)),
+      others: ledger.accounts
+        .filter((row) => row.currency !== currency)
+        .map(summarizeSupplierAccount)
+        .filter((row) => row.owed !== "0.00"),
+    },
+  };
+}
+
+// Lo que se debe por moneda, en el orden de los códigos (H-7). Suma `Money`, nunca cadenas, y no
+// mezcla dos monedas: una fila por cada una.
+function owedTotals(rows: Owed[]): { currency: string; owed: string }[] {
+  const byCurrency = new Map<string, Money>();
+  for (const row of rows) {
+    byCurrency.set(
+      row.currency,
+      (byCurrency.get(row.currency) ?? 0n) + row.owedAmount,
+    );
+  }
+  return [...byCurrency]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([currency, amount]) => ({
+      currency,
+      owed: moneyToDatabase(amount),
+    }));
 }
 
 function byOwed(a: Owed, b: Owed): number {
@@ -470,11 +626,13 @@ export async function listSuppliersOwed(
         owed: row.owed,
         oldestOutstandingAt: row.oldestOutstandingAt,
         receiptsWithBalance: row.receiptsWithBalance,
+        chargesWithBalance: row.chargesWithBalance,
       })),
       total: filtered.length,
       page: query.page,
       pageSize: SUPPLIERS_OWED_PAGE_SIZE,
       currencies,
+      totals: owedTotals(filtered),
       reference: referenceView(
         await getExchangeSetup(context.organizationId),
         filtered.map((row) => ({

@@ -989,6 +989,7 @@ roles; las acciones, solo `admin`.
 - **Una recepción anulada o ya pagada**, o sin medios activos: lo dice, sin formulario.
 - Funciona sin JavaScript.
 - **Un `viewer`**: «Solo un administrador puede ver y registrar pagos a proveedores.».
+- *Rediseñada en la 24.8.2* ([brief-24.8.2](../decisions/brief-24.8.2-compras-pagos-y-a-pagar.md); lámina 09). El título es «Pagar la recepción {número} · {proveedor}» y lo que falta se va del subtítulo a la tarjeta **«Recepción»**: el código en monoespaciada, el proveedor, el total, «Pendiente de pago» y, solo si hubo, «Imputado desde la cuenta». Los campos quedan en **dos columnas** en escritorio y una sola en el teléfono (V-13): «Datos del pago» —la moneda, la moneda que sale con su cotización y el monto— y «Tipo de pago» —el medio, que **sigue siendo un grupo de opciones** y no un `<select>` (V-11)—. Debajo, la tarjeta **«Resumen»** con las **tres cifras de la lámina** (V-14), cada una con su ícono: «Aplicar a la recepción», «Registrar salida» y «Pendiente después», y la línea «Son las cifras de lo propuesto: si cambiás el monto, se recalculan al confirmar.»: sin JavaScript no se recalculan mientras se escribe, y el tope lo revalida `cash`. **«Registrar salida» aparece solo cuando el pago sale en otra moneda**, con lo que falta convertido a la cotización que la pantalla ofrece: en un pago en la moneda de la recepción sería la misma cifra dos veces. El recuadro «Este comprobante registra el pago; no ejecuta una transferencia bancaria.» acompaña al formulario cuando no está bloqueado.
 
 ## 51. Pago a cuenta
 
@@ -998,6 +999,7 @@ roles; las acciones, solo `admin`.
 - **Campos**: la moneda, propuesta en la de la recepción con saldo más vieja; el medio; el monto, propuesto en lo que se debe en esa moneda.
 - **Acciones y rechazos**: los de la pantalla 50, sin el de lo que falta.
 - **Un `viewer`**: el mismo aviso.
+- *Rediseñada en la 24.8.2* ([brief-24.8.2](../decisions/brief-24.8.2-compras-pagos-y-a-pagar.md); lámina 12). El título es «Pago a cuenta · {proveedor}» y la tabla por moneda se vuelve **«Situación actual del proveedor»**: una tarjeta por moneda con «Saldo pendiente en {moneda}», «A favor del negocio» cuando lo hay, y «N comprobantes con saldo». Las banderas de la lámina no se dibujan: identifica el **código** de la moneda (V-16), y el proveedor no se repite como campo deshabilitado porque ya está en el encabezado (V-17). Debajo del monto aparece **«Vista previa de aplicación del pago»** (D-4), cuya tabla se anuncia como «Aplicación del pago propuesto»: una fila por comprobante que este pago cancelaría —Concepto («Recepción de compra» o «Trabajo del técnico»), Comprobante, Saldo pendiente y «Aplicación de este pago»—, la fila «A favor del negocio» con lo que sobre, y «Sigue pendiente: …» con lo que quede en otras monedas. La vista previa **simula** el pago con la misma imputación que lo aplica, y lo dice: «Es la aplicación de lo propuesto sobre la cuenta de hoy: al confirmar se vuelve a calcular.».
 
 ## 52. Pagos a proveedores
 
@@ -1007,6 +1009,7 @@ roles; las acciones, solo `admin`.
 - **Filtros**, en la URL: el número (`PP-000123` o `APP-000001`, que encuentra su pago) y el estado (todos, vigentes o anulados); el proveedor, desde su ficha (`?proveedor=`), con «Ver los de todos los proveedores».
 - **Vacía**: dice cómo se registra un pago.
 - **Un `viewer`**: el aviso.
+- *Rediseñada en la 24.8.2* ([brief-24.8.2](../decisions/brief-24.8.2-compras-pagos-y-a-pagar.md); lámina 08 y tarjeta 17-4). Los filtros son los tres de la lámina más el buscador por número que ya existía (V-5): **«Proveedor»** como `<select>` con los que tienen algún pago —más el filtrado, aunque no tenga ninguno, para que el enlace que llega desde su ficha no deje el control diciendo «Todos»—, **«Moneda»** cuando hay más de una, y **«Estado»**, que conserva su rótulo y no pasa a «Vigencia» (D-6). Pasado el tope de proveedores no hay `<select>`: el filtro viaja en un campo oculto, como antes. «Limpiar filtros» no cierra el panel abierto. El detalle del pago se abre **en un panel sobre la lista, por la URL** (`?pago=`, D-2): conserva los filtros y la página, se cierra con la **X** («Cerrar el pago»), anda sin JavaScript y **no atenúa el fondo** ni usa menú «⋮» (V-6 y V-7). El panel lleva «Pago {número}» con la insignia **«Vigente»** o **«Anulado»**, el proveedor enlazado, «Información general» (destino, fecha y hora, medio, quién lo registró y la sesión de caja), «Detalle del pago» —con «Salida registrada» y «Cotización guardada» **solo si el pago tuvo conversión** (V-8)—, **«Estado de la recepción»** con Monto total, Pagado, lo imputado desde la cuenta si lo hay y Restante (D-3), la «Nota» de la caja —la sesión de la que salió, o que no afecta el efectivo—, el recuadro de que no ejecuta una transferencia, y «Imprimir» y «Anular pago» como enlaces.
 
 ## 53. Pago a proveedor
 
@@ -1016,6 +1019,7 @@ roles; las acciones, solo `admin`.
 - **La tarjeta «Anulación»**: en uno vigente, «Anular el pago» lleva a `?confirmar=anular`: «¿Anular el pago PP-000001?», qué pasa con la caja («La plata vuelve a lo esperado de la sesión abierta C-000001.», «La sesión C-000001 ya cerró: la caja no cambia.» o «El pago no fue en efectivo: la caja no cambia.»), el motivo de la lista, «No, volver» y «Sí, anular el pago». En uno anulado, el número y el motivo, y «Ver el comprobante de la anulación». Funciona sin JavaScript.
 - **Al imprimir** queda solo el comprobante.
 - **Un `viewer`**: el aviso.
+- *Desde la 24.8.2* ([brief-24.8.2](../decisions/brief-24.8.2-compras-pagos-y-a-pagar.md), D-2): **el comprobante no cambió**, y sigue siendo la página imprimible del pago. Lo que cambió es cómo se llega: la lista abre el pago en su panel, y a esta página se entra desde «Imprimir». «Volver a pagos» vuelve a la lista **con el panel abierto** (`/compras/pagos?pago=…`). La tarjeta «Anulación» y su paso `?confirmar=anular` siguen acá, con **el contenido de la tarjeta 17-4 y sin su diálogo** (V-24): el ícono de alerta junto al título, que pasa a ser **«Anular pago {número}»** en afirmación —el precedente de «Anular recepción {número}» de la 24.8.1-b—, el aviso de la caja en su propio recuadro (V-26), el motivo **sin elegir** (V-25) y los botones **«Volver»** y **«Anular pago»**. Quedan jubiladas tres cadenas de la 22.6: «¿Anular el pago {número}?», «No, volver» y «Sí, anular el pago». El motivo sigue siendo un grupo de opciones y no el `<select>` que dibuja la tarjeta: son cinco y se ven enteros.
 
 ## 54. Anulación de pago
 
@@ -1025,6 +1029,7 @@ roles; las acciones, solo `admin`.
 - **Un pago sin anular**: «Este pago no está anulado.», con «Volver al pago».
 - **Al imprimir** queda solo el comprobante.
 - **Un `viewer`**: el aviso.
+- *Desde la 24.8.2* ([brief-24.8.2](../decisions/brief-24.8.2-compras-pagos-y-a-pagar.md); tarjeta 17-4): el comprobante no cambió. La **confirmación** de la pantalla 53 toma de la tarjeta el ícono de alerta junto a la pregunta y el aviso de la caja en su propio recuadro, con el texto que ya produce `voidCashNote` para cada caso (V-26). **No se adopta el diálogo modal** (V-24): la anulación sigue en el paso `?confirmar=anular`, y el motivo **no viene elegido** (V-25), como en la recepción de la 24.8.1-b.
 
 ## 55. Estado de cuenta del proveedor
 
@@ -1044,6 +1049,7 @@ roles; las acciones, solo `admin`.
 - **Filtro**: «Moneda», si hay más de una. En la URL: `?moneda=&pagina=`.
 - **Vacío**: «No se le debe nada a ningún proveedor.», o «… en {moneda}.» con el filtro.
 - **Un `viewer`**: el aviso de la pantalla 55.
+- *Rediseñada en la 24.8.2* ([brief-24.8.2](../decisions/brief-24.8.2-compras-pagos-y-a-pagar.md); lámina 10). Arriba, **una tarjeta «Total a pagar ({moneda})» por moneda** con lo que se debe en cada una, nunca sumadas (V-18); salen de las mismas filas de la lista, sin consulta nueva. «Recepciones con saldo» pasa a ser **«Cantidad»**, que cuenta por separado los comprobantes y los trabajos de técnicos, cada uno con su ícono: «2 comprobantes», «1 trabajo» (V-19). Cada fila suma el botón **«Ver cuenta»**, que lleva a la misma cuenta que el nombre del proveedor (V-21), con el proveedor y la moneda dichos para quien usa lector de pantalla. «Desde» conserva su rótulo y su nota al pie, que ahora dice «el comprobante con saldo más viejo» porque la lista ya no es solo de recepciones (V-22). Al pie, la nota «Incluye recepciones vigentes y trabajos reparados de técnicos. El saldo a favor del negocio se consulta en cada cuenta.» (V-23). «Ver cuentas con saldo a favor» **no se adopta**: no hay lectura que lo sostenga (V-20).
 
 ## 57. Modelos
 

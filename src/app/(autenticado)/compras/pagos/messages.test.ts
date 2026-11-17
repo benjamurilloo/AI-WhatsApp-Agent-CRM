@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  panelCashNote,
   paymentNoticeMessage,
   paymentRejection,
   voidCashNote,
@@ -130,6 +131,19 @@ describe("los textos de la anulación", () => {
     expect(voidCashNote({ displayNumber: "C-000003", open: false })).toContain(
       "ya cerró",
     );
+  });
+
+  // El panel dice qué pasó con la caja; `voidCashNote` dice qué pasaría al anular. No son lo mismo
+  // y por eso son dos textos (brief-24.8.2, V-10).
+  it("el panel dice de dónde salió la plata, no qué pasaría al anular", () => {
+    expect(panelCashNote(false, null)).toBe("No afecta el efectivo de caja.");
+    expect(
+      panelCashNote(false, { displayNumber: "C-000003", open: true }),
+    ).toBe("No afecta el efectivo de caja.");
+    expect(panelCashNote(true, null)).toBe("No afecta el efectivo de caja.");
+    expect(
+      panelCashNote(true, { displayNumber: "C-000003", open: false }),
+    ).toBe("Salió del efectivo de la sesión C-000003.");
   });
 
   it("solo los avisos conocidos", () => {
