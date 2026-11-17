@@ -2,6 +2,36 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-11-17 — 24.8.2: compras, pagos y a pagar
+
+Vigésima sexta subfase de la Fase 24 ([brief-24.8.2](docs/decisions/brief-24.8.2-compras-pagos-y-a-pagar.md)), **tercera del bloque de Abastecimiento**. Rediseña las cuatro pantallas del grupo 27-pagos-proveedores —la lista de pagos, el pago convertido, «A pagar» y el pago a cuenta— y adopta la **tarjeta 4** de la lámina 17 de estados. **D-1 partió la fila** al aprobar el brief: lo de proveedores, técnicos y estado de cuenta pasó a la **24.8.2-b**.
+
+**Certifica:**
+
+- **El detalle del pago es un panel que abre y cierra por la URL** (D-2), no un modal ni un popover: anda sin JavaScript, conserva los filtros, y un `?pago=` que no resuelve —inexistente o de otra organización— no dibuja nada y deja la lista entera.
+- **Dos lecturas nuevas, las dos medidas** (AC-11): los proveedores y las monedas con algún pago, para los filtros. Con **5.000 pagos y 40 proveedores**, `explain (analyze, buffers)` sobre PostgreSQL real da **0,99 ms** y **0,93 ms**, las dos por `supplier_payments_session_idx`, `shared hit=96` y **ningún `Seq Scan`**: agregan sobre las filas de una organización, no sobre la tabla.
+- **El filtro de moneda se dibuja solo cuando hay más de una**, o cuando ya está filtrado: un `<select>` de una sola opción no decide nada.
+- **La vista previa de la imputación** (D-4), en las dos pantallas de pago, con la advertencia de que al confirmar se vuelve a calcular.
+- **«A pagar» suma por moneda y nunca entre monedas**, y cuenta comprobantes y trabajos de técnicos **por separado** (V-19, V-23), cerrando contra el estado de cuenta.
+- **AC-13, la comparación con las láminas a 1.280 y 1.152 px**, dejó **seis diferencias nuevas** además de las veintiséis declaradas al planificar y las ocho al implementar. Dos no las podía ver ninguna prueba: el panel usaba **24 rem** donde el molde que D-2 manda copiar usa **22**, y una nota anterior sobre el «Total de referencia» **estaba mal** y quedó corregida.
+- **Revisión independiente de un agente que no participó: veredicto R1, diez hallazgos —dos bloqueantes—, los diez verificados contra el código, los diez ciertos y los diez resueltos.**
+- **La batería completa en CI sobre el SHA exacto**: **43991289978** sobre `8c35914`, en `success`, con «Alcance del cambio» en `Corre todo: true` — 1.317 de unidad, 1.936 de integración y **392 e2e**, que son los 390 de antes más los dos casos que trajeron los hallazgos.
+- **Desplegada en `8c35914`**, con las **siete verificaciones del runbook** pasadas y **el recorrido del usuario hecho, sin observaciones**: **nivel alcanzado, validado en staging**. Vuelta atrás `25e006e`, sin migraciones entre medio, y siguen **67**.
+
+**Lo que más enseña de este cierre es que el hallazgo fue sobre el instrumento y el defecto apareció solo.** El bloqueante B-2 no decía que algo estuviera roto: decía que el barrido de reflujo recorría **cinco** pantallas y dejaba afuera «A pagar», la única que estrena tarjetas y columna. Al agregarla, **falló**. A 320 px el documento pedía **673 px** mientras la tarjeta de la tabla medía 288 y desplazaba bien, y el culpable era el `sr-only` de «Ver cuenta de {proveedor} en {moneda}» que **esta misma subfase estrena**: `sr-only` es `position: absolute`, ningún ancestro dentro de la tabla estaba posicionado, así que su bloque contenedor era el documento. **Se escapaba del contenedor que desplaza y estiraba la raíz.** Se corrigió con `relative` en la tarjeta. La lección no es el defecto sino su forma: **una tarjeta que desplaza no garantiza que el documento no desborde**, y con las cinco pantallas de antes la batería daba verde.
+
+**El segundo es sobre cómo se lee una verificación.** El paso 2 del runbook dice «la primera fila tiene que ser de recién», y la primera fila era la del **control desde el droplet**, corrido después del intento directo: comparada contra la IP del operador daba «distintos», que leído rápido tiene exactamente la forma de un salto de proxy de más. Lo que decide es comparar **fila por fila**, no la primera. El paso pasó, pero su redacción asume un orden de ejecución que el procedimiento no garantiza.
+
+**No certifica:**
+
+- **No es «preparado para producción».** El nivel alcanzado es **validado en staging**, con el recorrido hecho.
+- **La columna «Antigüedad del comprobante» de la lámina 10 no se adopta**: se conserva «Desde», explicado al pie.
+- **«Ver cuentas con saldo a favor» no se adopta**: esa vista no existe, y el saldo a favor se consulta en cada cuenta.
+- **El objetivo táctil de 44 px y el desbordamiento del `<select>` siguen abiertos**, los dos medidos y pendientes desde la 24.7.1 y la 24.7.2-b.
+- **Las capturas de AC-13 salieron de un archivo de pruebas temporal, borrado antes del commit**: no está en la entrega, no corre en CI y no es evidencia por sí mismo.
+
+Con esta entrada la Fase 24 lleva **veintiséis subfases cerradas** en **veinticinco entradas**, que cubren **veinticinco** de sus **30** filas. *El Roadmap tiene 30 desde el 2026-11-16*, cuando D-1 de este brief partió la fila y nació la 24.8.2-b; la entrada de la 24.8.1-b, escrita ese mismo día, todavía dice 29.
+
 ## 2026-11-16 — 24.8.1-b: compras, recepciones
 
 Vigésima quinta subfase de la Fase 24 ([brief-24.8.1-b](docs/decisions/brief-24.8.1-b-compras-recepciones.md)), **segunda del bloque de Abastecimiento**, y **cierra la fila original de la 24.8.1** que D-1 de aquel brief había partido. Rediseña las cuatro pantallas de la recepción —la **lista**, el **alta en dos pasos** con orden y sin orden, la **ficha** y la **anulación**— contra las cinco láminas del lote 26-recepciones y las tarjetas 2 y 3 de la lámina 17, con D-1 a D-9 aprobadas. **Sin migraciones, sin tablas y sin contratos nuevos**; siguen **67** migraciones. 27 archivos, +4.229/−866 en tres commits —`34839a6`, `ccb980d` y `25e006e`—, los veintisiete dentro de la lista cerrada y de sus tres ampliaciones autorizadas.

@@ -445,14 +445,22 @@ nivel es **validado en integración**, y **un nivel superior nunca se infiere de
 
 ## Cierre
 
-*Escrito el 2026-11-16, con el trabajo implementado y verificado localmente. **No está
-desplegado**: hasta AC-16 y AC-18 el nivel alcanzado es **validado en integración**, y un nivel
-superior nunca se infiere de uno inferior.*
+*Escrito el 2026-11-16 con el trabajo implementado y verificado localmente, y **completado el
+2026-11-17**, cuando la CI corrió la batería entera sobre el SHA exacto, la subfase se desplegó con
+las siete verificaciones del runbook y el usuario hizo el recorrido. **Nivel alcanzado: validado en
+staging.** No es «preparado para producción»: eso pide además seguridad, observabilidad, backups
+probados, vuelta atrás ejercitada y limitaciones aceptadas, y **un nivel superior nunca se infiere
+de uno inferior**. Esta sección es **una autoevaluación**; la revisión independiente es AC-17 y está
+más abajo.*
 
 ### Alcance real contra la lista cerrada
 
-**27 archivos, +2.116/−359**, contando los dos nuevos: `payment-panel.tsx` (354 líneas) y este
-brief. Son los 26 de la lista cerrada más **tres ampliaciones, pedidas y autorizadas en su turno
+**27 archivos, +3.070/−359** en el commit `8c35914`, contando los dos nuevos: `payment-panel.tsx`
+(354 líneas) y este brief; **sin el brief son 26 archivos, +2.470/−359**. *Corregido el 2026-11-17,
+al escribir el cierre*: esta línea decía «+2.116/−359» **diciendo que contaba los dos nuevos**, y
+ese número era el `git diff --stat` de los 25 archivos ya versionados, que justamente los deja
+afuera. Lo encontró `git show --stat` contra el commit al escribir el cierre, que es lo que la
+regla pide hacer, y no una relectura de la frase. Son los 26 de la lista cerrada más **tres ampliaciones, pedidas y autorizadas en su turno
 antes de tocar los archivos**:
 
 | Archivo | Por qué entró |
@@ -559,9 +567,9 @@ de implementar (V-1 a V-26) y de las ocho encontradas al implementar, las captur
 | **AC-13** | **Cumplido** | La comparación de arriba, a 1.280 y 1.152 px |
 | **AC-14** | **Cumplido** | Seis pantallas por seis anchos; encontró un desbordamiento real, corregido y vuelto a medir |
 | **AC-15** | **Cumplido** | `expectAccessible` sin violaciones A ni AA, en claro y oscuro, con el panel abierto |
-| **AC-16** | **Pendiente** | Necesita commit y push, que requieren autorización en el turno |
+| **AC-16** | **Cumplido** | Corrida **43991289978** en `success` sobre `8c35914`, leída por `headSha`, con «Corre todo: true» |
 | **AC-17** | **Cumplido** | La revisión de arriba, con sus diez hallazgos verificados y aplicados |
-| **AC-18** | **Pendiente** | Necesita despliegue y recorrido del usuario |
+| **AC-18** | **Cumplido** | Desplegada en `8c35914` el 2026-11-17, con las siete verificaciones pasadas y el recorrido hecho sin observaciones |
 
 ### Evidencia determinista
 
@@ -574,10 +582,11 @@ Contra PostgreSQL real de desarrollo, el 2026-11-16, **después** de aplicar las
   `supplier-payments` (12), `supplier-accounts` (3), `exchange` (11), y `cash`, `receipts`,
   `refunds` y `accounts` (31)—.
 
-**Declarado con precisión**: la batería e2e completa (390 casos en cuatro tramos) corrió **antes**
-de aplicar los diez hallazgos; después de aplicarlos se repitieron las 57 de arriba, que son las
-que tocan lo que cambió. La batería entera sobre el código final la corre **CI en el SHA exacto**,
-que es lo que AC-16 exige y todavía está pendiente.
+**Declarado con precisión**: la batería e2e completa corrió en esta máquina **antes** de aplicar
+los diez hallazgos; después de aplicarlos se repitieron acá las 57 de arriba, que son las que tocan
+lo que cambió. **La batería entera sobre el código final la corrió CI** sobre `8c35914`
+(AC-16): 1.317 de unidad, 1.936 de integración y **392 e2e en 23,2 min**. Los 392 son los 390 de
+antes más los dos casos que trajeron los hallazgos N-3 y N-4.
 
 ### Desvíos y correcciones de forma
 
@@ -593,8 +602,39 @@ Las capturas de AC-13 salieron de un archivo de pruebas escrito para esto y **bo
 está en la entrega, no corre en CI y no es evidencia por sí mismo. Lo que vale es la comparación
 que permitió y el defecto que destapó, los dos escritos acá.
 
-### Lo que falta para cerrar
+### El despliegue y el recorrido (AC-18)
 
-Commit, push, CI sobre el SHA exacto (AC-16), despliegue con las siete verificaciones del runbook y
-el recorrido del usuario (AC-18), y la actualización de Notion. **Cada uno necesita autorización
-explícita en su turno.**
+**Desplegada en `8c35914` el 2026-11-17**, con el procedimiento de `deploy/production/README.md`:
+el SHA anterior —`25e006e`— anotado antes de tocar nada, el build desacoplado del `ssh` en un
+script del servidor, el servicio detenido durante el build, el heap en 1.536 MB y el arranque
+decidido por el `BUILD_ID`. **Sin migraciones nuevas: siguen 67**, así que la vuelta atrás es solo
+de código.
+
+**Las siete verificaciones del runbook, pasadas:**
+
+| # | Verificación | Resultado |
+|---|---|---|
+| 1 | La configuración desplegada es la versionada | **18 de 18** archivos idénticos |
+| 2 | Un solo salto de proxy, medido por consecuencia | El intento directo dejó la clave **igual** a la de la IP del operador; el control desde el droplet dejó **otra**. Dos filas en la ventana, las dos explicadas, ninguna es `sha256('sin-proxy')` |
+| 3 | HSTS | Presente sobre HTTPS, ausente sobre HTTP, que redirige con `301` |
+| 4 | La aplicación solo en loopback | `127.0.0.1:3000` |
+| 5 | El rol no es el dueño | `crm_app_login` ≠ `crm_owner`, con `INSERT=t`, `DELETE=f` y `UPDATE=f` |
+| 6 | Ingestión y API de lectura | Las tres responden **401** desde afuera, que es lo que corresponde estando encendidas para `agente-demo` |
+| 7 | Ningún dato real de cliente | La organización real en **0/0/0**; las otras dos son de demostración |
+
+**La verificación 2 engaña en la primera lectura, y conviene dejarlo escrito.** El runbook dice
+«la primera fila tiene que ser de recién», y la primera fila era la del **control desde el
+droplet**, corrido después del intento directo: comparada contra la IP del operador daba
+«distintos», que leído rápido es exactamente la forma que tendría un salto de proxy de más. Lo que
+decide es comparar **fila por fila**, no la primera: la del intento directo coincide y la del
+control no, que es lo que el paso busca. **Ni la IP ni su hash se escriben en ningún lado.**
+
+**El recorrido del usuario, el 2026-11-17: sin observaciones.** Es el instrumento que más rinde en
+este proyecto —el de la 24.8.1-b encontró cuatro defectos visuales que ni la revisión independiente
+ni las cuatro mediciones habían visto—, y esta vez no encontró nada.
+
+### Lo que queda, y lo que esto no certifica
+
+Queda la actualización de Notion y el commit del cierre, **cada uno con su autorización en su
+turno**. Y **no** se certifica como «preparado para producción»: el nivel es **validado en
+staging**.
