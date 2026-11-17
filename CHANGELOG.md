@@ -2,6 +2,35 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-11-17 — 24.8.2-b: compras, proveedores, técnicos y cuenta
+
+Vigésima séptima subfase de la Fase 24 ([brief-24.8.2-b](docs/decisions/brief-24.8.2-b-compras-proveedores-tecnicos-y-cuenta.md)), **cuarta del bloque de Abastecimiento**. Rediseña las cuatro láminas del grupo 28-proveedores —el listado, el alta y la edición, la ficha y el estado de cuenta—, la **07** de 16-tecnicos y las **tarjetas 5 y 6** de la lámina 17. **D-1 deja la pantalla «Técnicos» para la 24.8.2-c**: crearla es una pantalla nueva, no el rediseño de una existente.
+
+**Certifica:**
+
+- **«Es técnico» entra al alta y a la edición** (D-2), y el alta lo guarda **en la misma transacción** que crea el proveedor: la marca es una columna del mismo `insert` dentro de `withTransaction`, así que un alta rechazada no deja ni proveedor ni marca.
+- **El filtro «Tipo» del listado solo se dibuja con la capacidad `repairs`** (D-3, ADR 0024): sin reparaciones no hay técnicos que distinguir, y la columna tampoco aparece.
+- **La ficha gana «Trabajo reparado»** con una lectura nueva en `service`, `listTechnicianWork`, que **no toca `cash` ni la regla 3 de la guarda de dependencias**: la ficha compone los dos módulos a nivel de página, como manda el ADR 0023.
+- **Cuatro lecturas medidas** (AC-14), todas con `explain (analyze, buffers)` sobre PostgreSQL real. La cuarta la agregó un hallazgo de la revisión: la lista de `/reparaciones` filtrada por técnico, con **10.021 órdenes**, da **0,050 ms** en el recuento —*Index Only Scan*— y **0,170 ms** en la página, las dos por `service_orders_technician_idx`, el índice parcial de la 29.6, y **ningún `Seq Scan`**.
+- **El estado de cuenta toma la tarjeta por moneda** conservando Debe y Haber, con el filtro de moneda que **no recorta el impreso** (D-9).
+- **Sin migraciones**: siguen **67**, contadas en el droplet.
+- **Revisión independiente de un agente que no participó: veredicto R1, cuatro bloqueantes y diez no bloqueantes, los catorce verificados contra el código y los cuatro bloqueantes ciertos.** Uno exigió una decisión del usuario, porque el enlace de la ficha prometía un número que **ningún estado del filtro reproduce**: el rótulo dejó de prometerlo.
+- **La batería completa en CI sobre el SHA exacto**: **44170367758** sobre `b52711c`, en `success`, con «Alcance del cambio» en `Corre todo: true` — **920 de guardas, 1.327 de unidad, 1.951 de integración y 406 e2e**.
+- **Desplegada en `b52711c`**, con las **siete verificaciones del runbook** pasadas y **el recorrido del usuario hecho, sin observaciones**: **nivel alcanzado, validado en staging**. Vuelta atrás `8c35914`, sin migraciones entre medio, y siguen **67**. El cambio son **31 archivos, +3.636/−569** en dos commits.
+
+**Lo que más enseña de este cierre es que el fallo lo encontró la CI, y ninguno de los instrumentos anteriores podía verlo.** La primera corrida sobre `68bee84` dio **failure** con 405 pasados y uno rojo: `supplier-payments.spec.ts` hacía clic en un enlace «Pago a cuenta» dentro de la tarjeta «Cuenta», y **V-20 lo movió al encabezado** y lo renombró «Registrar pago a cuenta». La revisión independiente no podía verlo porque **no tuvo shell** —un localizador roto no se ve leyendo el archivo que cambió, se ve corriendo el que no cambió—; la verificación acotada tampoco, porque **la spec que se rompió no fue tocada**; y la batería completa local, que sí se lanzó, **la mató el sistema por falta de memoria** en el caso 227, con esa spec entre 22 fallos de worker cuyo error no se parece al defecto. **Un fallo por falta de memoria esconde los fallos de verdad.** La regla que queda: **cuando una subfase renombra o mueve un control que ya existía, los archivos que hay que correr no son los que cambió**, y un `grep` del rótulo viejo en `tests/` cuesta un segundo contra 27 minutos de CI.
+
+**El segundo es que una lección guardada demasiado estrecha no se aplica la segunda vez.** La 24.8.2 aprendió, con los radios del filtro, que un `sr-only` es `position: absolute` y sin ancestro posicionado se cuelga del documento. Acá reapareció **en la tabla del estado de cuenta**, con el documento pidiendo **808 px a 320**, porque la regla se había escrito como «el radio necesita su label `relative`» en lugar de «**un `sr-only` necesita un ancestro posicionado**». Y lo destapó un hallazgo que no era sobre el defecto: el barrido recorría el estado de cuenta de un proveedor **sin movimientos**, así que la URL estaba medida y **ninguna de las tarjetas nuevas se dibujaba**. Es el mismo patrón que la 24.8.2 ya había registrado con «A pagar»: la pantalla estaba, el defecto estaba adentro.
+
+**No certifica:**
+
+- **No es «preparado para producción».** El nivel alcanzado es **validado en staging**, con el recorrido hecho.
+- **La pantalla «Técnicos» de la lámina 07 no existe**: queda para la 24.8.2-c (D-1).
+- **AC-3 se cumple con una salvedad declarada**: de los seis rechazos del formulario, **cinco** se ejercitan en e2e. Los otros **no son alcanzables desde el navegador** —«Nombre» es `required` con `maxLength` y «Email» es `type="email"`, así que la validación nativa los ataja antes de enviar— y se prueban en el servicio. El criterio quedó pidiendo algo que el formulario hace imposible observar.
+- **Las migas de la lámina 15 no se adoptan**: las del CRM viven en la barra superior, y un segundo juego dentro del contenido sería dibujar dos veces lo mismo.
+- **`setTechnicianAction` quedó sin llamador** al sacar la tarjeta «Técnico», y **no se borra en esta subfase**: hacerlo toca la guarda de superficie, fuera de la lista cerrada. Sin riesgo de autorización —exige `admin` y `repairs`—, es superficie viva justificada por una subfase que todavía no existe.
+- **El objetivo táctil de 44 px y el desbordamiento del `<select>` siguen abiertos**, los dos medidos y pendientes desde la 24.7.1 y la 24.7.2-b.
+
 ## 2026-11-17 — 24.8.2: compras, pagos y a pagar
 
 Vigésima sexta subfase de la Fase 24 ([brief-24.8.2](docs/decisions/brief-24.8.2-compras-pagos-y-a-pagar.md)), **tercera del bloque de Abastecimiento**. Rediseña las cuatro pantallas del grupo 27-pagos-proveedores —la lista de pagos, el pago convertido, «A pagar» y el pago a cuenta— y adopta la **tarjeta 4** de la lámina 17 de estados. **D-1 partió la fila** al aprobar el brief: lo de proveedores, técnicos y estado de cuenta pasó a la **24.8.2-b**.

@@ -726,9 +726,9 @@ cada medición llama además al servicio real y compara su resultado.
 | AC-14 | **Cumplido** | Las **cuatro** mediciones de arriba; ninguna lectura recorre la tabla entera. La cuarta la agregó el hallazgo B-3 |
 | AC-15 | **Cumplido** | `tests/guards/` **920/920 en 33 archivos**, con `purchasing-dependencies.test.ts` **sin tocar** |
 | AC-16 | **Cumplido** | 67 archivos de migración, los mismos de producción |
-| AC-18 | **Cumplido en la segunda corrida** | La primera, sobre `68bee84`, dio **failure**: 405 pasaron y **1 falló**, con «Corre todo: true». La sección de abajo cuenta qué era y qué se corrigió |
+| AC-18 | **Cumplido en la segunda corrida** | Run **44170367758** en `success` sobre `b52711c`, leída por `headSha`, con «Corre todo: true» y **406/406** en la e2e. La primera, sobre `68bee84`, dio **failure**: 405 pasaron y **1 falló**. La sección de abajo cuenta qué era y qué se corrigió |
 | AC-19 | **Cumplido** | La revisión de abajo: un agente que no participó, de solo lectura. Veredicto **R1**, cuatro hallazgos bloqueantes, **los cuatro verificados contra el código y corregidos** |
-| AC-20 | **Pendiente** | Sin despliegue ni recorrido |
+| AC-20 | **Cumplido** | `b52711c` en producción, las **siete** verificaciones del runbook en verde y **el recorrido del usuario hecho, sin observaciones** |
 
 Fuera de los criterios, el estado del árbol: `tsc --noEmit` limpio, `eslint` limpio sobre los
 archivos tocados, `prettier --check` limpio sobre los archivos tocados, **unit y guardas
@@ -784,6 +784,35 @@ un control que ya existía, los archivos que hay que correr no son los que cambi
 rótulo viejo en `tests/` habría encontrado esa línea en un segundo, y es más barato que una corrida
 de 27 minutos.
 
+### AC-20 · El despliegue
+
+**Desplegado `b52711c`** el 2026-11-17, **con el recorrido del usuario hecho y sin observaciones**, con el paso 1 comprobando la CI por `headSha` —no «la
+última»— y el SHA anterior anotado en `/var/lib/crm-production/despliegues` **antes** de tocar nada:
+**la vuelta atrás es `8c35914`**, y entre los dos **no hay migraciones**, así que es solo de código.
+Siguen **67**, contadas en el droplet y no en el repositorio.
+
+Fue la **octava prueba real** de las tres correcciones de despliegue de la 24.7.2, y las tres
+volvieron a funcionar: build con salida **0**, `BUILD_ID` presente, **cero reinicios** y una caída de
+**127 segundos** (21:02:36 → 21:04:43 UTC), leída del journal y no inferida del tiempo del script. El
+swap en el pico: **70 MB**, en la misma franja de las veces anteriores (78, 84,7, 160 y 65), así que
+la serie sigue sin describir una tendencia.
+
+Las siete verificaciones:
+
+| # | Qué | Resultado |
+|---|---|---|
+| 1 | La configuración desplegada es la versionada | **18 de 18** idénticos. Comparados contra el blob de Git y no contra la copia de trabajo, que en esta máquina está en CRLF |
+| 2 | Un solo salto de proxy, medido por consecuencia | **En verde**, con el control negativo. Dos filas en la ventana de 15 minutos, las dos de recién: la del intento directo con la **misma** clave que el operador, la del control desde el droplet con una **distinta**, y ninguna igual al `sha256` de `'sin-proxy'`. **Ni la IP ni su hash salieron de la shell.** Se comparó **fila por fila**: la primera es la del control, que es la trampa que el HANDOFF avisa. Tercera vez consecutiva con la variante desde el droplet en lugar del túnel SOCKS |
+| 3 | HSTS | Presente sobre HTTPS (`max-age=31536000; includeSubDomains`) y **ausente** sobre HTTP, que devuelve **301** |
+| 4 | Escucha solo en loopback | `127.0.0.1:3000` |
+| 5 | El rol de la aplicación no es el dueño | `crm_app_login` ≠ `crm_owner`, con `INSERT=t`, `DELETE=f`, `UPDATE=f` |
+| 6 | Ingestión y API de lectura desde afuera | **401** en las tres rutas sin token |
+| 7 | Ningún dato real de un cliente | **«Vixora» en 0 clientes, 0 mensajes y 0 productos**; las otras dos son de demostración |
+
+**Un `pendiente` del HANDOFF quedó contestado de paso**: el aviso de `npm ci` sobre scripts de
+instalación que no corre es de **`esbuild`** (0.25.12 y 0.28.2), con su `postinstall`. El build y el
+servicio, en verde igual.
+
 ### AC-19 · Revisión independiente
 
 Hecha el **2026-11-17** por un agente que **no participó del trabajo**, con acceso de **solo
@@ -829,16 +858,40 @@ roto en `Roadmap.md` (`brief-29.6-las-reparaciones.md`, que no existe; el real e
 lección del `sr-only` de la 24.8.2 estaba aplicada **en el filtro**, que es exactamente donde
 estaba, y no en la tabla, que es donde faltaba.
 
-### Lo que falta para cerrar
+### Nivel alcanzado
 
-1. **AC-18**, la CI **en verde** sobre el SHA del segundo commit, leída por `headSha`: la primera
-   corrida encontró un fallo real, que está corregido, y el runbook de producción no deja desplegar
-   sin un `success` de **ese** `headSha`.
-2. **AC-20**, el despliegue con las siete verificaciones del runbook y el recorrido del usuario.
-3. La decisión sobre **N-7** (`setTechnicianAction` sin llamador): se borra ahora, tocando la guarda
-   de superficie, o se conserva para la 24.8.2-c.
-4. La fila de este brief en [README.md](README.md), que hoy termina en «**Pendiente de
-   implementar**», y el CHANGELOG, el Roadmap y el HANDOFF. **Los tres últimos están fuera de la
-   lista cerrada**: se piden en su turno, como todo lo demás.
-5. La **24.8.2-c** («Técnicos», D-1): su tarea en Notion y su fila en el Roadmap, que **todavía no
-   existen**.
+**Validado en staging.** La escala del proyecto pide, para ese nivel, un recorrido en un entorno
+equivalente a producción sin tráfico real, y es lo que hay: producción corre `b52711c`, las siete
+verificaciones del runbook pasaron y el usuario recorrió las cuatro pantallas sin observaciones. **No
+es «preparado para producción»**, que además exige backups probados en este cambio, rollback
+ensayado y las limitaciones aceptadas una por una.
+
+Las evidencias, por nivel: **`deterministic`** las baterías de unidad, guardas e integración;
+**`producer-consumer`** las cuatro mediciones con `explain` sobre PostgreSQL real y las dos baterías
+e2e contra la aplicación construida; **`authenticated-end-to-end`** la CI completa sobre el SHA
+exacto y el recorrido en producción.
+
+### Lo que queda abierto
+
+1. La decisión sobre **N-7** (`setTechnicianAction` sin llamador): se borra tocando la guarda de
+   superficie, o se conserva para la **24.8.2-c**, que ya tiene fila en el Roadmap.
+2. **La 24.8.2-c necesita su propia decisión antes del brief**: qué muestra la pantalla «Técnicos»
+   que la ficha del técnico no muestre ya. El trabajo reparado por técnico **ya se ve** en la ficha
+   desde esta subfase, y el enlace lleva a la lista filtrada; sin esa decisión, la pantalla sería una
+   tercera forma de mirar lo mismo.
+3. **El objetivo táctil de 44 px y el desbordamiento del `<select>`**, los dos medidos y abiertos
+   desde la 24.7.1 y la 24.7.2-b. Esta subfase no los toca.
+
+### Lo que faltaba para cerrar, y ya no
+
+Queda escrito porque el orden importó: **AC-18 corrió antes del despliegue y lo frenó**, que es para
+lo que el paso 1 del runbook de producción existe.
+
+1. **AC-18**, la CI en verde sobre el SHA exacto. La primera corrida **falló** y encontró un defecto
+   real; la segunda, **44170367758** sobre `b52711c`, está en `success`.
+2. **AC-20**, el despliegue y el recorrido del usuario. Hechos los dos, sin observaciones.
+3. La fila de este brief en [README.md](README.md), que decía «Pendiente de implementar», y el
+   CHANGELOG, el Roadmap y el HANDOFF: **escritos al cerrar**, los tres últimos con la autorización
+   del usuario en su turno.
+4. La **24.8.2-c**: su fila en el Roadmap y su tarea en Notion, **creadas al cerrar**, con la
+   decisión que necesita antes del brief anotada más arriba.
