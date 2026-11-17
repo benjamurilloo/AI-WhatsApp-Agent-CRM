@@ -4,7 +4,7 @@ Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qu�
 
 ## 2026-11-17 — 24.8.2-b: compras, proveedores, técnicos y cuenta
 
-Vigésima séptima subfase de la Fase 24 ([brief-24.8.2-b](docs/decisions/brief-24.8.2-b-compras-proveedores-tecnicos-y-cuenta.md)), **cuarta del bloque de Abastecimiento**. Rediseña las cuatro láminas del grupo 28-proveedores —el listado, el alta y la edición, la ficha y el estado de cuenta—, la **07** de 16-tecnicos y las **tarjetas 5 y 6** de la lámina 17. **D-1 deja la pantalla «Técnicos» para la 24.8.2-c**: crearla es una pantalla nueva, no el rediseño de una existente.
+Vigésima séptima subfase de la Fase 24 ([brief-24.8.2-b](docs/decisions/brief-24.8.2-b-compras-proveedores-tecnicos-y-cuenta.md)), **cuarta del bloque de Abastecimiento**. Rediseña las cuatro láminas del grupo 28-proveedores —el listado, el alta y la edición, la ficha y el estado de cuenta—, la **07** de 16-tecnicos y las **tarjetas 5 y 6** de la lámina 17. **D-1 deja la pantalla «Técnicos» para la 24.8.2-c**: crearla es una pantalla nueva, no el rediseño de una existente. *Corregido el 2026-11-17, el mismo día*: **esa 24.8.2-c quedó descartada por decisión del usuario** y la pantalla no se va a hacer.
 
 **Certifica:**
 
@@ -26,7 +26,7 @@ Vigésima séptima subfase de la Fase 24 ([brief-24.8.2-b](docs/decisions/brief-
 **No certifica:**
 
 - **No es «preparado para producción».** El nivel alcanzado es **validado en staging**, con el recorrido hecho.
-- **La pantalla «Técnicos» de la lámina 07 no existe**: queda para la 24.8.2-c (D-1).
+- **La pantalla «Técnicos» de la lámina 07 no existe**: queda para la 24.8.2-c (D-1). *Corregido el 2026-11-17, el mismo día*: **la 24.8.2-c quedó descartada por decisión del usuario** y la pantalla **no se va a hacer**, porque lo que mostraría ya se ve —la tarjeta «Trabajo reparado» de la ficha y `/reparaciones` filtrado por el técnico, las dos de esta subfase—. La diferencia V-37 contra la lámina 07 **queda declarada y no adoptada**, como las otras que esta fase decidió no adoptar.
 - **AC-3 se cumple con una salvedad declarada**: de los seis rechazos del formulario, **cinco** se ejercitan en e2e. Los otros **no son alcanzables desde el navegador** —«Nombre» es `required` con `maxLength` y «Email» es `type="email"`, así que la validación nativa los ataja antes de enviar— y se prueban en el servicio. El criterio quedó pidiendo algo que el formulario hace imposible observar.
 - **Las migas de la lámina 15 no se adoptan**: las del CRM viven en la barra superior, y un segundo juego dentro del contenido sería dibujar dos veces lo mismo.
 - **`setTechnicianAction` quedó sin llamador** al sacar la tarjeta «Técnico», y **no se borra en esta subfase**: hacerlo toca la guarda de superficie, fuera de la lista cerrada. Sin riesgo de autorización —exige `admin` y `repairs`—, es superficie viva justificada por una subfase que todavía no existe.

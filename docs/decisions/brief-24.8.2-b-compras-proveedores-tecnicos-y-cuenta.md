@@ -230,7 +230,7 @@ quiebre de la tabla y el `max-width` del contenedor.
 | V-34 | 11 | El encabezado del documento (organización, leyenda, CUIT, fecha) **no se ve** | **No se adopta la omisión**: la lámina muestra la vista de pantalla; el documento y su impresión se conservan enteros |
 | V-35 | 17-5 | «Este proveedor está inactivo» en tres frases, con «Reactivar proveedor» | **Se adopta**, con el texto de la tarjeta |
 | V-36 | 17-6 | «No pudimos leer la cuenta», con «Los datos anteriores se conservan» y «Reintentar» | **Se adopta sin esa línea** (H-9) |
-| V-37 | 07 | La pantalla «Técnicos» entera | **No entra acá** (D-1): pasa a la **24.8.2-c** |
+| V-37 | 07 | La pantalla «Técnicos» entera | **No entra acá** (D-1): pasa a la **24.8.2-c**, **descartada el 2026-11-17 por decisión del usuario**: la diferencia **no se va a adoptar** |
 
 ## Decisiones
 
@@ -255,6 +255,8 @@ proyecto de la Fase 24 y en «Esperando», y **agregar su fila al Roadmap**: la 
 filas**. Hasta entonces, la fila 485 del Roadmap sigue nombrando la lámina 07 dentro de esta
 subfase: **la discrepancia queda declarada acá y se corrige al cerrar**, como hizo la 24.8.2 con su
 propia división.
+
+*Enmendada el 2026-11-17, el mismo día*: la 24.8.2-c se creó como manda esta decisión —fila en el Roadmap y tarea en Notion— y el usuario la **descartó** a continuación. La partición de D-1 **fue correcta y no deja nada pendiente**: lo que iba a mostrar la pantalla ya se ve en la ficha del técnico y en `/reparaciones` filtrado, que esta misma subfase entregó. Dicho de otro modo, el resultado se parece a la opción **(c)** —la pantalla sale de la Fase 24— pero es más fuerte: **no sale para hacerse después, no se hace**.
 
 ### D-2 · «Es técnico» en el alta y la edición (la decisión que la fila arrastra) — CERRADA en (a)
 
@@ -371,6 +373,9 @@ que está filtrado sería un documento que miente.
 
 - **La pantalla «Técnicos» de la lámina 07**, por D-1: pasa a la **24.8.2-c**. **Con
   ella se va la entrada de navegación**, que ninguna subfase de la fase tocó todavía.
+  *Enmendado el 2026-11-17*: la **24.8.2-c se descartó** el mismo día, por decisión del
+  usuario, así que la pantalla **no sale de acá para hacerse después: no se hace**, y con ella
+  deja de estar pendiente su entrada de navegación.
 - **Las pantallas de pago**: la lista, el panel, las dos de registro, la anulación y «A pagar» son
   de la 24.8.2, cerrada. `[supplierId]/pagar/page.tsx` **no se toca**.
 - **El marco de la aplicación**: navegación lateral, buscador global y barra superior.
@@ -503,9 +508,10 @@ nivel es **validado en integración**, y **un nivel superior nunca se infiere de
   Abastecimiento. Con ellas el bloque cierra.
 - **Requisito antes de producción**: nada propio. Esta subfase no agrega datos ni cambia reglas; lo
   que la frena es su propia revisión y el recorrido.
-- **Mejora posterior**: la pantalla «Técnicos» (D-1), el enmascarado de datos de contacto, el orden
-  por columna del listado y el objetivo táctil de 44 px, que es **una subfase propia y todavía sin
-  abrir**.
+- **Mejora posterior**: ~~la pantalla «Técnicos» (D-1)~~ —**descartada el 2026-11-17 por decisión
+  del usuario**, así que ya no es una mejora posterior sino algo que no se va a hacer—, el
+  enmascarado de datos de contacto, el orden por columna del listado y el objetivo táctil de 44
+  px, que es **una subfase propia y todavía sin abrir**.
 
 ## Cierre
 
@@ -844,7 +850,7 @@ tocan**:
   autorizado). No hay riesgo de autorización —exige admin y `repairs`, y la guarda de superficie la
   cubre—, pero es superficie viva justificada por una subfase que todavía no existe. **Borrarla
   tocaría `tests/guards/exposed-surface.test.ts`, que está fuera de la lista cerrada**, así que
-  **queda como decisión del usuario**, con la 24.8.2-c o antes.
+  **queda como decisión del usuario**, con la 24.8.2-c o antes. *Resuelto el 2026-11-17*: se borró en `ef4f6e7`, y la 24.8.2-c se descartó.
 - **N-8** · El instrumento de AC-7 renombra `supplier_payments` y lo restituye en `finally`; si el
   worker muere entre las dos sentencias, otra batería falla con un error que no se parece al
   defecto. **Riesgo conocido del instrumento**, declarado.
@@ -873,14 +879,20 @@ exacto y el recorrido en producción.
 
 ### Lo que queda abierto
 
-1. La decisión sobre **N-7** (`setTechnicianAction` sin llamador): se borra tocando la guarda de
-   superficie, o se conserva para la **24.8.2-c**, que ya tiene fila en el Roadmap.
-2. **La 24.8.2-c necesita su propia decisión antes del brief**: qué muestra la pantalla «Técnicos»
-   que la ficha del técnico no muestre ya. El trabajo reparado por técnico **ya se ve** en la ficha
-   desde esta subfase, y el enlace lleva a la lista filtrada; sin esa decisión, la pantalla sería una
-   tercera forma de mirar lo mismo.
+*Los dos primeros puntos se resolvieron el 2026-11-17, el mismo día, y quedan escritos con su
+resultado:*
+
+1. **N-7** (`setTechnicianAction` sin llamador): **se borró**, en `ef4f6e7`, autorizado aparte
+   porque tocaba la guarda de superficie. Se fue con su import, su entrada en la guarda y los dos
+   avisos de `messages.ts`; `setSupplierTechnician` **se conserva**, porque ocho archivos de
+   integración la usan como fixture.
+2. **La 24.8.2-c está descartada** por decisión del usuario: la pantalla «Técnicos» **no se va a
+   hacer**. La decisión que necesitaba —qué mostraría que la ficha no muestre ya— se resolvió en
+   contra, y por el motivo que este brief ya había escrito: el trabajo reparado por técnico **ya se
+   ve** en la ficha desde esta subfase y el enlace lleva a la lista filtrada, así que la pantalla
+   sería una tercera forma de mirar lo mismo.
 3. **El objetivo táctil de 44 px y el desbordamiento del `<select>`**, los dos medidos y abiertos
-   desde la 24.7.1 y la 24.7.2-b. Esta subfase no los toca.
+   desde la 24.7.1 y la 24.7.2-b. Esta subfase no los toca. **Sigue abierto.**
 
 ### Lo que faltaba para cerrar, y ya no
 
@@ -894,4 +906,6 @@ lo que el paso 1 del runbook de producción existe.
    CHANGELOG, el Roadmap y el HANDOFF: **escritos al cerrar**, los tres últimos con la autorización
    del usuario en su turno.
 4. La **24.8.2-c**: su fila en el Roadmap y su tarea en Notion, **creadas al cerrar**, con la
-   decisión que necesita antes del brief anotada más arriba.
+   decisión que necesitaba antes del brief anotada más arriba. *Enmendado el 2026-11-17, el
+   mismo día*: esa decisión se tomó **en contra** y la **24.8.2-c quedó descartada**; la fila
+   se conserva tachada en su contenido y la tarea quedó en «Completado» con el motivo escrito.

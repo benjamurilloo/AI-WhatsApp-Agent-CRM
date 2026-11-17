@@ -314,7 +314,10 @@ proyecto de la Fase 24 y en «Esperando».
   si D-1 se aprueba en (a). **Ningún archivo de `compras/proveedores/` se toca**, salvo
   `[supplierId]/pagar/page.tsx`, que es una pantalla de pago.
 - **La pantalla «Técnicos» de la lámina 07 no existe hoy**, y crearla sería una pantalla nueva, no un
-  rediseño. Queda para la 24.8.2-b, con su propia decisión.
+  rediseño. Queda para la 24.8.2-b, con su propia decisión. *Enmendado el 2026-11-17*: la
+  24.8.2-b tampoco la tomó —su D-1 la pasó a una **24.8.2-c**— y esa fila **se descartó el mismo
+  día, por decisión del usuario**: la pantalla **no se va a hacer**, porque lo que mostraría ya
+  se ve en la ficha del técnico y en la lista de reparaciones filtrada, las dos de la 24.8.2-b.
 - **El marco de la aplicación**: navegación lateral, buscador global y barra superior.
 - **`caja/exchange-fields.tsx` y `caja/exchange.ts`**: los comparte el cobro (H-8).
 - **`imputation.ts`**: no se toca (H-6).
