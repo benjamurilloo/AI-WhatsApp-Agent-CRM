@@ -230,10 +230,6 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     {
       requirement: "sesion",
     },
-  // La marca de técnico (brief-29.6, D-3): solo admin y con repairs, lo exige purchasing.
-  "src/app/(autenticado)/compras/proveedores/actions.ts#setTechnicianAction": {
-    requirement: "sesion",
-  },
   // La orden de compra (brief-22.3, D-8): crear y cancelar son solo de admin, y los buscadores del
   // alta también, porque purchasing exige admin en los proveedores; el de productos sugiere lo
   // mismo que el del pedido.

@@ -86,8 +86,10 @@ export function DeactivateSupplierConfirm({
 }
 
 // La marca de técnico ya no tiene su propio formulario acá: desde la 24.8.2-b (D-2) se edita con
-// el resto de los datos, en el alta y en la edición, en una sola escritura. La acción del
-// servidor `setTechnicianAction` sigue existiendo para la pantalla «Técnicos» de la 24.8.2-c.
+// el resto de los datos, en el alta y en la edición, en una sola escritura. `setTechnicianAction`
+// se borró el 2026-11-17 (N-7 de esa revisión): había quedado sin ningún llamador, y conservarla
+// por una pantalla que todavía no se decidió era superficie expuesta sin razón. La función del
+// módulo, `setSupplierTechnician`, sigue ahí y la usan las baterías de integración.
 export function ReactivateSupplierForm({ supplierId }: { supplierId: string }) {
   const [state, formAction, pending] = useActionState(
     reactivateSupplierAction,
