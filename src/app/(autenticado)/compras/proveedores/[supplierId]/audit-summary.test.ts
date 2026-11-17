@@ -77,3 +77,70 @@ describe("describeAuditDiff", () => {
     ).toBe("Activo: sí → no");
   });
 });
+
+// La marca de técnico (brief-24.8.2-b, D-2). Se auditaba desde la 29.6 y no se dibujaba.
+describe("la marca de técnico en la historia", () => {
+  it("el alta de un técnico la nombra, y la de un proveedor común también", () => {
+    const alta = (isTechnician: boolean) =>
+      describeAuditDiff(
+        entry("create", {
+          before: null,
+          after: {
+            name: "Taller Aurora",
+            phone: null,
+            email: null,
+            cuit: null,
+            isTechnician,
+            isActive: true,
+          },
+        }),
+      );
+    expect(alta(true)).toBe(
+      "Nombre: Taller Aurora · Teléfono: vacío · Email: vacío · CUIT: vacío · Técnico: sí",
+    );
+    expect(alta(false)).toBe(
+      "Nombre: Taller Aurora · Teléfono: vacío · Email: vacío · CUIT: vacío · Técnico: no",
+    );
+  });
+
+  it("un alta vieja, sin la marca en el diff, se sigue leyendo igual", () => {
+    expect(
+      describeAuditDiff(
+        entry("create", {
+          before: null,
+          after: {
+            name: "Distribuidora Norte",
+            phone: null,
+            email: null,
+            cuit: null,
+            isActive: true,
+          },
+        }),
+      ),
+    ).toBe(
+      "Nombre: Distribuidora Norte · Teléfono: vacío · Email: vacío · CUIT: vacío",
+    );
+  });
+
+  it("una edición que solo cambia la marca ya no queda vacía", () => {
+    expect(
+      describeAuditDiff(
+        entry("update", {
+          before: { isTechnician: false },
+          after: { isTechnician: true },
+        }),
+      ),
+    ).toBe("Técnico: no → sí");
+  });
+
+  it("con el nombre y la marca juntos, la marca va después del CUIT", () => {
+    expect(
+      describeAuditDiff(
+        entry("update", {
+          before: { name: "Taller Aurora", isTechnician: true },
+          after: { name: "Taller Aurora SRL", isTechnician: false },
+        }),
+      ),
+    ).toBe("Nombre: Taller Aurora → Taller Aurora SRL · Técnico: sí → no");
+  });
+});

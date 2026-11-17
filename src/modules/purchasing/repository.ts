@@ -87,12 +87,21 @@ function likeContains(text: string): string {
   return `%${text.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
+// El filtro «Tipo» de la lámina 13 (brief-24.8.2-b, D-3). Solo tiene sentido con la capacidad
+// repairs: sin ella no hay técnicos. Quien llama decide si la pantalla lo ofrece; acá es un filtro
+// más, y «all» es no filtrar.
+export type SupplierTypeFilter = "all" | "supplier" | "technician";
+
 function listConditions(
   organizationId: string,
   status: SupplierStatusFilter,
   search: SupplierSearch,
+  type: SupplierTypeFilter,
 ): SQL {
   const conditions: SQL[] = [eq(suppliers.organizationId, organizationId)];
+  if (type !== "all") {
+    conditions.push(eq(suppliers.isTechnician, type === "technician"));
+  }
   if (status !== "all") {
     conditions.push(eq(suppliers.isActive, status === "active"));
   }
@@ -110,11 +119,12 @@ export async function countSuppliers(
   organizationId: string,
   status: SupplierStatusFilter,
   search: SupplierSearch,
+  type: SupplierTypeFilter = "all",
 ): Promise<number> {
   const rows = await getDb()
     .select({ total: count() })
     .from(suppliers)
-    .where(listConditions(organizationId, status, search));
+    .where(listConditions(organizationId, status, search, type));
   return rows[0]?.total ?? 0;
 }
 
@@ -125,11 +135,12 @@ export function findSuppliers(
   search: SupplierSearch,
   limit: number,
   offset: number,
+  type: SupplierTypeFilter = "all",
 ): Promise<SupplierRow[]> {
   return getDb()
     .select(supplierColumns)
     .from(suppliers)
-    .where(listConditions(organizationId, status, search))
+    .where(listConditions(organizationId, status, search, type))
     .orderBy(sql`lower(${suppliers.name})`, asc(suppliers.id))
     .limit(limit)
     .offset(offset);
@@ -172,15 +183,18 @@ async function inSavepoint<T>(
   }
 }
 
+// La marca de técnico viaja en el mismo INSERT que el proveedor (brief-24.8.2-b, D-2): no hay un
+// segundo paso que pueda fallar y dejar al proveedor creado sin ella, ni al revés.
 export function insertSupplier(
   tx: DbTransaction,
   organizationId: string,
   values: SupplierValues,
+  isTechnician = false,
 ): Promise<{ id: string } | SupplierUniqueRule> {
   return inSavepoint(tx, async (savepoint) => {
     const rows = await savepoint
       .insert(suppliers)
-      .values({ organizationId, ...values })
+      .values({ organizationId, ...values, isTechnician })
       .returning({ id: suppliers.id });
     return { id: rows[0]!.id };
   });

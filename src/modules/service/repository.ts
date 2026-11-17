@@ -612,6 +612,8 @@ export type ServiceOrderListQuery = {
   statuses: ServiceOrderStatus[] | null;
   number: number | null;
   clientId: string | null;
+  // El técnico que la reparó o la tiene (brief-24.8.2-b, D-5). Null: todos.
+  technicianId?: string | null;
   // Null: los dos tipos.
   kind?: ServiceOrderKind | null;
   unitId?: string | null;
@@ -634,6 +636,9 @@ function listConditions(query: ServiceOrderListQuery): SQL {
   }
   if (query.clientId !== null) {
     conditions.push(eq(serviceOrders.clientId, query.clientId));
+  }
+  if (query.technicianId != null) {
+    conditions.push(eq(serviceOrders.technicianId, query.technicianId));
   }
   if (query.kind != null) {
     conditions.push(eq(serviceOrders.kind, query.kind));

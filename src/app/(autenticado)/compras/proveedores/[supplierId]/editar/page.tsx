@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { hasCapability } from "@/modules/organizations";
 import { formatCuit, getSupplier } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import { BackLink, DetailHeader } from "@/app/_components/detail-header";
@@ -38,6 +39,7 @@ export default async function EditSupplierPage({
     );
   }
   const supplier = found.supplier;
+  const repairs = await hasCapability(context.organizationId, "repairs");
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8">
@@ -50,11 +52,13 @@ export default async function EditSupplierPage({
         <SupplierForm
           mode="editar"
           supplierId={supplier.id}
+          repairs={repairs}
           values={{
             name: supplier.name,
             phone: supplier.phone ?? "",
             email: supplier.email ?? "",
             cuit: supplier.cuit ? formatCuit(supplier.cuit) : "",
+            isTechnician: supplier.isTechnician,
           }}
         />
       </div>

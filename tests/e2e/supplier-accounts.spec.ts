@@ -146,7 +146,7 @@ async function scenario() {
   const first = await insertReceipt(south, 1, "100000");
   await insertReceipt(south, 2, "50000");
   await insertAccountPayment(south, 1, "120000");
-  const west = await insertSupplier("Lácteos Oeste");
+  const west = await insertSupplier("Lácteos Oeste", "27234567893");
   await insertReceipt(west, 3, "8000");
   await insertReceipt(west, 4, "40", "USD");
   return { south, first, west };
@@ -211,18 +211,39 @@ test("un admin va con el teclado de «A pagar» al estado de cuenta y a un compr
     .focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(`/compras/proveedores/${south}/cuenta`);
+  // Desde la 24.8.2-b (V-25) el título es el nombre y «Estado de cuenta» el subtítulo; el
+  // documento imprimible conserva el suyo adentro.
   await expect(
-    page.getByRole("heading", {
-      name: "Estado de cuenta de Importaciones Sur",
-    }),
+    page.getByRole("heading", { name: "Importaciones Sur", level: 1 }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Estado de cuenta", level: 2 }),
   ).toBeVisible();
   const statement = page.locator("[data-comprobante]");
   await expect(statement).toContainText("CUIT 20-12345678-8");
-  await expect(statement).toContainText("Se le debe $ 30.000,00");
+  const ars = page.getByRole("region", { name: "En ARS" });
+  await expect(ars).toContainText("$ 30.000,00");
+  await expect(ars).toContainText("Se le debe");
+  // Debe y Haber siguen a la vista, que la lámina 11 no dibuja y el README del lote exige (H-4).
+  await expect(ars).toContainText("Debe (comprobantes vigentes)");
+  await expect(ars).toContainText("$ 150.000,00");
+  await expect(ars).toContainText("Haber (pagos vigentes)");
+  await expect(ars).toContainText("$ 120.000,00");
   await expect(statement).toContainText(LEGEND);
-  const imputation = page.getByRole("region", { name: "Imputación en ARS" });
+  const imputation = page.getByRole("region", { name: "Imputación actual" });
+  await expect(imputation.getByRole("columnheader")).toHaveText([
+    "Comprobante",
+    "Fecha",
+    "Moneda",
+    "Total",
+    "Pago directo",
+    "Desde cuenta",
+    "Pendiente",
+    "Detalle",
+  ]);
   await expect(imputation.getByRole("row").nth(1)).toContainText("Pagada");
   await expect(imputation.getByRole("row").nth(2)).toContainText("30.000");
+  await expect(imputation.getByRole("row").nth(2)).toContainText("ARS");
   await expect(
     page.getByRole("region", { name: "Comprobantes del proveedor" }),
   ).toContainText("PP-000001");
@@ -231,8 +252,8 @@ test("un admin va con el teclado de «A pagar» al estado de cuenta y a un compr
 
   // De un comprobante del estado de cuenta, a su página.
   await page
-    .getByRole("region", { name: "Imputación en ARS" })
-    .getByRole("link", { name: "RC-000001" })
+    .getByRole("region", { name: "Imputación actual" })
+    .getByRole("link", { name: "Ver detalle de RC-000001" })
     .focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(`/compras/recepciones/${first}`);
@@ -258,7 +279,7 @@ test("la ficha del proveedor muestra su cuenta y lleva al estado de cuenta", asy
   await expect(page.getByText("Se le debe USD")).toBeVisible();
   await expectAccessible(page, "la ficha con la cuenta");
 
-  await page.getByRole("link", { name: "Estado de cuenta" }).focus();
+  await page.getByRole("link", { name: "Ver estado de cuenta" }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(`/compras/proveedores/${west}/cuenta`);
 
@@ -272,6 +293,168 @@ test("la ficha del proveedor muestra su cuenta y lleva al estado de cuenta", asy
   await expect(
     page.getByRole("link", { name: "Estado de cuenta" }),
   ).toHaveAttribute("href", `/compras/proveedores/${south}/cuenta`);
+});
+
+// La forma de la lámina 11 y las dos condiciones que la gobiernan (brief-24.8.2-b): el filtro de
+// moneda **no recorta el documento impreso** (AC-9, D-9) y al imprimir queda solo el documento,
+// entero (AC-8).
+test("el filtro de moneda tapa en pantalla y no recorta el documento impreso", async ({
+  page,
+}) => {
+  const { south, west } = await scenario();
+  await login(page, ADMIN);
+
+  // Con una sola moneda el filtro no se dibuja, por la regla de la 24.8.2.
+  await page.goto(`/compras/proveedores/${south}/cuenta`);
+  await expect(page.getByLabel("Moneda")).toHaveCount(0);
+
+  // Lácteos Oeste tiene pesos y dólares: ahí sí.
+  await page.goto(`/compras/proveedores/${west}/cuenta`);
+  const ars = page.getByRole("region", { name: "En ARS" });
+  const usd = page.getByRole("region", { name: "En USD" });
+  await expect(ars).toBeVisible();
+  await expect(usd).toBeVisible();
+  await page.getByLabel("Moneda").selectOption("USD");
+  await page.getByRole("button", { name: "Ver" }).click();
+  await expect(page).toHaveURL(
+    `/compras/proveedores/${west}/cuenta?moneda=USD`,
+  );
+  await expect(
+    page.getByText(
+      "Estás viendo solo USD. Al imprimir sale el estado de cuenta completo, con todas las monedas.",
+    ),
+  ).toBeVisible();
+  await expect(ars).toBeHidden();
+  await expect(usd).toBeVisible();
+  const imputation = page.getByRole("region", { name: "Imputación actual" });
+  await expect(
+    imputation.getByRole("row").filter({ hasText: "USD" }),
+  ).toHaveCount(1);
+  await expectAccessible(page, "el estado de cuenta filtrado por moneda");
+
+  // Al imprimir, el documento sale entero: las dos monedas y las dos filas (AC-9).
+  await page.emulateMedia({ media: "print" });
+  await expect(ars).toBeVisible();
+  await expect(usd).toBeVisible();
+  await expect(imputation.getByRole("row")).toHaveCount(3);
+  // Y queda solo el documento: el encabezado de la pantalla y el filtro no se imprimen (AC-8).
+  await expect(
+    page.getByRole("link", { name: "Volver al proveedor" }),
+  ).toBeHidden();
+  await expect(page.getByLabel("Moneda")).toBeHidden();
+  const statement = page.locator("[data-comprobante]");
+  await expect(statement).toContainText("Organización de ejemplo");
+  await expect(statement).toContainText(LEGEND);
+  await expect(statement).toContainText("Lácteos Oeste");
+  // El CUIT, en el documento impreso: es lo que AC-8 pide y el caso corría sobre un proveedor que
+  // no lo tenía (hallazgo N-3 de la revisión de esta subfase).
+  await expect(statement).toContainText("CUIT 27-23456789-3");
+  await expect(statement).toContainText("Al ");
+  await expectAccessible(page, "el estado de cuenta filtrado impreso", "print");
+  await page.emulateMedia({ media: null });
+
+  // Una moneda que el proveedor no tiene equivale a no filtrar: el documento no miente.
+  await page.goto(`/compras/proveedores/${west}/cuenta?moneda=EUR`);
+  await expect(ars).toBeVisible();
+  await expect(usd).toBeVisible();
+  await expect(page.getByText("Estás viendo solo")).toHaveCount(0);
+});
+
+// Sin JavaScript, el filtro es un formulario `GET` común (AC-10).
+test.describe("sin JavaScript, el estado de cuenta", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("filtra por moneda y sigue imprimiéndose entero", async ({ page }) => {
+    const { west } = await scenario();
+    await login(page, ADMIN);
+    await page.goto(`/compras/proveedores/${west}/cuenta`);
+    await page.getByLabel("Moneda").selectOption("ARS");
+    await page.getByRole("button", { name: "Ver" }).click();
+    await expect(page).toHaveURL(
+      `/compras/proveedores/${west}/cuenta?moneda=ARS`,
+    );
+    await expect(page.getByRole("region", { name: "En USD" })).toBeHidden();
+    await page.emulateMedia({ media: "print" });
+    await expect(page.getByRole("region", { name: "En USD" })).toBeVisible();
+    await page.emulateMedia({ media: null });
+  });
+});
+
+// Los seis anchos del barrido de la 24.8.2 y de la 24.8.2-b.
+const REFLOW_WIDTHS = [320, 375, 1280, 1440, 1536, 1680];
+
+// Lo que se sale de su tarjeta, medido en el navegador. Igual que en suppliers.spec.ts y en
+// supplier-payments.spec.ts: se repite por archivo para que cada spec corra sola.
+async function overflowProblems(page: Page): Promise<string[]> {
+  return await page.evaluate(() => {
+    const problems: string[] = [];
+    const root = document.querySelector("main") ?? document.body;
+    if (document.documentElement.scrollWidth > window.innerWidth + 1) {
+      problems.push(
+        `el documento pide ${document.documentElement.scrollWidth} px en ${window.innerWidth}`,
+      );
+    }
+    const scrolls = (el: Element) => {
+      const style = getComputedStyle(el);
+      return style.overflowX === "auto" || style.overflowX === "scroll";
+    };
+    const cards = [...root.querySelectorAll(".rounded-xl")].filter(
+      (card) => !scrolls(card) && getComputedStyle(card).position === "static",
+    );
+    for (const card of cards) {
+      const box = card.getBoundingClientRect();
+      if (box.width === 0) continue;
+      for (const el of card.querySelectorAll(
+        "input, select, button, a, dd, dt, td, th, h1, h2, h3, p, li",
+      )) {
+        let node = el.parentElement;
+        let skip = false;
+        while (node && node !== card) {
+          if (scrolls(node)) skip = true;
+          node = node.parentElement;
+        }
+        const style = getComputedStyle(el);
+        if (
+          skip ||
+          style.position === "absolute" ||
+          style.position === "fixed"
+        ) {
+          continue;
+        }
+        const inner = el.getBoundingClientRect();
+        if (inner.width === 0) continue;
+        if (inner.right > box.right + 1 || inner.left < box.left - 1) {
+          const name = (el.textContent ?? el.tagName).trim().slice(0, 28);
+          problems.push(`«${name}» se sale de su tarjeta`);
+        }
+      }
+    }
+    return [...new Set(problems)];
+  });
+}
+
+// El estado de cuenta con todo dibujado —las tarjetas por moneda, el filtro, «Imputación actual» de
+// ocho columnas y «Comprobantes»— a los seis anchos. El barrido de suppliers.spec.ts recorre esta
+// URL con un proveedor sin movimientos, así que no medía ninguna de esas tarjetas (hallazgo N-1 de
+// la revisión de esta subfase).
+test("el estado de cuenta con movimientos entra en su tarjeta a los seis anchos", async ({
+  page,
+}) => {
+  const { west } = await scenario();
+  await login(page, ADMIN);
+  for (const width of REFLOW_WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const [name, href] of [
+      ["el estado de cuenta", `/compras/proveedores/${west}/cuenta`],
+      [
+        "el estado de cuenta filtrado",
+        `/compras/proveedores/${west}/cuenta?moneda=USD`,
+      ],
+    ] as [string, string][]) {
+      await page.goto(href);
+      expect(await overflowProblems(page), `${name} a ${width} px`).toEqual([]);
+    }
+  }
 });
 
 test("un viewer ve el aviso en la lista y en el estado de cuenta", async ({

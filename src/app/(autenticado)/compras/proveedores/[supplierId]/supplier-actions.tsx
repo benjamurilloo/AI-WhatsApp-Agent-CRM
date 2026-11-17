@@ -8,11 +8,7 @@ import {
   inlineButtonClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
-import {
-  deactivateSupplierAction,
-  reactivateSupplierAction,
-  setTechnicianAction,
-} from "../actions";
+import { deactivateSupplierAction, reactivateSupplierAction } from "../actions";
 import type { SupplierChangeState } from "../messages";
 
 // Desactivar con confirmación en un segundo paso de la URL y reactivar (brief-22.2, D-5 y D-9),
@@ -89,42 +85,9 @@ export function DeactivateSupplierConfirm({
   );
 }
 
-// La marca de técnico (brief-29.6, D-3): un botón, sin confirmación, porque se deshace con el
-// contrario y no toca las órdenes que ya tiene.
-export function TechnicianForm({
-  supplierId,
-  isTechnician,
-}: {
-  supplierId: string;
-  isTechnician: boolean;
-}) {
-  const [state, formAction, pending] = useActionState(
-    setTechnicianAction,
-    initialState,
-  );
-  const message = useErrorMessage(state);
-  return (
-    <form action={formAction} className="flex flex-col gap-3">
-      <input type="hidden" name="supplierId" value={supplierId} />
-      <input
-        type="hidden"
-        name="isTechnician"
-        value={isTechnician ? "0" : "1"}
-      />
-      {message}
-      <div>
-        <button type="submit" disabled={pending} className={inlineButtonClass}>
-          {pending
-            ? "Guardando…"
-            : isTechnician
-              ? "Dejar de marcarlo como técnico"
-              : "Marcarlo como técnico"}
-        </button>
-      </div>
-    </form>
-  );
-}
-
+// La marca de técnico ya no tiene su propio formulario acá: desde la 24.8.2-b (D-2) se edita con
+// el resto de los datos, en el alta y en la edición, en una sola escritura. La acción del
+// servidor `setTechnicianAction` sigue existiendo para la pantalla «Técnicos» de la 24.8.2-c.
 export function ReactivateSupplierForm({ supplierId }: { supplierId: string }) {
   const [state, formAction, pending] = useActionState(
     reactivateSupplierAction,
@@ -138,7 +101,7 @@ export function ReactivateSupplierForm({ supplierId }: { supplierId: string }) {
       {message}
       <div>
         <button type="submit" disabled={pending} className={inlineButtonClass}>
-          {pending ? "Reactivando…" : "Reactivar"}
+          {pending ? "Reactivando…" : "Reactivar proveedor"}
         </button>
       </div>
     </form>

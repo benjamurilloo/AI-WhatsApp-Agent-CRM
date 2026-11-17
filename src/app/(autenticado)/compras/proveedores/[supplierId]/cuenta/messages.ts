@@ -12,8 +12,11 @@ export const SUPPLIER_IMPUTATION_NOTE =
 export const NO_SUPPLIER_MOVEMENTS_MESSAGE =
   "Este proveedor no tiene recepciones ni pagos.";
 export const NOTHING_OWED_TEXT = "No se le debe nada.";
-export const ACCOUNT_UNAVAILABLE_TEXT =
-  "No se pudo leer la cuenta de este proveedor.";
+// La tarjeta 6 de la lámina 17 (brief-24.8.2-b, V-36), **sin** su línea «Los datos anteriores se
+// conservan»: no hay datos anteriores que conservar, y afirmarlo sería inventar una lectura que
+// falló (H-9, e invariante 9).
+export const ACCOUNT_UNAVAILABLE_TEXT = "No pudimos leer la cuenta.";
+export const ACCOUNT_RETRY_TEXT = "Reintentá la consulta.";
 
 export const SUPPLIER_DOCUMENT_KIND_LABEL: Record<
   SupplierStatementDocument["kind"],
@@ -64,3 +67,8 @@ export function supplierDestinationText(
   if (destination.target === "account") return "A cuenta";
   return `Por la recepción ${destination.ref?.displayNumber ?? ""}`.trim();
 }
+
+// La forma de la lámina 11 (brief-24.8.2-b, V-28 y D-9).
+export const IMPUTATION_TITLE = "Imputación actual";
+export const statementFilterNote = (currency: string) =>
+  `Estás viendo solo ${currency}. Al imprimir sale el estado de cuenta completo, con todas las monedas.`;

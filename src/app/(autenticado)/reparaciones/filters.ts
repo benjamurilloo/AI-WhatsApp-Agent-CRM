@@ -5,6 +5,9 @@ import type {
 
 // Los filtros de la lista de órdenes de servicio, en la URL (brief-29.6, D-10): el estado y el número;
 // desde la 29.6.2, el tipo (brief-29.6.2, D-7).
+// Desde la 24.8.2-b, el técnico (brief-24.8.2-b, D-5), que es a donde lleva «Ver reparaciones» de
+// la ficha del proveedor. El id viaja tal cual: quien valida que sea un uuid es el módulo, que ante
+// uno que no lo es responde una lista vacía en lugar de romperse.
 
 export type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -12,6 +15,8 @@ export type ServiceOrderFilters = {
   status: ServiceOrderStatusFilter;
   kind: ServiceOrderKindFilter;
   number: string;
+  // Desde la 24.8.2-b (brief-24.8.2-b, D-5): el técnico, para «Ver reparaciones» de su ficha.
+  technicianId: string;
   page: number;
 };
 
@@ -55,6 +60,7 @@ export function parseServiceOrderFilters(
     status,
     kind,
     number: single(query.numero).slice(0, 30),
+    technicianId: single(query.tecnico).slice(0, 36),
     page: /^[1-9][0-9]{0,5}$/.test(rawPage) ? Number(rawPage) : 1,
   };
 }
@@ -73,7 +79,8 @@ export function hasActiveServiceOrderFilters(
   return (
     filters.status !== "open" ||
     filters.kind !== "all" ||
-    filters.number.trim() !== ""
+    filters.number.trim() !== "" ||
+    filters.technicianId.trim() !== ""
   );
 }
 
@@ -83,6 +90,8 @@ export function serviceOrderFiltersHref(filters: ServiceOrderFilters): string {
     params.set("estado", statusParam(filters.status));
   if (filters.kind !== "all") params.set("tipo", kindParam(filters.kind));
   if (filters.number.trim() !== "") params.set("numero", filters.number.trim());
+  if (filters.technicianId.trim() !== "")
+    params.set("tecnico", filters.technicianId.trim());
   if (filters.page > 1) params.set("pagina", String(filters.page));
   const query = params.toString();
   return query ? `/reparaciones?${query}` : "/reparaciones";

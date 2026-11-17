@@ -16,6 +16,10 @@ export const NO_SUPPLIERS_MESSAGE = "Todavía no hay proveedores.";
 export const NO_SUPPLIER_RESULTS_MESSAGE =
   "Ningún proveedor coincide con esta búsqueda.";
 
+// El pie de la lista (brief-24.8.2-b, lámina 13): explica por qué un inactivo sigue estando.
+export const INACTIVE_SUPPLIERS_NOTE =
+  "Los proveedores inactivos conservan su historial y pueden recibir pagos.";
+
 // El repetido puede ser un proveedor desactivado, que la lista oculta por defecto (D-2 y D-4).
 export const NAME_TAKEN_MESSAGE =
   "Ya existe un proveedor con ese nombre. Si está desactivado, buscalo con el filtro «Solo inactivos» o «Todos» y reactivalo.";
@@ -41,6 +45,16 @@ export const CUIT_CHECK_DIGIT_MESSAGE =
 export const PHONE_HINT = "Formato internacional, por ejemplo +5491155551234.";
 export const CUIT_HINT =
   "Con o sin guiones. Se comprueba el dígito verificador.";
+
+// La casilla «Es técnico» del formulario (brief-24.8.2-b, D-2; lámina 15). Solo se dibuja con la
+// capacidad repairs: sin ella no hay órdenes de reparación que habilitar.
+export const TECHNICIAN_LABEL = "Es técnico";
+export const TECHNICIAN_HINT =
+  "Habilita su selección en órdenes de reparación.";
+
+// El aviso del formulario: es la regla que ya aplica desde la 22.2 (D-2 y D-4).
+export const UNIQUE_SUPPLIER_NOTE =
+  "El nombre y el CUIT no pueden repetirse, incluso con proveedores inactivos.";
 
 const FIELD_MESSAGES: Record<SupplierField, string> = {
   name: NAME_MESSAGE,
@@ -78,7 +92,11 @@ export function supplierRuleError(rule: SupplierRule): {
     : { field: "name", message: NAME_TAKEN_MESSAGE };
 }
 
-export type SupplierFormValues = Record<SupplierField, string>;
+// La casilla «Es técnico» se conserva tras un rechazo, como los campos de texto (brief-24.8.2-b,
+// D-2). Es un booleano y no un SupplierField: no tiene mensaje de validación propio.
+export type SupplierFormValues = Record<SupplierField, string> & {
+  isTechnician: boolean;
+};
 
 export type SupplierFormState =
   | { status: "idle" }
@@ -109,6 +127,20 @@ export function supplierChangeMessage(
       return unexpectedErrorMessage(requestId);
   }
 }
+
+// La tarjeta del proveedor inactivo de la lámina 17-5 (brief-24.8.2-b, V-35): las tres frases,
+// que dicen qué se puede y qué no, en vez de la tarjeta «Estado» muda de antes.
+export const SUPPLIER_INACTIVE_LINES = [
+  "Este proveedor está inactivo.",
+  "No se pueden generar nuevas órdenes de compra ni recibir mercadería.",
+  "Puede recibir pagos.",
+];
+
+// La tarjeta «Trabajo reparado» de la lámina 14 (V-23, D-4).
+export const NO_TECHNICIAN_WORK_MESSAGE =
+  "Este técnico todavía no reparó ninguna orden.";
+export const TECHNICIAN_WORK_NOTE =
+  "Lo que se le debe por estas reparaciones está en su cuenta, junto con sus pagos.";
 
 // Avisos tras una acción que redirige; solo valores conocidos llegan a la página.
 const NOTICES: Record<string, string> = {

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getOrganizationTimezone } from "@/modules/organizations";
+import { listTechnicians } from "@/modules/purchasing";
 import { listServiceOrders, SERVICE_ORDERS_PAGE_SIZE } from "@/modules/service";
 import { requireSession } from "@/app/_auth/session";
 import { ActionNotice } from "@/app/_components/action-notice";
@@ -88,6 +89,11 @@ export default async function ServiceOrdersPage({
   }
   const timeZone = await getOrganizationTimezone(context);
   const isAdmin = context.role === "admin";
+  // El filtro por técnico (brief-24.8.2-b, D-5): la lista de técnicos es de purchasing y es solo de
+  // admin, así que a un vendedor no se le dibuja el control. El filtro de la URL sigue valiendo para
+  // los dos, en un campo oculto, como el «Tipo» del listado de proveedores.
+  const technicians = isAdmin ? await listTechnicians(context) : null;
+  const technicianOptions = technicians?.ok ? technicians.technicians : [];
   const filtered = hasActiveServiceOrderFilters(filters);
   const notice = noticeMessage(query.aviso);
   type Row = (typeof result.orders)[number];
@@ -186,6 +192,28 @@ export default async function ServiceOrdersPage({
             ))}
           </select>
         </div>
+        {technicianOptions.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="tecnico" className={labelClass}>
+              Técnico
+            </label>
+            <select
+              id="tecnico"
+              name="tecnico"
+              defaultValue={filters.technicianId}
+              className={selectClass}
+            >
+              <option value="">Todos</option>
+              {technicianOptions.map((technician) => (
+                <option key={technician.id} value={technician.id}>
+                  {technician.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : filters.technicianId !== "" ? (
+          <input type="hidden" name="tecnico" value={filters.technicianId} />
+        ) : null}
         <button type="submit" className={inlineButtonClass}>
           <Icon name="filter" className="size-4" />
           Aplicar filtros

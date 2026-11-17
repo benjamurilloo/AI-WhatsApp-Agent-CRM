@@ -157,6 +157,13 @@ export {
   listTechnicianChargesForAccounts,
   type TechnicianCharge,
 } from "./technician-charges";
+// Para la ficha del proveedor (brief-24.8.2-b, D-4): los trabajos que el técnico ya reparó, con su
+// modelo y sus tipos de reparación. No toca la cuenta, que es de cash.
+export {
+  listTechnicianWork,
+  TECHNICIAN_WORK_LIMIT,
+  type TechnicianWorkItem,
+} from "./technician-work";
 // La garantía de una reparación entregada (brief-29.9, D-1 y D-2): los días de la organización.
 export {
   applyServiceSettingsTemplate,

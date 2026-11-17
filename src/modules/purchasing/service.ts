@@ -9,6 +9,7 @@ import {
 import {
   authorize,
   getMemberSummaries,
+  hasCapability,
   type AuthContext,
 } from "@/modules/organizations";
 import { failure, type Failure } from "@/shared/errors";
@@ -28,6 +29,7 @@ import { SUPPLIER_FIELD_LIMITS } from "./schema";
 
 export type Supplier = repository.SupplierRow;
 export type SupplierStatusFilter = repository.SupplierStatusFilter;
+export type SupplierTypeFilter = repository.SupplierTypeFilter;
 export type SupplierRule = repository.SupplierUniqueRule;
 
 export type SupplierField = "name" | "phone" | "email" | "cuit";
@@ -37,6 +39,10 @@ export type SupplierInput = {
   phone?: string | null;
   email?: string | null;
   cuit?: string | null;
+  // La marca de técnico (brief-24.8.2-b, D-2). undefined es «el formulario no la ofreció», que no
+  // es lo mismo que false: una organización sin la capacidad repairs no dibuja la casilla, y su
+  // alta y su edición no tocan la marca.
+  isTechnician?: boolean;
 };
 
 // La página de la lista, como la de clientes (D-10).
@@ -153,6 +159,8 @@ export function supplierPageBounds(total: number, requestedPage: number) {
 export type SupplierListQuery = {
   text: string;
   status: SupplierStatusFilter;
+  // Sin tipo se listan los dos (brief-24.8.2-b, D-3): quien no filtra por tipo no lo nombra.
+  type?: SupplierTypeFilter;
   page: number;
 };
 
@@ -177,6 +185,7 @@ export async function listSuppliers(
     context.organizationId,
     query.status,
     search,
+    query.type ?? "all",
   );
   const { page, pageCount, offset } = supplierPageBounds(total, query.page);
   const rows =
@@ -188,6 +197,7 @@ export async function listSuppliers(
           search,
           SUPPLIERS_PAGE_SIZE,
           offset,
+          query.type ?? "all",
         );
   return { ok: true, suppliers: rows, total, page, pageCount };
 }
@@ -261,7 +271,7 @@ export async function listSupplierAudit(
 
 export type CreateSupplierResult =
   | { ok: true; supplierId: string }
-  | Failure<"FORBIDDEN">
+  | Failure<"FORBIDDEN" | "NOT_FOUND">
   | SupplierValidationFailure
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: SupplierRule }>;
 
@@ -274,6 +284,15 @@ export async function createSupplier(
   const validated = validateSupplierInput(input);
   if (!validated.ok) return validated;
   const { values } = validated;
+  // Pedir la marca sin la capacidad repairs es lo mismo que pedirla sobre un proveedor que no
+  // existe (brief-29.6, D-3): NOT_FOUND, como setSupplierTechnician.
+  const isTechnician = input.isTechnician === true;
+  if (
+    isTechnician &&
+    !(await hasCapability(context.organizationId, "repairs"))
+  ) {
+    return failure("NOT_FOUND");
+  }
 
   return repository.withTransaction(
     async (tx): Promise<CreateSupplierResult> => {
@@ -281,6 +300,7 @@ export async function createSupplier(
         tx,
         context.organizationId,
         values,
+        isTechnician,
       );
       // También contra un inactivo: se reactiva el existente (D-2 y D-4).
       if (typeof inserted === "string") return ruleFailure(inserted);
@@ -290,7 +310,10 @@ export async function createSupplier(
         entityType: "supplier",
         entityId: inserted.id,
         action: "create",
-        diff: { before: null, after: { ...values, isActive: true } },
+        diff: {
+          before: null,
+          after: { ...values, isTechnician, isActive: true },
+        },
       });
       return { ok: true, supplierId: inserted.id };
     },
@@ -326,6 +349,15 @@ export async function updateSupplier(
   if (!validated.ok) return validated;
   const { values } = validated;
   const id = supplierId.toLowerCase();
+  // undefined es «el formulario no ofreció la casilla»: la marca no se toca. Marcarla sin la
+  // capacidad repairs es NOT_FOUND, como en el alta.
+  const wanted = input.isTechnician;
+  if (
+    wanted === true &&
+    !(await hasCapability(context.organizationId, "repairs"))
+  ) {
+    return failure("NOT_FOUND");
+  }
 
   return repository.withTransaction(
     async (tx): Promise<UpdateSupplierResult> => {
@@ -342,21 +374,40 @@ export async function updateSupplier(
       const changedFields = VALUE_FIELDS.filter(
         (field) => current[field] !== values[field],
       );
-      if (changedFields.length === 0) return { ok: true, changed: false };
+      const changedTechnician =
+        wanted !== undefined && current.isTechnician !== wanted;
+      if (changedFields.length === 0 && !changedTechnician) {
+        return { ok: true, changed: false };
+      }
 
-      const before = Object.fromEntries(
+      type AuditValues = Record<string, string | number | boolean | null>;
+      const before: AuditValues = Object.fromEntries(
         changedFields.map((field) => [field, current[field]]),
       );
-      const after = Object.fromEntries(
+      const after: AuditValues = Object.fromEntries(
         changedFields.map((field) => [field, values[field]]),
       );
-      const updated = await repository.updateSupplierValues(
-        tx,
-        context.organizationId,
-        id,
-        after,
-      );
-      if (typeof updated === "string") return ruleFailure(updated);
+      if (changedFields.length > 0) {
+        const updated = await repository.updateSupplierValues(
+          tx,
+          context.organizationId,
+          id,
+          after as Partial<repository.SupplierValues>,
+        );
+        if (typeof updated === "string") return ruleFailure(updated);
+      }
+      // La marca, en la misma transacción que los datos: un solo cambio y una sola entrada de
+      // auditoría (brief-24.8.2-b, D-2).
+      if (changedTechnician) {
+        await repository.updateSupplierTechnician(
+          tx,
+          context.organizationId,
+          id,
+          wanted,
+        );
+        before.isTechnician = current.isTechnician;
+        after.isTechnician = wanted;
+      }
       await recordAudit(tx, {
         organizationId: context.organizationId,
         actorUserId: context.userId,

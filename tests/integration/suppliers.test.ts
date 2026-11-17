@@ -218,6 +218,7 @@ describe("las operaciones (AC-3; D-5 y D-8)", () => {
           phone: "+5491155551234",
           email: "ventas@norte.com",
           cuit: CUIT_A,
+          isTechnician: false,
           isActive: true,
         },
       });
@@ -704,6 +705,331 @@ describe("la lista con 2.000 proveedores (AC-7; D-10)", () => {
         expect(result.ok).toBe(true);
         expect(elapsed, JSON.stringify(query)).toBeLessThan(THRESHOLD_MS);
       }
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// La marca de técnico en el formulario y el filtro «Tipo» (brief-24.8.2-b, D-2 y D-3; AC-2 y
+// AC-4). La capacidad repairs se enciende por organización, como en client-list.test.ts.
+async function capability(
+  organizationId: string,
+  name: string,
+  userId: string,
+) {
+  await getDb().execute(
+    sql`insert into organization_capabilities (organization_id, capability, activated_by)
+        values (${organizationId}, ${name}, ${userId})`,
+  );
+}
+
+async function adminIdOf(email: string) {
+  const result = await getDb().execute<{ id: string }>(
+    sql`select id from users where email = ${email}`,
+  );
+  return result.rows[0]!.id;
+}
+
+describe("«Es técnico» en el alta y la edición (AC-4; D-2)", () => {
+  it(
+    "el alta con la marca deja el proveedor y la marca, en una sola escritura auditada",
+    async () => {
+      const s = await seed();
+      await capability(
+        s.orgA,
+        "repairs",
+        await adminIdOf("admin-a@example.com"),
+      );
+
+      const id = await create(s.adminA, {
+        name: "Taller Aurora",
+        isTechnician: true,
+      });
+
+      const found = await getSupplier(s.adminA, id);
+      expect(found.ok && found.supplier.isTechnician).toBe(true);
+      expect(found.ok && found.supplier.isActive).toBe(true);
+      // Una sola entrada, la del alta, y la marca viaja en ella: no hay un segundo paso.
+      const audits = await supplierAudits();
+      expect(audits).toHaveLength(1);
+      expect(audits[0]!.action).toBe("create");
+      expect(audits[0]!.diff.after.isTechnician).toBe(true);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "si el alta falla, no queda ni el proveedor ni la marca",
+    async () => {
+      const s = await seed();
+      await capability(
+        s.orgA,
+        "repairs",
+        await adminIdOf("admin-a@example.com"),
+      );
+      await create(s.adminA, { name: "Taller Aurora", cuit: CUIT_A });
+      const before = await snapshot();
+
+      // El CUIT repetido rechaza el alta entera: el proveedor nuevo no se crea, y la marca que
+      // traía tampoco queda en ningún lado.
+      const result = await createSupplier(s.adminA, {
+        name: "Taller Aurora II",
+        cuit: CUIT_A,
+        isTechnician: true,
+      });
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.code).toBe("BUSINESS_RULE_VIOLATION");
+      expect(await snapshot()).toEqual(before);
+      const technicians = await getDb().execute<{ total: number }>(
+        sql`select count(*)::int as total from suppliers where is_technician`,
+      );
+      expect(technicians.rows[0]!.total).toBe(0);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "sin la capacidad repairs, pedir la marca es NOT_FOUND y no escribe nada",
+    async () => {
+      const s = await seed();
+      const before = await snapshot();
+
+      const created = await createSupplier(s.adminA, {
+        name: "Taller sin capacidad",
+        isTechnician: true,
+      });
+      expect(!created.ok && created.code).toBe("NOT_FOUND");
+      expect(await snapshot()).toEqual(before);
+
+      // Y sobre un proveedor que ya existe, tampoco.
+      const id = await create(s.adminA, { name: "Distribuidora Norte" });
+      const updated = await updateSupplier(s.adminA, id, {
+        name: "Distribuidora Norte",
+        isTechnician: true,
+      });
+      expect(!updated.ok && updated.code).toBe("NOT_FOUND");
+      const found = await getSupplier(s.adminA, id);
+      expect(found.ok && found.supplier.isTechnician).toBe(false);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "la edición marca y desmarca, y sin el campo no toca la marca",
+    async () => {
+      const s = await seed();
+      await capability(
+        s.orgA,
+        "repairs",
+        await adminIdOf("admin-a@example.com"),
+      );
+      const id = await create(s.adminA, { name: "Taller Aurora" });
+
+      const marked = await updateSupplier(s.adminA, id, {
+        name: "Taller Aurora",
+        isTechnician: true,
+      });
+      expect(marked.ok && marked.changed).toBe(true);
+
+      // Sin el campo —la pantalla no ofreció la casilla— la marca queda como estaba, y sin
+      // ninguna otra diferencia no hay cambio ni auditoría nueva.
+      const untouched = await updateSupplier(s.adminA, id, {
+        name: "Taller Aurora",
+      });
+      expect(untouched.ok && untouched.changed).toBe(false);
+      const stillTechnician = await getSupplier(s.adminA, id);
+      expect(stillTechnician.ok && stillTechnician.supplier.isTechnician).toBe(
+        true,
+      );
+
+      // El nombre y la marca juntos: una sola entrada de auditoría con los dos campos.
+      const both = await updateSupplier(s.adminA, id, {
+        name: "Taller Aurora SRL",
+        isTechnician: false,
+      });
+      expect(both.ok && both.changed).toBe(true);
+      const audits = await supplierAudits();
+      const last = audits.at(-1)!;
+      expect(last.action).toBe("update");
+      expect(last.diff.before).toEqual({
+        name: "Taller Aurora",
+        isTechnician: true,
+      });
+      expect(last.diff.after).toEqual({
+        name: "Taller Aurora SRL",
+        isTechnician: false,
+      });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+describe("el filtro «Tipo» del listado (AC-2; D-3)", () => {
+  it(
+    "separa técnicos de proveedores, sin cruzar organizaciones, y cuenta lo mismo que lista",
+    async () => {
+      const s = await seed();
+      await capability(
+        s.orgA,
+        "repairs",
+        await adminIdOf("admin-a@example.com"),
+      );
+      await capability(
+        s.orgB,
+        "repairs",
+        await adminIdOf("admin-b@example.com"),
+      );
+      await create(s.adminA, { name: "Accesorios Delta" });
+      await create(s.adminA, {
+        name: "Laboratorio Prisma",
+        isTechnician: true,
+      });
+      await create(s.adminA, { name: "Nexo Mobile" });
+      const inactiveTechnician = await create(s.adminA, {
+        name: "Taller Viejo",
+        isTechnician: true,
+      });
+      await deactivateSupplier(s.adminA, inactiveTechnician);
+      await create(s.adminB, {
+        name: "Técnico de otra organización",
+        isTechnician: true,
+      });
+
+      const names = async (
+        type: "all" | "supplier" | "technician",
+        status: "active" | "inactive" | "all" = "active",
+      ) => {
+        const result = await listSuppliers(s.adminA, {
+          text: "",
+          status,
+          type,
+          page: 1,
+        });
+        if (!result.ok) throw new Error("lista rechazada");
+        // El total y la página se cuentan con el mismo filtro: si no, la paginación miente.
+        expect(result.total).toBe(result.suppliers.length);
+        return result.suppliers.map((supplier) => supplier.name);
+      };
+
+      expect(await names("all")).toEqual([
+        "Accesorios Delta",
+        "Laboratorio Prisma",
+        "Nexo Mobile",
+      ]);
+      expect(await names("technician")).toEqual(["Laboratorio Prisma"]);
+      expect(await names("supplier")).toEqual([
+        "Accesorios Delta",
+        "Nexo Mobile",
+      ]);
+      // El tipo se combina con el estado, no lo reemplaza.
+      expect(await names("technician", "all")).toEqual([
+        "Laboratorio Prisma",
+        "Taller Viejo",
+      ]);
+      expect(await names("technician", "inactive")).toEqual(["Taller Viejo"]);
+
+      // Y se combina con la búsqueda por texto.
+      const searched = await listSuppliers(s.adminA, {
+        text: "prisma",
+        status: "active",
+        type: "supplier",
+        page: 1,
+      });
+      expect(searched.ok && searched.total).toBe(0);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "sin el campo tipo, la lista es la de siempre",
+    async () => {
+      const s = await seed();
+      await capability(
+        s.orgA,
+        "repairs",
+        await adminIdOf("admin-a@example.com"),
+      );
+      await create(s.adminA, { name: "Accesorios Delta" });
+      await create(s.adminA, {
+        name: "Laboratorio Prisma",
+        isTechnician: true,
+      });
+
+      const sinTipo = await listSuppliers(s.adminA, {
+        text: "",
+        status: "active",
+        page: 1,
+      });
+      expect(sinTipo.ok && sinTipo.total).toBe(2);
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// La medición 1 del brief-24.8.2-b (AC-14): el listado filtrado por tipo contra el mismo listado
+// sin filtrar, con 2.000 proveedores, la mitad técnicos. El plan se imprime para pegarlo en el
+// §Cierre; lo que falla si la cláusula nueva encarece la lista es el umbral, que es el de la 13.2.
+describe("el listado filtrado por tipo con 2.000 proveedores (AC-14; D-3)", () => {
+  const THRESHOLD_MS = 754;
+
+  it(
+    "el filtro por tipo no cambia el plan ni pasa el umbral",
+    async () => {
+      const s = await seed();
+      await getDb().execute(
+        sql`insert into suppliers (organization_id, name, phone_e164, is_technician, is_active)
+            select ${s.orgA}, 'Proveedor ' || lpad(n::text, 4, '0') || ' Distribución',
+                   '+54911' || lpad(n::text, 8, '0'), n % 2 = 0, n % 5 <> 0
+            from generate_series(1, 2000) as n`,
+      );
+      await getDb().execute(sql`analyze suppliers`);
+
+      // El mismo SELECT que arma listConditions en purchasing/repository.ts, con y sin la cláusula
+      // nueva. Se escribe acá porque el repositorio no expone su builder.
+      const plan = async (label: string, onlyTechnicians: boolean) => {
+        const condition = onlyTechnicians
+          ? sql` and is_technician = true`
+          : sql``;
+        const result = await getDb().execute<{ "QUERY PLAN": string }>(
+          sql`explain (analyze, buffers)
+              select id, name, phone_e164, email, cuit, is_technician, is_active
+              from suppliers
+              where organization_id = ${s.orgA} and is_active = true${condition}
+              order by lower(name) asc, id asc
+              limit 25 offset 0`,
+        );
+        const text = result.rows.map((row) => row["QUERY PLAN"]).join("\n");
+        console.log(`\n--- ${label} ---\n${text}`);
+        return text;
+      };
+
+      await plan("sin filtrar (calentando)", false);
+      const sinFiltrar = await plan("sin filtrar", false);
+      await plan("solo técnicos (calentando)", true);
+      const soloTecnicos = await plan("solo técnicos", true);
+      // Las dos usan el índice del orden alfabético, que ya existía: la cláusula nueva no agrega
+      // un recorrido de la tabla entera.
+      for (const text of [sinFiltrar, soloTecnicos]) {
+        expect(text).toContain("suppliers_organization_name_lower_unique");
+        expect(text).not.toContain("Seq Scan on suppliers");
+      }
+
+      await listSuppliers(s.adminA, {
+        text: "",
+        status: "active",
+        type: "technician",
+        page: 1,
+      });
+      const started = performance.now();
+      const result = await listSuppliers(s.adminA, {
+        text: "",
+        status: "active",
+        type: "technician",
+        page: 1,
+      });
+      const elapsed = performance.now() - started;
+      expect(result.ok && result.total).toBe(800);
+      expect(elapsed).toBeLessThan(THRESHOLD_MS);
     },
     TEST_TIMEOUT,
   );

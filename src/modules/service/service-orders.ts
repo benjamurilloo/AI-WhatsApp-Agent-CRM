@@ -791,6 +791,9 @@ export type ServiceOrderListFilters = {
   kind?: ServiceOrderKindFilter;
   // Lo que escribió quien busca; vacío no filtra.
   number: string;
+  // Desde la 24.8.2-b (D-5): el técnico, para «Ver reparaciones» de su ficha. Vacío no filtra, y
+  // un id que no es un uuid tampoco: la lista responde vacía en vez de romperse.
+  technicianId?: string;
   page: number;
 };
 
@@ -931,6 +934,11 @@ export async function listServiceOrders(
   if (numberText !== "" && number === null) {
     return { ok: true, ...EMPTY_PAGE, orders: [] };
   }
+  const technicianText = (filters.technicianId ?? "").trim().toLowerCase();
+  if (technicianText !== "" && !idSchema.safeParse(technicianText).success) {
+    return { ok: true, ...EMPTY_PAGE, orders: [] };
+  }
+  const technician = technicianText === "" ? null : technicianText;
   const query: repository.ServiceOrderListQuery = {
     organizationId: context.organizationId,
     statuses:
@@ -951,6 +959,7 @@ export async function listServiceOrders(
       filters.kind === undefined || filters.kind === "all"
         ? null
         : filters.kind,
+    technicianId: technician,
   };
   const total = await repository.countServiceOrders(query);
   const pageCount = Math.max(1, Math.ceil(total / SERVICE_ORDERS_PAGE_SIZE));

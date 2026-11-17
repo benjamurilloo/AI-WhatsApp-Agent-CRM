@@ -15,11 +15,15 @@ import {
 import {
   cardClass,
   inactiveBadgeClass,
+  inlineButtonClass,
+  labelClass,
   linkClass,
   primaryLinkClass,
+  selectClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
 import {
   formatDate,
@@ -30,9 +34,12 @@ import { formatMoney } from "@/shared/money";
 import { PrintButton } from "../../../ordenes/[orderId]/print-button";
 import { NOT_AN_INVOICE_LEGEND } from "../../../ordenes/messages";
 import { ReferenceTotal } from "@/app/(autenticado)/caja/reference-total";
+import type { SearchParams } from "../../filters";
 import {
   debitDocumentHref,
+  IMPUTATION_TITLE,
   NO_SUPPLIER_MOVEMENTS_MESSAGE,
+  statementFilterNote,
   SUPPLIER_ACCOUNT_ADMIN_ONLY_MESSAGE,
   SUPPLIER_DOCUMENT_KIND_LABEL,
   SUPPLIER_IMPUTATION_NOTE,
@@ -48,19 +55,37 @@ export const metadata: Metadata = {
 
 const numberCell = `${tableCellClass} text-right whitespace-nowrap tabular-nums`;
 
+function single(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value) ?? "";
+}
+
 // Pantalla 55 (brief-22.7, D-4; ADR 0023, puntos 9 y 13): el estado de cuenta de un proveedor,
 // imprimible como los comprobantes. Por moneda, el resumen (debe, haber, saldo y lo que está a favor
 // del negocio) y la imputación de hoy de cada recepción vigente: a dónde se aplicó cada peso. Debajo,
 // los comprobantes del proveedor, de los más nuevos a los más viejos, sin saldo corrido. El encabezado
 // lleva el nombre y el CUIT, sin teléfono ni email. Solo admin (punto 12). Lo compone la página con
 // cash y purchasing: purchasing no depende de cash (punto 11).
+//
+// *Desde la 24.8.2-b* (brief-24.8.2-b, D-7, D-9 y V-25 a V-34) toma la forma de la lámina 11: el
+// título es el nombre del proveedor con «Estado de cuenta» de subtítulo, cada moneda es una tarjeta
+// con el saldo grande —y Debe y Haber debajo, que la lámina no dibuja y el README del mismo lote
+// exige (H-4)—, la imputación es **una sola tabla con columna Moneda** y rótulos «Pago directo ·
+// Desde cuenta · Pendiente», y hay un filtro de moneda si hay más de una.
+//
+// **El filtro no recorta el documento**: lo que esconde, lo esconde solo en pantalla
+// (`hidden print:…`), así que al imprimir sale el estado de cuenta entero. Un estado de cuenta
+// filtrado que no dijera que está filtrado sería un documento que miente, y por eso además lo
+// avisa en pantalla.
 export default async function SupplierStatementPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ supplierId: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const context = await requireSession();
   const { supplierId } = await params;
+  const query = await searchParams;
   const found = await getSupplierStatement(context, supplierId);
   if (!found.ok) {
     if (found.code === "FORBIDDEN") {
@@ -89,23 +114,84 @@ export default async function SupplierStatementPage({
   const cuit = supplier.ok ? supplier.supplier.cuit : null;
   const href = `/compras/proveedores/${statement.supplier.id}`;
 
+  // El filtro de moneda (D-9): vive en la URL y **no se dibuja con una sola moneda**, por la regla
+  // de la 24.8.2. Una moneda que el proveedor no tiene equivale a no filtrar.
+  const currencies = statement.currencies.map((account) => account.currency);
+  const requested = single(query.moneda).toUpperCase();
+  const selected = currencies.includes(requested) ? requested : "";
+  // Lo que el filtro deja afuera se esconde **solo en pantalla**.
+  const offScreen = (currency: string, row = false) =>
+    selected === "" || selected === currency
+      ? ""
+      : row
+        ? "hidden print:table-row"
+        : "hidden print:block";
+  // Las filas de la imputación, de todas las monedas, en una sola tabla (V-28).
+  const imputations = statement.currencies.flatMap((account) =>
+    account.receipts.map((receipt) => ({
+      currency: account.currency,
+      receipt,
+    })),
+  );
+
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 lg:px-8 print:max-w-none print:p-0">
       <div className="print:hidden">
         <BackLink href={href} label="Volver al proveedor" />
         <DetailHeader
-          title={`${SUPPLIER_STATEMENT_TITLE} de ${name}`}
+          title={name}
           leading={<HeaderIcon name="list" />}
-          subtitle={<p>{SUPPLIER_IMPUTATION_NOTE}</p>}
+          subtitle={
+            <>
+              <p>{SUPPLIER_STATEMENT_TITLE}</p>
+              <p className="text-sm">{SUPPLIER_IMPUTATION_NOTE}</p>
+            </>
+          }
           actions={
             <>
               <Link href={`${href}/pagar`} className={primaryLinkClass}>
-                Pago a cuenta
+                <Icon name="banknote" className="size-4" />
+                Registrar pago a cuenta
               </Link>
               <PrintButton />
             </>
           }
         />
+        {currencies.length > 1 ? (
+          <form
+            method="get"
+            action={`${href}/cuenta`}
+            className="mt-4 flex flex-wrap items-end gap-3"
+          >
+            <div className="flex flex-col gap-1">
+              <label htmlFor="moneda" className={labelClass}>
+                Moneda
+              </label>
+              <select
+                id="moneda"
+                name="moneda"
+                defaultValue={selected}
+                className={selectClass}
+              >
+                <option value="">Todas</option>
+                {currencies.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className={inlineButtonClass}>
+              <Icon name="filter" className="size-4" />
+              Ver
+            </button>
+          </form>
+        ) : null}
+        {selected !== "" ? (
+          <p role="status" className="mt-3 text-sm text-muted">
+            {statementFilterNote(selected)}
+          </p>
+        ) : null}
       </div>
 
       <article
@@ -147,126 +233,173 @@ export default async function SupplierStatementPage({
           className="mt-2"
         />
 
-        {statement.currencies.map((account) => {
-          const money = (value: string) => formatMoney(value, account.currency);
-          return (
-            <section
-              key={account.currency}
-              aria-labelledby={`moneda-${account.currency}`}
-              className="mt-6"
-            >
-              <h3
-                id={`moneda-${account.currency}`}
-                className="text-base font-semibold"
+        {/* Una tarjeta por moneda, con el saldo grande (V-27), y Debe y Haber conservados (D-7). */}
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          {statement.currencies.map((account) => {
+            const money = (value: string) =>
+              formatMoney(value, account.currency);
+            return (
+              <section
+                key={account.currency}
+                aria-labelledby={`moneda-${account.currency}`}
+                className={`min-w-0 rounded-xl border border-border bg-surface-muted p-4 ${offScreen(account.currency)}`}
               >
-                En <span className="font-mono">{account.currency}</span>
-              </h3>
-              <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm sm:max-w-md">
-                <dt className="text-muted">Debe (comprobantes vigentes)</dt>
-                <dd className="text-right tabular-nums">
-                  {money(account.debit)}
-                </dd>
-                <dt className="text-muted">Haber (pagos vigentes)</dt>
-                <dd className="text-right tabular-nums">
-                  {money(account.credit)}
-                </dd>
-                <dt className="font-semibold">Saldo</dt>
-                <dd className="text-right font-semibold tabular-nums">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft text-primary">
+                    <Icon name="banknote" className="size-5" />
+                  </span>
+                  <h3
+                    id={`moneda-${account.currency}`}
+                    className="text-sm font-semibold text-muted"
+                  >
+                    En <span className="font-mono">{account.currency}</span>
+                  </h3>
+                </div>
+                <p className="mt-2 text-2xl font-bold tabular-nums">
                   {account.balance.side === "zero"
                     ? money("0.00")
-                    : account.balance.side === "owed"
-                      ? `Se le debe ${money(account.balance.amount)}`
-                      : `A favor del negocio ${money(account.balance.amount)}`}
-                </dd>
-              </dl>
-
-              {account.receipts.length > 0 ? (
-                <div
-                  className="-mx-5 mt-4 overflow-x-auto sm:-mx-6 print:mx-0"
-                  tabIndex={0}
-                  role="region"
-                  aria-label={`Imputación en ${account.currency}`}
-                >
-                  <table className="w-full border-collapse text-left text-sm">
-                    <caption className="sr-only">
-                      Imputación de los comprobantes vigentes en{" "}
-                      {account.currency}, de la más vieja a la más nueva
-                    </caption>
-                    <thead>
-                      <tr>
-                        <th scope="col" className={tableHeadCellClass}>
-                          Comprobante
-                        </th>
-                        <th scope="col" className={tableHeadCellClass}>
-                          Fecha
-                        </th>
-                        <th
-                          scope="col"
-                          className={`${tableHeadCellClass} text-right`}
-                        >
-                          Total
-                        </th>
-                        <th
-                          scope="col"
-                          className={`${tableHeadCellClass} text-right`}
-                        >
-                          Pagado
-                        </th>
-                        <th
-                          scope="col"
-                          className={`${tableHeadCellClass} text-right`}
-                        >
-                          De la cuenta
-                        </th>
-                        <th
-                          scope="col"
-                          className={`${tableHeadCellClass} text-right`}
-                        >
-                          Falta
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {account.receipts.map((receipt) => (
-                        <tr key={receipt.id}>
-                          <td className={`${tableCellClass} whitespace-nowrap`}>
-                            <Link
-                              href={debitDocumentHref(receipt)}
-                              className={`${linkClass} font-mono print:no-underline`}
-                            >
-                              {receipt.displayNumber}
-                            </Link>
-                          </td>
-                          <td className={`${tableCellClass} whitespace-nowrap`}>
-                            {formatDate(receipt.issuedAt, timeZone)}
-                          </td>
-                          <td className={numberCell}>{money(receipt.total)}</td>
-                          <td className={numberCell}>
-                            {money(receipt.direct)}
-                          </td>
-                          <td className={numberCell}>
-                            {money(receipt.imputed)}
-                          </td>
-                          <td className={`${numberCell} font-semibold`}>
-                            {receipt.outstanding === "0.00"
-                              ? "Pagada"
-                              : money(receipt.outstanding)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-              {account.inFavor !== "0.00" ? (
-                <p className="mt-2 text-sm">
-                  Quedan {money(account.inFavor)} a favor del negocio, para las
-                  recepciones que vengan.
+                    : money(account.balance.amount)}
                 </p>
-              ) : null}
-            </section>
-          );
-        })}
+                <p className="text-sm text-muted">
+                  {account.balance.side === "zero"
+                    ? "Saldo"
+                    : account.balance.side === "owed"
+                      ? "Se le debe"
+                      : "A favor del negocio"}
+                </p>
+                <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 border-t border-border pt-3 text-sm">
+                  <dt className="text-muted">Debe (comprobantes vigentes)</dt>
+                  <dd className="text-right tabular-nums">
+                    {money(account.debit)}
+                  </dd>
+                  <dt className="text-muted">Haber (pagos vigentes)</dt>
+                  <dd className="text-right tabular-nums">
+                    {money(account.credit)}
+                  </dd>
+                </dl>
+                {account.inFavor !== "0.00" ? (
+                  <p className="mt-3 text-sm">
+                    Quedan {money(account.inFavor)} a favor del negocio, para
+                    las recepciones que vengan.
+                  </p>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+
+        {/* «Imputación actual»: una sola tabla con columna Moneda (V-28), con los rótulos de la
+            lámina sobre los mismos tres números de siempre (V-29) y «Ver detalle» por fila (V-30).
+            La fecha se conserva: es lo que explica el orden de la imputación (V-31). */}
+        {imputations.length > 0 ? (
+          <section aria-labelledby="imputacion-titulo" className="mt-8">
+            <h3 id="imputacion-titulo" className="text-base font-semibold">
+              {IMPUTATION_TITLE}
+            </h3>
+            <div
+              className="relative -mx-5 mt-2 overflow-x-auto sm:-mx-6 print:mx-0"
+              tabIndex={0}
+              role="region"
+              aria-label={IMPUTATION_TITLE}
+            >
+              <table className="w-full border-collapse text-left text-sm">
+                <caption className="sr-only">
+                  Imputación de los comprobantes vigentes, de la más vieja a la
+                  más nueva
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col" className={tableHeadCellClass}>
+                      Comprobante
+                    </th>
+                    <th scope="col" className={tableHeadCellClass}>
+                      Fecha
+                    </th>
+                    <th scope="col" className={tableHeadCellClass}>
+                      Moneda
+                    </th>
+                    <th
+                      scope="col"
+                      className={`${tableHeadCellClass} text-right`}
+                    >
+                      Total
+                    </th>
+                    <th
+                      scope="col"
+                      className={`${tableHeadCellClass} text-right`}
+                    >
+                      Pago directo
+                    </th>
+                    <th
+                      scope="col"
+                      className={`${tableHeadCellClass} text-right`}
+                    >
+                      Desde cuenta
+                    </th>
+                    <th
+                      scope="col"
+                      className={`${tableHeadCellClass} text-right`}
+                    >
+                      Pendiente
+                    </th>
+                    <th
+                      scope="col"
+                      className={`${tableHeadCellClass} print:hidden`}
+                    >
+                      <span className="sr-only">Detalle</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {imputations.map(({ currency, receipt }) => {
+                    const money = (value: string) =>
+                      formatMoney(value, currency);
+                    return (
+                      <tr
+                        key={`${currency}-${receipt.id}`}
+                        className={offScreen(currency, true)}
+                      >
+                        <td
+                          className={`${tableCellClass} font-mono whitespace-nowrap`}
+                        >
+                          {receipt.displayNumber}
+                        </td>
+                        <td className={`${tableCellClass} whitespace-nowrap`}>
+                          {formatDate(receipt.issuedAt, timeZone)}
+                        </td>
+                        <td className={`${tableCellClass} font-mono`}>
+                          {currency}
+                        </td>
+                        <td className={numberCell}>{money(receipt.total)}</td>
+                        <td className={numberCell}>{money(receipt.direct)}</td>
+                        <td className={numberCell}>{money(receipt.imputed)}</td>
+                        <td className={`${numberCell} font-semibold`}>
+                          {receipt.outstanding === "0.00"
+                            ? "Pagada"
+                            : money(receipt.outstanding)}
+                        </td>
+                        <td
+                          className={`${tableCellClass} whitespace-nowrap print:hidden`}
+                        >
+                          <Link
+                            href={debitDocumentHref(receipt)}
+                            className={linkClass}
+                          >
+                            Ver detalle
+                            <span className="sr-only">
+                              {" "}
+                              de {receipt.displayNumber}
+                            </span>
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
 
         {statement.documents.length > 0 ? (
           <section aria-labelledby="comprobantes-titulo" className="mt-8">
@@ -280,7 +413,7 @@ export default async function SupplierStatementPage({
               </p>
             ) : null}
             <div
-              className="-mx-5 mt-2 overflow-x-auto sm:-mx-6 print:mx-0"
+              className="relative -mx-5 mt-2 overflow-x-auto sm:-mx-6 print:mx-0"
               tabIndex={0}
               role="region"
               aria-label="Comprobantes del proveedor"
@@ -310,7 +443,10 @@ export default async function SupplierStatementPage({
                 </thead>
                 <tbody>
                   {statement.documents.map((document) => (
-                    <tr key={`${document.kind}-${document.displayNumber}`}>
+                    <tr
+                      key={`${document.kind}-${document.displayNumber}`}
+                      className={offScreen(document.currency, true)}
+                    >
                       <td className={`${tableCellClass} whitespace-nowrap`}>
                         {formatShortDateTime(document.createdAt, timeZone)}
                       </td>

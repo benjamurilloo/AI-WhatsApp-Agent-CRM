@@ -39,9 +39,21 @@ const FORM_FIELDS: (keyof SupplierFormValues)[] = [
 const LIST_PATH = "/compras/proveedores";
 
 function supplierValues(formData: FormData): SupplierFormValues {
-  return Object.fromEntries(
-    FORM_FIELDS.map((field) => [field, String(formData.get(field) ?? "")]),
-  ) as SupplierFormValues;
+  return {
+    ...(Object.fromEntries(
+      FORM_FIELDS.map((field) => [field, String(formData.get(field) ?? "")]),
+    ) as Record<(typeof FORM_FIELDS)[number], string>),
+    isTechnician: technicianInput(formData) === true,
+  };
+}
+
+// La casilla «Es técnico» (brief-24.8.2-b, D-2). El formulario manda un campo oculto «0» delante
+// de la casilla, así que: nada es «la pantalla no ofreció la casilla» —sin la capacidad repairs—,
+// y la marca no se toca; «0» es desmarcada y «0,1», marcada. Se toma el último valor, que es el
+// que el navegador manda en el orden del formulario.
+function technicianInput(formData: FormData): boolean | undefined {
+  const sent = formData.getAll("tecnico");
+  return sent.length === 0 ? undefined : String(sent.at(-1)) === "1";
 }
 
 function logDone(
@@ -136,7 +148,10 @@ export async function createSupplierAction(
     "compras.proveedores.crear",
     formData,
     async (context, values) => {
-      const result = await createSupplier(context, values);
+      const result = await createSupplier(context, {
+        ...values,
+        isTechnician: technicianInput(formData),
+      });
       return result.ok
         ? {
             ok: true,
@@ -156,7 +171,10 @@ export async function updateSupplierAction(
     "compras.proveedores.editar",
     formData,
     async (context, values) => {
-      const result = await updateSupplier(context, supplierId, values);
+      const result = await updateSupplier(context, supplierId, {
+        ...values,
+        isTechnician: technicianInput(formData),
+      });
       // Sin diferencias no hay aviso: nada cambió.
       return result.ok
         ? {
