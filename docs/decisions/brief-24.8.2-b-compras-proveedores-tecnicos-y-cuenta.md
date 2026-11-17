@@ -530,14 +530,15 @@ cuenta los tres archivos nuevos como altas, y su cifra es la que informa `git sh
 queda citada al cerrar. Decirlo así es lo que evita el error que el cierre de la 24.8.2 tuvo que
 corregir, que fue presentar el `git diff` de los versionados como si fuera el tamaño del commit.
 
-Todo cae dentro de la lista cerrada salvo **tres archivos, pedidos y autorizados por el usuario en
-su turno antes de tocarlos**, no después:
+Todo cae dentro de la lista cerrada salvo **cuatro archivos, pedidos y autorizados por el usuario
+en su turno antes de tocarlos**, no después:
 
 | Archivo | Por qué entró |
 |---|---|
 | `src/modules/service/repository.ts` | D-5: filtrar la lista de reparaciones por técnico es una condición más en la lectura del módulo, y el brief solo había previsto `filters.ts` de la pantalla |
 | `src/modules/service/service-orders.ts` | El servicio que expone esa lectura: sin él la condición no llega desde la pantalla |
 | `src/app/(autenticado)/reparaciones/page.tsx` | El `<select>` «Técnico» de la lista, que es donde el filtro se ve |
+| `tests/e2e/supplier-payments.spec.ts` | **Una aserción vieja que esta subfase dejó rota**, y que **encontró la CI del primer commit** (abajo, AC-18). Buscaba el enlace «Pago a cuenta» dentro de la tarjeta «Cuenta»; V-20 lo movió al encabezado como acción primaria y lo renombró «Registrar pago a cuenta». **Preguntado y autorizado antes de tocarlo**, con las dos alternativas sobre la mesa —corregir el localizador o revertir V-20 en el código—; el usuario eligió el localizador, así que la ficha sigue pareciéndose a la lámina. Una línea, un archivo: la spec entera pasa **12/12** |
 
 Dos ubicaciones distintas de las que el brief suponía, declaradas y no corregidas en silencio:
 
@@ -725,7 +726,7 @@ cada medición llama además al servicio real y compara su resultado.
 | AC-14 | **Cumplido** | Las **cuatro** mediciones de arriba; ninguna lectura recorre la tabla entera. La cuarta la agregó el hallazgo B-3 |
 | AC-15 | **Cumplido** | `tests/guards/` **920/920 en 33 archivos**, con `purchasing-dependencies.test.ts` **sin tocar** |
 | AC-16 | **Cumplido** | 67 archivos de migración, los mismos de producción |
-| AC-18 | **Pendiente** | La CI no corrió: no hay commit |
+| AC-18 | **Cumplido en la segunda corrida** | La primera, sobre `68bee84`, dio **failure**: 405 pasaron y **1 falló**, con «Corre todo: true». La sección de abajo cuenta qué era y qué se corrigió |
 | AC-19 | **Cumplido** | La revisión de abajo: un agente que no participó, de solo lectura. Veredicto **R1**, cuatro hallazgos bloqueantes, **los cuatro verificados contra el código y corregidos** |
 | AC-20 | **Pendiente** | Sin despliegue ni recorrido |
 
@@ -734,18 +735,54 @@ archivos tocados, `prettier --check` limpio sobre los archivos tocados, **unit y
 2.247/2.247 en 157 archivos** después de las correcciones de la revisión, y **integración
 1.950/1.950**.
 
-**La batería e2e completa no se pudo correr localmente hasta el final**, y se declara en vez de
-redondearse. Se lanzó después de las correcciones, con build fresco, y el sistema la **mató por
-falta de memoria**: 226 pasaron, **22 fallaron y 158 no corrieron**. Los 22 fallos **no son de
-aserción**: 21 dicen `worker process exited unexpectedly (code=3221225794)` y uno
-`browserContext.newPage: Target crashed`, o sea el proceso del navegador se cayó, y a partir de ahí
-cascada. Tres de esos 22 son de las specs de proveedores, que **media hora antes, con el mismo
-build y corridas solas, habían dado 21/21**. Lo que queda probado localmente son las dos specs
-tocadas en aislamiento; **la evidencia de «toda la batería en una pasada» es la de AC-18**. Esto último, con una salvedad que no se redondea: la batería de
-integración completa **no cerró en una sola corrida local**. Un worker se cayó
-(`exit code 3221226505`) con `tests/integration/read-api-v3-repairs.test.ts`, que corrido solo da
-**10/10**; son 1.950 en dos corridas, no 1.950 de una, y la evidencia de «toda la batería en una
-pasada» es la de AC-18.
+**Ninguna de las dos baterías largas cerró en una sola corrida local**, y se declara en vez de
+redondearse.
+
+- **La e2e completa fue muerta por el sistema** por falta de memoria, con build fresco y después de
+  las correcciones: **226 pasaron, 22 fallaron y 158 no corrieron**. Los 22 fallos **no son de
+  aserción**: 21 dicen `worker process exited unexpectedly (code=3221225794)` y uno
+  `browserContext.newPage: Target crashed`, o sea el proceso del navegador se cayó y de ahí en
+  cascada.
+- **La de integración tampoco**: un worker se cayó (`exit code 3221226505`) con
+  `tests/integration/read-api-v3-repairs.test.ts`, que corrido solo da **10/10**. Son 1.950 en dos
+  corridas, no 1.950 de una.
+
+Lo que queda probado localmente son las specs tocadas en aislamiento. **La evidencia de «toda la
+batería en una pasada» es la de AC-18**, y esta vez no fue una formalidad: la CI encontró un fallo
+real que la corrida local, muerta en el caso 227, no alcanzó a mostrar. Está abajo.
+
+### AC-18 · La CI, y el fallo que encontró
+
+**La primera corrida falló, y encontró algo que ni la autoevaluación ni la revisión independiente
+ni la corrida local habían visto.** Run **44162148407**, leída por `headSha` sobre
+`68bee8415855a000c853b13f3581ef65b3348475` y no por «la última», con el paso «Alcance del cambio»
+en **«Corre todo: true»**: **405 pasaron, 1 falló** en 26,9 minutos.
+
+El caso rojo era `tests/e2e/supplier-payments.spec.ts:281`, que hacía clic en un enlace
+«Pago a cuenta» **dentro de la región «Cuenta»** de la ficha. **V-20 lo movió al encabezado** como
+acción primaria y lo renombró **«Registrar pago a cuenta»**, así que el localizador apuntaba a algo
+que esta subfase dejó de dibujar, y el caso murió por timeout esperándolo. Corregido con una línea,
+después de preguntar porque el archivo está fuera de la lista cerrada; la spec entera pasa
+**12/12**.
+
+**Por qué ninguno de los instrumentos anteriores lo vio**, que es lo que vale la pena guardar:
+
+- **La revisión independiente no pudo**: su informe declara que no tuvo shell, así que no corrió
+  nada. Un localizador roto no se ve leyendo el archivo que cambió, se ve corriendo el que no
+  cambió.
+- **La verificación acotada tampoco podía**: las dos specs tocadas pasaban 21/21. La spec que se
+  rompió **no fue tocada por esta subfase**, y es justo la clase de archivo que la regla de la
+  24.6.1-b manda correr igual. La regla se aplicó —la batería completa se lanzó— y lo que falló fue
+  la máquina, no el criterio.
+- **La corrida local murió antes**: el sistema la mató por memoria en el caso 227, y
+  `supplier-payments.spec.ts` quedó entre los 22 fallos por muerte del worker, con un error que no
+  se parece en nada al defecto real. **Un fallo por falta de memoria esconde los fallos de verdad**:
+  mirar esos 22 y concluir «es la memoria» era correcto y, al mismo tiempo, dejaba uno adentro.
+
+La lección es de la forma de la verificación, no del código: **cuando una subfase renombra o mueve
+un control que ya existía, los archivos que hay que correr no son los que cambió**. Un `grep` del
+rótulo viejo en `tests/` habría encontrado esa línea en un segundo, y es más barato que una corrida
+de 27 minutos.
 
 ### AC-19 · Revisión independiente
 
@@ -794,7 +831,9 @@ estaba, y no en la tabla, que es donde faltaba.
 
 ### Lo que falta para cerrar
 
-1. **AC-18**, la CI sobre el SHA exacto, leída por `headSha`, con «Corre todo: true».
+1. **AC-18**, la CI **en verde** sobre el SHA del segundo commit, leída por `headSha`: la primera
+   corrida encontró un fallo real, que está corregido, y el runbook de producción no deja desplegar
+   sin un `success` de **ese** `headSha`.
 2. **AC-20**, el despliegue con las siete verificaciones del runbook y el recorrido del usuario.
 3. La decisión sobre **N-7** (`setTechnicianAction` sin llamador): se borra ahora, tocando la guarda
    de superficie, o se conserva para la 24.8.2-c.

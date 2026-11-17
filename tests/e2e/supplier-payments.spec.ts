@@ -286,10 +286,9 @@ test("un pago a cuenta mayor que la deuda: se imputa a la recepción más vieja 
   await login(page, ADMIN);
 
   await page.goto(`/compras/proveedores/${supplierId}`);
-  await page
-    .getByRole("region", { name: "Cuenta", exact: true })
-    .getByRole("link", { name: "Pago a cuenta" })
-    .click();
+  // El enlace vive en el encabezado, como acción primaria, y se llama «Registrar pago a cuenta»
+  // desde la 24.8.2-b (V-20 de la lámina 14). Hasta entonces estaba dentro de la tarjeta «Cuenta».
+  await page.getByRole("link", { name: "Registrar pago a cuenta" }).click();
   await expect(
     page.getByRole("heading", {
       level: 1,
