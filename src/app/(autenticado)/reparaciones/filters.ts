@@ -8,13 +8,17 @@ import type {
 // Desde la 24.8.2-b, el técnico (brief-24.8.2-b, D-5), que es a donde lleva «Ver reparaciones» de
 // la ficha del proveedor. El id viaja tal cual: quien valida que sea un uuid es el módulo, que ante
 // uno que no lo es responde una lista vacía en lugar de romperse.
+// Desde la 24.9.1 (D-3), el parámetro «numero» pasó a llamarse «buscar» y encuentra por número de
+// orden **o** por modelo del equipo. No busca por nombre de cliente: la guarda module-boundary no
+// deja que service lea la tabla de clientes, y el buscador global ya los encuentra desde la 24.2.
 
 export type SearchParams = Record<string, string | string[] | undefined>;
 
 export type ServiceOrderFilters = {
   status: ServiceOrderStatusFilter;
   kind: ServiceOrderKindFilter;
-  number: string;
+  // Lo que se escribió en el buscador: un número de orden o un modelo (D-3).
+  text: string;
   // Desde la 24.8.2-b (brief-24.8.2-b, D-5): el técnico, para «Ver reparaciones» de su ficha.
   technicianId: string;
   page: number;
@@ -59,7 +63,7 @@ export function parseServiceOrderFilters(
   return {
     status,
     kind,
-    number: single(query.numero).slice(0, 30),
+    text: single(query.buscar).slice(0, 60),
     technicianId: single(query.tecnico).slice(0, 36),
     page: /^[1-9][0-9]{0,5}$/.test(rawPage) ? Number(rawPage) : 1,
   };
@@ -79,7 +83,7 @@ export function hasActiveServiceOrderFilters(
   return (
     filters.status !== "open" ||
     filters.kind !== "all" ||
-    filters.number.trim() !== "" ||
+    filters.text.trim() !== "" ||
     filters.technicianId.trim() !== ""
   );
 }
@@ -89,7 +93,7 @@ export function serviceOrderFiltersHref(filters: ServiceOrderFilters): string {
   if (filters.status !== "open")
     params.set("estado", statusParam(filters.status));
   if (filters.kind !== "all") params.set("tipo", kindParam(filters.kind));
-  if (filters.number.trim() !== "") params.set("numero", filters.number.trim());
+  if (filters.text.trim() !== "") params.set("buscar", filters.text.trim());
   if (filters.technicianId.trim() !== "")
     params.set("tecnico", filters.technicianId.trim());
   if (filters.page > 1) params.set("pagina", String(filters.page));

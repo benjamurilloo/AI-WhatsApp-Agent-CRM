@@ -7,6 +7,7 @@ import {
   gte,
   inArray,
   isNotNull,
+  isNull,
   notInArray,
   or,
   sql,
@@ -622,6 +623,13 @@ export type ServiceOrderListQuery = {
   // Las que siguen abiertas, con los estados abiertos de cada tipo: una orden propia reparada ya
   // terminó, y una de cliente reparada espera la entrega (brief-29.6.2, D-7).
   open?: Record<ServiceOrderKind, ServiceOrderStatus[]> | null;
+  // Los modelos cuyo nombre coincide con lo buscado (brief-24.9.1, D-3). Va **en O con el número**,
+  // no en Y: quien escribe «312» busca la orden y quien escribe «iPhone 13» busca el equipo. Null o
+  // ausente: el número filtra solo, que es lo que sigue haciendo el buscador global.
+  searchModelIds?: string[] | null;
+  // Sin presupuesto guardado al cliente (brief-24.9.1, D-2): es lo que le falta a la consulta para
+  // poder contar «Para presupuestar». Null o ausente: no filtra por presupuesto.
+  withoutCustomerQuote?: boolean | null;
 };
 
 function listConditions(query: ServiceOrderListQuery): SQL {
@@ -631,7 +639,21 @@ function listConditions(query: ServiceOrderListQuery): SQL {
   if (query.statuses !== null) {
     conditions.push(inArray(serviceOrders.status, query.statuses));
   }
-  if (query.number !== null) {
+  if (query.searchModelIds != null) {
+    // El número y el modelo, en O (brief-24.9.1, D-3). Si lo buscado no tiene forma de número y
+    // ningún modelo coincide, no encuentra nada: devolver la lista entera sería peor que no
+    // encontrar, porque parecería que la búsqueda no se aplicó.
+    const alternatives: SQL[] = [];
+    if (query.number !== null) {
+      alternatives.push(eq(serviceOrders.number, query.number));
+    }
+    if (query.searchModelIds.length > 0) {
+      alternatives.push(inArray(serviceOrders.modelId, query.searchModelIds));
+    }
+    conditions.push(
+      alternatives.length > 0 ? or(...alternatives)! : sql`false`,
+    );
+  } else if (query.number !== null) {
     conditions.push(eq(serviceOrders.number, query.number));
   }
   if (query.clientId !== null) {
@@ -649,6 +671,13 @@ function listConditions(query: ServiceOrderListQuery): SQL {
   if (query.deviceSerial != null) {
     conditions.push(
       sql`lower(${serviceOrders.deviceSerial}) = ${query.deviceSerial.toLowerCase()}`,
+    );
+  }
+  if (query.withoutCustomerQuote != null) {
+    conditions.push(
+      query.withoutCustomerQuote
+        ? isNull(serviceOrders.customerTotal)
+        : isNotNull(serviceOrders.customerTotal),
     );
   }
   if (query.open != null) {
@@ -674,6 +703,34 @@ export async function countServiceOrders(
     .from(serviceOrders)
     .where(listConditions(query));
   return rows[0]?.total ?? 0;
+}
+
+// Cuántas órdenes hay por tipo, por estado y según tengan o no presupuesto guardado al cliente
+// (brief-24.9.1, D-2), para las cuatro tarjetas del listado. Es **una sola consulta agrupada**, como
+// la de la bandeja: las cuatro tarjetas se derivan de estas filas y ninguna se calcula sobre la
+// página de resultados. El agrupamiento por presupuesto es lo único que distingue «Para
+// presupuestar» de los demás recuentos por tipo y estado.
+export async function countServiceOrdersByKindStatusAndQuote(
+  query: ServiceOrderListQuery,
+): Promise<
+  {
+    kind: ServiceOrderKind;
+    status: ServiceOrderStatus;
+    withoutQuote: boolean;
+    total: number;
+  }[]
+> {
+  const withoutQuote = sql<boolean>`${serviceOrders.customerTotal} is null`;
+  return getDb()
+    .select({
+      kind: serviceOrders.kind,
+      status: serviceOrders.status,
+      withoutQuote,
+      total: count(),
+    })
+    .from(serviceOrders)
+    .where(listConditions(query))
+    .groupBy(serviceOrders.kind, serviceOrders.status, withoutQuote);
 }
 
 // Cuántas órdenes de la lista tiene cada cliente, para la lista de clientes (brief-24.4.2, D-1 y D-3):

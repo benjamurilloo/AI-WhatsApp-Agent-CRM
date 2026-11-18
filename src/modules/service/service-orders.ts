@@ -777,6 +777,10 @@ export type ServiceOrderSummary = {
   // Null hasta el presupuesto.
   customerTotal: string | null;
   customerCurrency: string | null;
+  // La venta que dejó la entrega (D-6); null mientras no se entregó o no hubo nada que cobrar.
+  // Desde la 24.9.1 la usa el «Próximo paso» del listado, que así ofrece «Ver venta» solo cuando
+  // la venta existe de verdad, en vez de suponerla porque hubo presupuesto.
+  saleId: string | null;
   createdAt: Date;
   // La garantía de una orden de un cliente reparada y entregada (brief-29.9, D-2); null en las demás.
   warranty: Warranty | null;
@@ -791,6 +795,9 @@ export type ServiceOrderListFilters = {
   kind?: ServiceOrderKindFilter;
   // Lo que escribió quien busca; vacío no filtra.
   number: string;
+  // Desde la 24.9.1 (D-3): buscar también por el modelo del equipo, en O con el número. Lo pide el
+  // listado; el buscador global **no lo pasa** y sigue encontrando solo por número, sin cambiar.
+  searchModels?: boolean;
   // Desde la 24.8.2-b (D-5): el técnico, para «Ver reparaciones» de su ficha. Vacío no filtra, y
   // un id que no es un uuid tampoco: la lista responde vacía en vez de romperse.
   technicianId?: string;
@@ -865,6 +872,7 @@ async function summarize(
     status: row.status,
     customerTotal: row.customerTotal,
     customerCurrency: row.customerCurrency,
+    saleId: row.saleId,
     createdAt: row.createdAt,
     warranty: warrantyOf(row),
   }));
@@ -922,25 +930,76 @@ const SERIAL_SEARCH_LIMIT = 20;
 
 const EMPTY_PAGE = { total: 0, page: 1, pageCount: 1 } as const;
 
+// Los modelos cuyo nombre contiene lo buscado, sin distinguir mayúsculas (brief-24.9.1, D-3 y AC-7).
+// **No agrega ninguna lectura**: la lista ya lee todos los modelos para poner el nombre de cada
+// equipo. Sin la capacidad variants no hay modelos que leer, y entonces buscar por equipo no
+// encuentra nada, igual que el nombre del modelo, que tampoco se dibuja.
+async function matchingModelIds(
+  context: AuthContext,
+  text: string,
+): Promise<string[]> {
+  const models = await listModels(context);
+  if (!models.ok) return [];
+  const needle = text.trim().toLowerCase();
+  return models.models
+    .filter((model) => model.name.toLowerCase().includes(needle))
+    .map((model) => model.id);
+}
+
+// Lo que la lista y los contadores filtran igual: todo menos el estado. `null` significa que nada
+// puede coincidir —un número que no tiene forma de número de orden, un técnico que no es un uuid— y
+// quien llama responde una página vacía o cuatro ceros, en vez de romperse.
+type CommonQuery = Pick<
+  repository.ServiceOrderListQuery,
+  | "organizationId"
+  | "number"
+  | "clientId"
+  | "kind"
+  | "technicianId"
+  | "searchModelIds"
+>;
+
+async function commonListQuery(
+  context: AuthContext,
+  filters: Omit<ServiceOrderListFilters, "page" | "status">,
+): Promise<CommonQuery | null> {
+  const numberText = filters.number.trim();
+  const number =
+    numberText === "" ? null : parseServiceOrderNumberSearch(numberText);
+  const searchModelIds =
+    filters.searchModels === true && numberText !== ""
+      ? await matchingModelIds(context, numberText)
+      : null;
+  if (numberText !== "" && number === null && searchModelIds === null) {
+    return null;
+  }
+  const technicianText = (filters.technicianId ?? "").trim().toLowerCase();
+  if (technicianText !== "" && !idSchema.safeParse(technicianText).success) {
+    return null;
+  }
+  return {
+    organizationId: context.organizationId,
+    number,
+    clientId: null,
+    kind:
+      filters.kind === undefined || filters.kind === "all"
+        ? null
+        : filters.kind,
+    technicianId: technicianText === "" ? null : technicianText,
+    searchModelIds,
+  };
+}
+
 export async function listServiceOrders(
   context: AuthContext,
   filters: ServiceOrderListFilters,
 ): Promise<ServiceOrderPage | Failure<"FORBIDDEN" | "NOT_FOUND">> {
   const allowed = await requireRepairs(context);
   if (!allowed.ok) return allowed;
-  const numberText = filters.number.trim();
-  const number =
-    numberText === "" ? null : parseServiceOrderNumberSearch(numberText);
-  if (numberText !== "" && number === null) {
-    return { ok: true, ...EMPTY_PAGE, orders: [] };
-  }
-  const technicianText = (filters.technicianId ?? "").trim().toLowerCase();
-  if (technicianText !== "" && !idSchema.safeParse(technicianText).success) {
-    return { ok: true, ...EMPTY_PAGE, orders: [] };
-  }
-  const technician = technicianText === "" ? null : technicianText;
+  const common = await commonListQuery(context, filters);
+  if (common === null) return { ok: true, ...EMPTY_PAGE, orders: [] };
   const query: repository.ServiceOrderListQuery = {
-    organizationId: context.organizationId,
+    ...common,
     statuses:
       filters.status === "all" || filters.status === "open"
         ? null
@@ -953,13 +1012,6 @@ export async function listServiceOrders(
             warranty_claim: [...OPEN_WARRANTY_CLAIM_STATUSES],
           }
         : null,
-    number,
-    clientId: null,
-    kind:
-      filters.kind === undefined || filters.kind === "all"
-        ? null
-        : filters.kind,
-    technicianId: technician,
   };
   const total = await repository.countServiceOrders(query);
   const pageCount = Math.max(1, Math.ceil(total / SERVICE_ORDERS_PAGE_SIZE));
@@ -979,6 +1031,71 @@ export async function listServiceOrders(
     page,
     pageCount,
   };
+}
+
+// Las cuatro tarjetas del listado (brief-24.9.1, D-2), para los dos roles: responden a los filtros
+// vigentes **menos el estado** —el molde es getConversationCounts de la bandeja (brief-24.3, D-1 y
+// D-3)— y se cuentan sobre toda la organización, nunca sobre la página de resultados.
+//
+// Las cuatro salen de **una sola consulta agrupada** por tipo, estado y presupuesto:
+//   - En curso: los estados abiertos de cada tipo, el mismo conjunto que el filtro «En curso».
+//   - Para presupuestar: equipos de cliente en el técnico **sin presupuesto guardado**. Una orden
+//     recibida todavía no se presupuesta —su próximo paso es enviarla— y por eso no cuenta.
+//   - Listas para entregar: reparadas de cliente o de reclamo. Una unidad propia reparada ya
+//     terminó (brief-29.6.2, D-3), así que nunca cuenta acá.
+//   - Garantías abiertas: los reclamos en un estado abierto (brief-29.9.2, D-1).
+export type ServiceOrderCounts = {
+  open: number;
+  toQuote: number;
+  readyToDeliver: number;
+  openClaims: number;
+};
+
+const EMPTY_COUNTS: ServiceOrderCounts = {
+  open: 0,
+  toQuote: 0,
+  readyToDeliver: 0,
+  openClaims: 0,
+};
+
+export async function getServiceOrderCounts(
+  context: AuthContext,
+  filters: Omit<ServiceOrderListFilters, "page" | "status">,
+): Promise<
+  { ok: true; counts: ServiceOrderCounts } | Failure<"FORBIDDEN" | "NOT_FOUND">
+> {
+  const allowed = await requireRepairs(context);
+  if (!allowed.ok) return allowed;
+  // El mismo armado que la lista, así los contadores y la tabla no pueden filtrar distinto.
+  const common = await commonListQuery(context, filters);
+  if (common === null) return { ok: true, counts: { ...EMPTY_COUNTS } };
+  const rows = await repository.countServiceOrdersByKindStatusAndQuote({
+    ...common,
+    statuses: null,
+  });
+  const counts = { ...EMPTY_COUNTS };
+  for (const row of rows) {
+    if (OPEN_STATUSES_BY_KIND[row.kind].includes(row.status)) {
+      counts.open += row.total;
+    }
+    if (
+      row.kind === "customer_device" &&
+      row.status === "sent" &&
+      row.withoutQuote
+    ) {
+      counts.toQuote += row.total;
+    }
+    if (row.status === "repaired" && row.kind !== "own_unit") {
+      counts.readyToDeliver += row.total;
+    }
+    if (
+      row.kind === "warranty_claim" &&
+      OPEN_WARRANTY_CLAIM_STATUSES.includes(row.status)
+    ) {
+      counts.openClaims += row.total;
+    }
+  }
+  return { ok: true, counts };
 }
 
 // Las últimas órdenes de un cliente, para su ficha (D-10). Sin la capacidad, ninguna.

@@ -50,6 +50,40 @@ export const ERASED_TEXT = "Dato vaciado a pedido del cliente.";
 export const OWN_UNIT_TEXT = "Unidad propia";
 export const UNKNOWN_UNIT_TEXT = "Unidad desconocida";
 
+// El listado rediseñado (brief-24.9.1, lámina 01): el subtítulo, las cuatro tarjetas y los textos
+// de la columna de importe. Un importe ausente **nunca se dibuja como cero** (I-7): cada tipo de
+// orden dice por qué no hay importe, y no es lo mismo en los tres.
+export const SERVICE_ORDERS_SUBTITLE = "Seguí cada equipo y su próximo paso.";
+export const NO_QUOTE_TEXT = "Sin presupuesto";
+export const NOT_APPLICABLE_TEXT = "No aplica";
+export const NO_CHARGE_TEXT = "Sin cargo al cliente";
+export const NO_NEXT_STEP_TEXT = "—";
+export const CUSTOMER_AMOUNT_HEADING = "Importe al cliente";
+export const AMOUNTS_NOT_SUMMED_NOTE =
+  "Los importes no se suman entre tipos de orden.";
+
+// Las cuatro tarjetas de contadores (D-2). El pie de cada una dice qué cuenta, porque el título
+// solo no alcanza: con el filtro «Reclamos» puesto, «En curso» y «Garantías abiertas» cuentan lo
+// mismo, y sin el pie parecería un error.
+export const SERVICE_ORDER_COUNTERS: readonly {
+  key: "open" | "toQuote" | "readyToDeliver" | "openClaims";
+  label: string;
+  note: string;
+}[] = [
+  { key: "open", label: "En curso", note: "Órdenes sin entregar." },
+  {
+    key: "toQuote",
+    label: "Para presupuestar",
+    note: "Pendientes de presupuesto.",
+  },
+  {
+    key: "readyToDeliver",
+    label: "Listas para entregar",
+    note: "Con reparación finalizada.",
+  },
+  { key: "openClaims", label: "Garantías abiertas", note: "En proceso." },
+];
+
 export const KIND_LABEL: Record<ServiceOrderKind, string> = {
   customer_device: "Equipo de un cliente",
   own_unit: "Unidad propia",

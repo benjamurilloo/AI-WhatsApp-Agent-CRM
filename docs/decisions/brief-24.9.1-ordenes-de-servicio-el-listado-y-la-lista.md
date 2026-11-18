@@ -168,6 +168,10 @@ H-8 y cubrió con el caso de `goods-receipts.spec.ts`.
 | **V-13** | 06 | **Candado** en «Costo estimado del técnico» | Se adopta como marca de lectura de `admin`; el `viewer` **no recibe el dato**, no lo recibe tachado |
 | **V-14** | 06 | «Tipos activos» con chips y «Gestionar tipos» abajo | Se adopta dentro de la pestaña «Tipos de reparación» |
 | **V-15** | 01 y 06 | El buscador global del encabezado dice tres textos distintos entre láminas | **No se adopta ninguno**: el buscador global es de la 24.2 y no se toca |
+| **V-16** | 01 | El filtro **«Estado» aparece en «Todos»** | **No se adopta**: el listado abre en **«En curso»** por D-10 del [brief 29.6](brief-29.6-las-reparaciones-de-equipos-de-clientes.md), que es una decisión aprobada sobre qué se ve al entrar. Cambiar el valor inicial escondería las órdenes abiertas entre las terminadas, que es justo lo que esa decisión evita |
+
+*V-16 se agregó el 2026-11-17, al implementar el listado*: la lámina dibuja el control en «Todos» y
+el proyecto decidió lo contrario. Se declara en vez de cambiar el valor inicial en silencio.
 
 ## Decisiones
 
@@ -201,7 +205,13 @@ discrepancia se declara acá y se corrige al cerrar**.
 ### D-3 · El buscador ampliado (H-6, V-7) — CERRADA en (a)
 
 - **(a)** Entra: busca número, cliente y modelo, con la lectura medida *(recomendada si se quiere la
-  lámina entera)*.
+  lámina entera)*. *Enmendado el 2026-11-17, al implementar*: el usuario eligió **«número y equipo,
+  sin cliente»** cuando se le elevó que la guarda `module-boundary` no deja que un archivo de
+  `service` que no sea `schema.ts` importe el esquema de `crm`, así que el JOIN con la tabla de
+  clientes que «buscar por cliente» necesita **no está disponible**, y la única búsqueda por nombre de
+  `crm` —`searchClients`— está paginada y truncaría en silencio. **El buscador del listado encuentra
+  por número de orden O por nombre del modelo del equipo**, y el criterio por cliente queda fuera:
+  el buscador global (Ctrl+K) ya encuentra clientes desde la 24.2.
 - **(b)** No entra: sigue siendo por número, se declara la diferencia y se deja como mejora
   posterior. El buscador global (Ctrl+K) ya encuentra una orden por número y por cliente desde la
   24.2, así que la pérdida es acotada.

@@ -31,7 +31,7 @@ describe("el filtro por técnico en la URL (D-5)", () => {
     const filters = parseServiceOrderFilters({
       estado: "reparadas",
       tipo: "clientes",
-      numero: "OS-000123",
+      buscar: "OS-000123",
       tecnico: TECNICO,
       pagina: "3",
     });
@@ -39,7 +39,7 @@ describe("el filtro por técnico en la URL (D-5)", () => {
     const href = serviceOrderFiltersHref(filters);
     expect(href).toContain("estado=reparadas");
     expect(href).toContain("tipo=clientes");
-    expect(href).toContain("numero=OS-000123");
+    expect(href).toContain("buscar=OS-000123");
     expect(href).toContain(`tecnico=${TECNICO}`);
     expect(href).toContain("pagina=3");
   });
@@ -55,6 +55,41 @@ describe("el filtro por técnico en la URL (D-5)", () => {
 
   it("un id en blanco no filtra ni ensucia la URL", () => {
     const filters = parseServiceOrderFilters({ tecnico: "   " });
+    expect(hasActiveServiceOrderFilters(filters)).toBe(false);
+    expect(serviceOrderFiltersHref(filters)).toBe("/reparaciones");
+  });
+});
+
+// El buscador de la 24.9.1 (D-3 y AC-7): el parámetro se llama «buscar» y acepta un número de orden
+// o un modelo. Que encuentre de verdad por modelo lo prueba la integración; acá está el contrato de
+// la URL, que es lo que la tabla y los cuatro contadores comparten.
+describe("el buscador del listado (24.9.1, D-3)", () => {
+  it("sin el parámetro, no busca nada y los filtros siguen inactivos", () => {
+    const filters = parseServiceOrderFilters({});
+    expect(filters.text).toBe("");
+    expect(hasActiveServiceOrderFilters(filters)).toBe(false);
+  });
+
+  it("lee un modelo igual que un número y lo devuelve a la URL", () => {
+    const filters = parseServiceOrderFilters({ buscar: "iPhone 13" });
+    expect(filters.text).toBe("iPhone 13");
+    expect(hasActiveServiceOrderFilters(filters)).toBe(true);
+    expect(serviceOrderFiltersHref(filters)).toBe(
+      "/reparaciones?buscar=iPhone+13",
+    );
+  });
+
+  it("recorta un texto larguísimo y toma el primero de un arreglo repetido", () => {
+    expect(
+      parseServiceOrderFilters({ buscar: "x".repeat(200) }).text,
+    ).toHaveLength(60);
+    expect(parseServiceOrderFilters({ buscar: ["uno", "dos"] }).text).toBe(
+      "uno",
+    );
+  });
+
+  it("un texto en blanco no filtra ni ensucia la URL", () => {
+    const filters = parseServiceOrderFilters({ buscar: "   " });
     expect(hasActiveServiceOrderFilters(filters)).toBe(false);
     expect(serviceOrderFiltersHref(filters)).toBe("/reparaciones");
   });

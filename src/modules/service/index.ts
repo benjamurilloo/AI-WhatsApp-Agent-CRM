@@ -58,6 +58,8 @@ export {
   createServiceOrder,
   deliverServiceOrder,
   formatServiceOrderNumber,
+  getServiceOrderCounts,
+  type ServiceOrderCounts,
   getQuoteForm,
   getServiceOrder,
   countOpenServiceOrdersByClient,
