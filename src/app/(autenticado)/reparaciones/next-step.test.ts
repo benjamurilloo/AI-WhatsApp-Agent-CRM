@@ -56,9 +56,9 @@ describe("nextServiceOrderStep", () => {
   for (const kind of Object.keys(ESPERADO) as ServiceOrderKind[]) {
     for (const status of STATUSES) {
       it(`${kind} en ${status}`, () => {
-        expect(
-          nextServiceOrderStep({ kind, status, saleId: null }),
-        ).toBe(ESPERADO[kind][status]);
+        expect(nextServiceOrderStep({ kind, status, saleId: null })).toBe(
+          ESPERADO[kind][status],
+        );
       });
     }
   }
@@ -75,9 +75,7 @@ describe("nextServiceOrderStep", () => {
     expect(paso("customer_device", "received")).toBe("Enviar al técnico");
     expect(paso("own_unit", "sent")).toBe("Registrar reparación");
     expect(paso("warranty_claim", "sent")).toBe("Registrar reparación");
-    expect(paso("customer_device", "delivered", "una-venta")).toBe(
-      "Ver venta",
-    );
+    expect(paso("customer_device", "delivered", "una-venta")).toBe("Ver venta");
   });
 
   // «Ver venta» depende de que la venta exista, no de que la orden esté entregada: una orden
