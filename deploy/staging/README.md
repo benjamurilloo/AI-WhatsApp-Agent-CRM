@@ -2,6 +2,8 @@
 
 Configuración versionada del entorno `staging.vixoraai.app` ([brief-9.1](../../docs/decisions/brief-9.1-infraestructura-de-staging.md)).
 
+**Estado al 2026-11-18: apagado / archivado** ([ADR 0026](../../docs/decisions/0026-el-crm-se-archiva-como-demo-local.md)). `crm-staging.service` y los dos timers del CRM están detenidos y deshabilitados, leído en systemd ([evidencia-13.6](../../docs/decisions/evidencia-13.6-archivo.md)). Vixora CRM destruye el droplet; no se reutiliza tal como está, porque todavía guarda **dumps en claro** en `/var/backups/crm-staging` y los secretos en `/etc/crm-staging/`. Este directorio se conserva como registro, y las tres guardas `staging-*` siguen fijándolo.
+
 **Por qué existe este directorio.** Hasta el 2026-09-22 esta configuración vivía solo en el servidor. La revisión independiente de la 9.1 lo señaló como hallazgo **mayor** (H-1): toda la resolución de H-3 descansa en que nginx **reemplace** `x-forwarded-for` en vez de agregarlo, y esa premisa no se podía auditar ni detectar su regresión. Re-aprovisionar la máquina o poner algo delante —Cloudflare, un balanceador— reintroduce H-3 **en silencio y pasando en verde**.
 
 Los archivos de acá son la fuente de verdad. **Tres** guardas los fijan con casos de fallo: `tests/guards/staging-proxy-config.test.ts` (nginx y la unidad de la aplicación, 9.1), `tests/guards/staging-backup-config.test.ts` (los scripts y las unidades de backup, 9.2) y `tests/guards/staging-postgres-config.test.ts` (los parámetros de costo del planificador, 9.3).

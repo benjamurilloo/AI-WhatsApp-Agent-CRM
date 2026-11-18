@@ -1,6 +1,6 @@
 # Entornos
 
-**Estado:** el desarrollo local con PostgreSQL existe desde la 2.4 ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md)), staging desde la 9.1, y producción está desplegada desde el 2026-09-29 (13.1.2).
+**Estado:** *desde el 2026-11-18, archivado / demo en localhost* ([ADR 0026](../decisions/0026-el-crm-se-archiva-como-demo-local.md)). Producción y staging están **apagados**: la aplicación y los timers, detenidos y deshabilitados en los dos droplets, que quedan para Vixora CRM. La demo corre en local sobre la base `crm_demo`, que es el backup final de producción restaurado, con la guía [demo-local.md](../runbooks/demo-local.md). Las filas de staging y producción de abajo describen cómo eran esos entornos. *Lo que decía antes*: el desarrollo local con PostgreSQL existe desde la 2.4 ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md)), staging desde la 9.1, y producción está desplegada desde el 2026-09-29 (13.1.2).
 
 ## Entornos
 

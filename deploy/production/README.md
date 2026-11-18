@@ -4,6 +4,8 @@ Configuración versionada del entorno `crm.vixoraai.app` ([brief-13.1](../../doc
 
 Es el mecanismo de staging ([deploy/staging/README.md](../staging/README.md)), que se verificó en la 9.1 y la 9.2, con las diferencias de la tabla de abajo. **Todo lo que este README no dice se hace como en staging.** Las tres guardas de `tests/guards/staging-*.test.ts` fijan los dos directorios desde la 13.1 (D-12), y fallan si aparece un directorio nuevo bajo `deploy/` sin cubrir.
 
+**Estado al 2026-11-18: apagado / archivado** ([ADR 0026](../../docs/decisions/0026-el-crm-se-archiva-como-demo-local.md)). `crm-production.service` y los tres timers del CRM están detenidos y deshabilitados, leído en systemd ([evidencia-13.6](../../docs/decisions/evidencia-13.6-archivo.md)). El droplet queda para Vixora CRM, que lo destruye o lo reconstruye: **todavía guarda dumps en claro y los secretos**. Este directorio se conserva como registro. La demo corre en localhost ([demo-local.md](../../docs/runbooks/demo-local.md)). Lo que sigue describe el entorno tal como estaba desplegado.
+
 **Estado al 2026-09-30**: **desplegado**. El entorno existe desde el 2026-09-29 y corre la configuración de este directorio. La etapa 13.1.1 escribió estos archivos, y la 13.1.2 los desplegó y los verificó contra el entorno ([evidencia-13.1](../../docs/decisions/evidencia-13.1-produccion.md)).
 
 ## Diferencias con staging

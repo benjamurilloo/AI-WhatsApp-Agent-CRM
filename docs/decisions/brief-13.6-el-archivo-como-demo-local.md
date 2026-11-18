@@ -1,7 +1,9 @@
 # Brief 13.6 — El archivo del CRM como demo local
 
 **Estado: aprobado el 2026-11-18, con D-1 a D-8 cerradas en su opción (a)** por decisión del
-usuario. Tipo de tarea: `operations` (backup final,
+usuario. **Se ejecutó el mismo día hasta el paso 8, pero no está cerrado**: AC-6 sigue abierto
+hasta el 2026-11-19, y faltan AC-9 fuera del repositorio, AC-10 y la aprobación del usuario
+(§Cierre). Tipo de tarea: `operations` (backup final,
 apagado de servidores y documentación), **sin código de producto y sin migraciones**. Lo pide el
 proyecto **Vixora CRM**, que lo puso como condición de entrada: su [ADR 0004](../../../Vixora-CRM/docs/decisions/0004-infraestructura.md)
 (D-8 bis, variante d2, 2026-11-18) hereda el droplet de 2 GB `crm-production` y destruye el de
@@ -307,3 +309,55 @@ No hay código nuevo. El cierre informa **un nivel por cosa**, sin inferir uno d
 - «sin alertas **durante 24 h observadas**» (AC-6);
 - «demo **corriendo en local**» (AC-7);
 - y para el agente, «**pendiente en su proyecto**», si D-8 cierra en (a).
+
+## Cierre
+
+*Escrito el 2026-11-18, después del paso 7, y corregido ese mismo día tras la revisión
+independiente.* **La tabla es autoevaluación**: la escribió la sesión que ejecutó la subfase. La
+revisó un agente que no participó, con acceso de solo lectura, contra este brief y `CLAUDE.md`. El
+veredicto fue **R1, con 2 hallazgos bloqueantes y 11 no bloqueantes**. Todos se verificaron contra
+los archivos y se corrigieron; ver [evidencia-13.6](evidencia-13.6-archivo.md), §La revisión
+independiente. La decisión está en el [ADR 0026](0026-el-crm-se-archiva-como-demo-local.md).
+
+**La subfase no está cerrada.** Faltan AC-6, AC-9 fuera del repositorio, AC-10 y la aprobación del
+usuario.
+
+| Criterio | Estado |
+| --- | --- |
+| AC-1 | **Cumplido.** El backup final de los dos entornos se tomó con las aplicaciones detenidas. El `sha256` se comprobó en la copia local, imprimiendo los dos valores |
+| AC-2 | **Cumplido, con un desvío en el control negativo.** Producción se restauró en `crm_demo`: coinciden las 77 tablas y la única imagen. Staging se restauró en una base aparte: coinciden sus 17 tablas. El criterio pide que el dump truncado falle **la misma comparación**, pero **falla antes**, en `pg_restore`. Por eso se sumó un segundo control, el dump bueno contra un manifiesto alterado, que sí falla la comparación |
+| AC-3 | **Cumplido.** Solo hay `.age`, en la carpeta local y en OneDrive, con la clave privada aparte. El ADR nombra las dos rutas con `%USERPROFILE%`. La copia de OneDrive no trae los `.recuentos` |
+| AC-4 | **No cumplido como está escrito.** Antes del paso 3 se borraron los tres avisos de DigitalOcean: las tres alertas del chequeo de Uptime, que sigue existiendo, y las dos alertas de recursos. Los cinco chequeos de Healthchecks.io se pausaron **después** de AC-5, porque el backup final reactiva un chequeo pausado al avisar (ver abajo). Lo confirmó el usuario |
+| AC-6 | **Pendiente** hasta el 2026-11-19 a las 18:44 UTC |
+| AC-7 | **Cumplido en parte.** La lectura dio `200` y la ingestión quedó `processed`. **Falta que el usuario confirme que entra a la interfaz** y ve las tres organizaciones |
+| AC-8 | **Cumplido en parte.** La guía se siguió tal como estaba escrita, en un Postgres nuevo, con lectura `200` e ingestión `accepted`. Tiene dos límites. El ingreso a la interfaz no se comprobó, igual que en AC-7. Y la guía **cambió después** por la revisión: los pasos cambiados se corrieron, pero la guía entera no se volvió a seguir desde cero |
+| AC-9 | En el repositorio, escrito. En Notion, la 13.5, las cinco tareas y el «Estado» del raíz, escritos y releídos el 2026-11-18. Faltan el hub del vault y, en Notion, el cierre de la 13.6 y de la fase |
+| AC-10 | Pendiente: se entrega después de AC-6 |
+
+**Desvíos y su motivo:**
+
+- **El orden de los avisos (AC-4).** El brief puso pausar los ocho antes del paso 3. Antes de
+  empezar apareció un hecho que el brief no vio: `crm-backup.service` encadena
+  `crm-heartbeat@backup`, y en Healthchecks.io un chequeo pausado se reactiva cuando recibe un
+  aviso. La sesión propuso borrar las alertas de DigitalOcean antes del paso 3 y pausar
+  Healthchecks.io después del paso 6, y el usuario siguió ese orden. AC-6 dirá si funcionó.
+- **El control negativo de AC-2**, por lo que explica la tabla.
+- **La búsqueda de productos de AC-7 lleva `q`.** `GET /api/read/v1/products` sin `q` da `400` por
+  contrato (`read-v1.md`), así que la prueba usó `?q=iphone`.
+- **Un rol local de más.** El Postgres de desarrollo ganó `crm_owner` (`NOLOGIN`), que la
+  restauración necesita. La guía lo crea junto con `crm_app` y `crm_fx_reader`.
+
+**Pendientes que el cierre de la Fase 13 deja con destino:**
+
+- **AC-6 y el resumen para Vixora CRM**, que va después de AC-6.
+- **En Notion**, cada paso con su autorización:
+  - la 13.6, la 13.5.2-b (descartada, con el motivo), el proyecto de la fase y su tarea espejo;
+  - las cinco tareas de la Fase 13 que siguen en «Esperando». **El usuario aprobó esta propuesta
+    el 2026-11-18**, y se aplica en Notion en su turno. Quedan sin objeto las dos atadas a los droplets: la rotación de syslog y la nota de
+    `contrib` del README de staging. Las otras tres siguen valiendo para el repositorio y pasan a
+    sueltas: la regla LF de `deploy/**`, el timeout de `module-boundary` y paginar el stock de
+    productos.
+- **Los avisos externos.** Los cinco chequeos de Healthchecks.io quedan pausados, no borrados. El
+  chequeo de Uptime de DigitalOcean sigue existiendo, sin alertas. **Borrarlos lo decide el usuario
+  después de AC-6.** Mientras tanto no cuestan nada.
+- **Los dos droplets y el bucket**, para Vixora CRM, según los puntos 4 y 5 del ADR.
