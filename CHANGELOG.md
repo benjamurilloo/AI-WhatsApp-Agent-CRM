@@ -2,9 +2,9 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
-## 2026-11-18 — 13.6: el archivo del CRM como demo local, ejecutado; el cierre espera AC-6
+## 2026-11-19 — 13.6: el archivo del CRM como demo local; cierra la Fase 13 por archivo
 
-Sexta subfase de la Fase 13 ([brief-13.6](docs/decisions/brief-13.6-el-archivo-como-demo-local.md), [ADR 0026](docs/decisions/0026-el-crm-se-archiva-como-demo-local.md)). La pidió Vixora CRM, que necesita los dos droplets. **El CRM queda archivado / demo en localhost.** No hay código de producto ni migraciones. Las salidas están en [evidencia-13.6](docs/decisions/evidencia-13.6-archivo.md). **La subfase y la Fase 13 todavía no cerraron**: esperan AC-6, el resumen para Vixora (AC-10) y la aprobación del usuario. **Esta entrada es autoevaluación.** Un agente que no participó la revisó en solo lectura y dio R1: 2 hallazgos bloqueantes y 11 no bloqueantes, todos verificados y corregidos antes del commit.
+Sexta subfase de la Fase 13 ([brief-13.6](docs/decisions/brief-13.6-el-archivo-como-demo-local.md), [ADR 0026](docs/decisions/0026-el-crm-se-archiva-como-demo-local.md)). La pidió Vixora CRM, que necesita los dos droplets. **El CRM queda archivado / demo en localhost.** No hay código de producto ni migraciones. Las salidas están en [evidencia-13.6](docs/decisions/evidencia-13.6-archivo.md). Se ejecutó el 2026-11-18 en `bb24d1a` y **cerró el 2026-11-19, con la aprobación del usuario**, y con ella la Fase 13. **Esta entrada es autoevaluación.** Un agente que no participó la revisó en solo lectura y dio R1: 2 hallazgos bloqueantes y 11 no bloqueantes, todos verificados y corregidos antes del commit.
 
 **Certifica, cada cosa con su nivel:**
 
@@ -14,20 +14,21 @@ Sexta subfase de la Fase 13 ([brief-13.6](docs/decisions/brief-13.6-el-archivo-c
   - **Dos controles negativos.** El dump cortado falla en `pg_restore`, antes de la comparación que pedía el criterio. Por eso se sumó el dump bueno contra un manifiesto alterado, que sí falla la comparación.
   - Queda **cifrado con `age`** en `%USERPROFILE%\Backups` y en OneDrive, con la clave privada aparte. La copia de OneDrive no trae los `.recuentos`.
 - **Los servicios están apagados, leído en systemd** (AC-5). En los dos droplets, la aplicación y cada timer del CRM están `inactive` y `disabled`, `list-timers` no muestra ningún `crm-*` y `--failed` da 0. `nginx`, `postgresql` y `certbot` siguen corriendo. **No se borró nada del disco.**
-- **La demo corre en local**, en parte de AC-7: sobre `crm_demo` y con credenciales locales, la lectura de productos da `200` y una ingestión queda `processed`.
+- **La demo corre en local** (AC-7). Sobre `crm_demo` y con credenciales locales, la lectura de productos da `200` y una ingestión queda `processed`. **El usuario confirmó** que entra a la interfaz y ve las tres organizaciones.
 - **La guía se siguió desde cero** (AC-8, en parte). Se corrió [demo-local.md](docs/runbooks/demo-local.md) tal como estaba escrita, en un Postgres nuevo sobre un volumen vacío, y dio el mismo resultado. Restaura descifrando directo a `pg_restore`, sin escribir el dump en claro.
+- **24 horas sin alertas** (AC-6), comprobado el 2026-11-19 con la ventana cerrada. En los dos droplets no hubo **ningún** evento de unidades del CRM, y el mismo filtro encuentra las detenciones del 18; el horario del backup pasó sin disparo. Ninguna alerta de Healthchecks.io ni de DigitalOcean, según el usuario.
+- **El resumen para Vixora CRM** (AC-10), entregado **provisional** el 2026-11-18, antes de AC-6, porque el usuario lo pidió para que Vixora avanzara, y **final** al cerrar. Es un desvío del brief, que lo ponía después de AC-6.
 - **Los droplets quedan libres para Vixora CRM**, para destruirlos o reconstruirlos. **Los dos** todavía guardan dumps en claro y los secretos.
 - **El bucket, listado en solo lectura**: 32 backups `.age` de producción, del 2026-10-20 al final, con sus sumas y sus `.recuentos`, en 96 objetos y 19,8 MiB. El `.age` final mide lo mismo que la copia local. No se tocó, y nada lo poda.
 
 **No certifica:**
 
-- **AC-6, las 24 horas sin alertas**: la ventana termina el 2026-11-19 a las 18:44 UTC.
-- **Que el usuario entre a la interfaz** con su contraseña y vea las tres organizaciones, ni en AC-7 ni en AC-8. Lo confirma el usuario.
+- **El ingreso a la interfaz sobre la base de la prueba desde cero** (AC-8): el usuario lo confirmó sobre `crm_demo`, no sobre esa base.
 - **La guía entera tal como quedó**. La revisión cambió los pasos 2, 5 y 8. Los pasos 2 y 5 se corrieron con un control negativo cada uno. El 8 nuevo no se corrió, y la guía no se volvió a seguir desde cero.
 - **AC-4 como está escrito**: los cinco chequeos de Healthchecks.io se pausaron **después** de AC-5. El orden se cambió antes de empezar, porque **el backup final avisa al terminar y un chequeo pausado se reactiva al recibir el aviso**. Los tres avisos de DigitalOcean se borraron antes de detener nada: las tres alertas del chequeo de Uptime y las dos de recursos.
 - **Que el agente corra contra la demo**: es trabajo pendiente de su proyecto. Desde su n8n remoto no alcanza `localhost`, y su tabla de hosts no admite otro. Antes de apagar, según informó, dejó sin definir sus interruptores del CRM y vació su `crm_outbox`.
 
-**Cuando cierre**, la Fase 13 cierra por archivo, sin haber alcanzado su gate de salida. **La 13.5.2-b queda descartada** y **la Fase 14 queda planificada y sin abrir**. El nivel máximo alcanzable pasa a ser **validado en integración**, y la 24.9.1 sigue pausada.
+**Con este cierre**, la Fase 13 cierra por archivo, sin haber alcanzado su gate de salida. **La 13.5.2-b queda descartada** y **la Fase 14 queda planificada y sin abrir**. El nivel máximo alcanzable pasa a ser **validado en integración**, y la 24.9.1 sigue pausada.
 
 **Lo que más enseña**: **una comparación de igualdad sobre dos valores vacíos dio «ok», y la trampa apareció tres veces en la misma subfase.** La primera comprobación de las sumas del backup dio dos «ok» comparando **dos cadenas vacías**: el `cd` a la carpeta falló por permisos y nada lo detuvo. Se rehízo comprobando primero que los valores no estuvieran vacíos. **Una comparación de igualdad no prueba nada si antes no se comprueba que haya algo que comparar**, y su salida se lee igual que la buena. La revisión independiente encontró la misma trampa **dos veces más** en lo que la sesión había escrito después de aprenderla: en el paso 2 de la guía y en la guarda de cero tablas del paso 5. Aprenderla no impidió repetirla.
 

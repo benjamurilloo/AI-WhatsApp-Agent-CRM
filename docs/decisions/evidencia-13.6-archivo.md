@@ -209,11 +209,36 @@ nginx: active · postgresql: active · certbot.timer: active
 deshabilitados nada la llama. **No se borró ninguna unidad, dump ni dato**: las diez unidades
 `crm-*` de producción y las cinco de staging siguen instaladas.
 
-## AC-6 · 24 horas sin alertas
+## AC-6 · 24 horas sin alertas `[leído]` y `[transcrito]`
 
-**Pendiente.** La ventana va desde AC-5 (18:43:56 UTC) hasta el 2026-11-19 18:44 UTC. Tiene que
-pasar al menos un disparo programado, el backup de las 03:15 UTC. El primero que habría corrido
-es la cotización de las 00:00 UTC.
+**Cumplido.** La ventana va desde AC-5 (2026-11-18 18:43:56 UTC) hasta el 2026-11-19 18:44 UTC.
+Se comprobó el 2026-11-19 a las 22:04 UTC, después de que cerrara.
+
+**En los droplets**, leído por `ssh` en solo lectura, contando eventos del journal de las unidades
+del CRM (`crm-backup`, `crm-backup-offsite`, `crm-fx-reader`, `crm-restore-check`, `crm-db-size`,
+`crm-heartbeat@` y el servicio de cada entorno):
+
+```text
+                                           producción   staging
+líneas del journal en la ventana                 9108      7450
+eventos de unidades del CRM en la ventana           0         0
+lo mismo hasta las 22:04 UTC del 19                 0         0
+entre 03:00 y 03:30 UTC del 19 (el backup)          0         0
+control: el mismo filtro, 18/11 17:00–18:44        38        16
+último dump en disco                    el final 18:32  el final 18:33
+timers del CRM                       disabled/inactive disabled/inactive
+```
+
+El control prueba que el filtro ve lo que busca: encuentra las detenciones del 18, como
+`Stopped crm-backup.timer` a las 18:43:46. **El horario del backup pasó sin disparo**, y no hay un
+dump posterior al final, así que tampoco se mandó nada al bucket. La primera lectura usó «crm» como
+filtro y no servía en producción, porque el nombre del host lo contiene y aparece en cada línea; se
+rehízo con los nombres de las unidades.
+
+**Los avisos externos**: el usuario informó el 2026-11-19 que **no le llegó ninguna alerta**, ni de
+Healthchecks.io ni de DigitalOcean, en la ventana. `[transcrito]` La sesión no ve esos paneles.
+No se confirmó que los cinco chequeos de Healthchecks.io sigan en «paused»: que no haya llegado
+ningún aviso es lo que pide el criterio.
 
 ## AC-7 · La demo sobre `crm_demo` `[leído]`
 
@@ -241,7 +266,9 @@ obligatorio y no se mandó, y la primera ingestión dio `400` con `occurred_at`,
 «iPhone Demo», y su evento de ingestión.
 
 **Lo que la sesión no comprobó**: el ingreso del usuario a la interfaz con su contraseña. La parte
-de AC-7 que dice «el usuario entra y ve las organizaciones» la confirma el usuario.
+de AC-7 que dice «el usuario entra y ve las organizaciones» la confirma el usuario. *Confirmado
+por el usuario el 2026-11-18, después del push de `bb24d1a`*: «entro a la demo y veo las tres
+organizaciones». `[transcrito]`
 
 ## AC-8 · La guía seguida desde cero `[leído]`
 

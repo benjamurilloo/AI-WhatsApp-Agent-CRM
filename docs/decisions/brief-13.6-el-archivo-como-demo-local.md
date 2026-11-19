@@ -1,8 +1,7 @@
 # Brief 13.6 — El archivo del CRM como demo local
 
 **Estado: aprobado el 2026-11-18, con D-1 a D-8 cerradas en su opción (a)** por decisión del
-usuario. **Se ejecutó el mismo día hasta el paso 8, pero no está cerrado**: AC-6 sigue abierto
-hasta el 2026-11-19, y faltan AC-9 fuera del repositorio, AC-10 y la aprobación del usuario
+usuario. **Se ejecutó el mismo día y se cerró el 2026-11-19**, con la aprobación del usuario
 (§Cierre). Tipo de tarea: `operations` (backup final,
 apagado de servidores y documentación), **sin código de producto y sin migraciones**. Lo pide el
 proyecto **Vixora CRM**, que lo puso como condición de entrada: su [ADR 0004](../../../Vixora-CRM/docs/decisions/0004-infraestructura.md)
@@ -319,8 +318,8 @@ veredicto fue **R1, con 2 hallazgos bloqueantes y 11 no bloqueantes**. Todos se 
 los archivos y se corrigieron; ver [evidencia-13.6](evidencia-13.6-archivo.md), §La revisión
 independiente. La decisión está en el [ADR 0026](0026-el-crm-se-archiva-como-demo-local.md).
 
-**La subfase no está cerrada.** Faltan AC-6, AC-9 fuera del repositorio, AC-10 y la aprobación del
-usuario.
+**Cerrada el 2026-11-19**, con la aprobación del usuario. Con ella cierra la Fase 13, por archivo y
+sin haber alcanzado su gate.
 
 | Criterio | Estado |
 | --- | --- |
@@ -328,11 +327,11 @@ usuario.
 | AC-2 | **Cumplido, con un desvío en el control negativo.** Producción se restauró en `crm_demo`: coinciden las 77 tablas y la única imagen. Staging se restauró en una base aparte: coinciden sus 17 tablas. El criterio pide que el dump truncado falle **la misma comparación**, pero **falla antes**, en `pg_restore`. Por eso se sumó un segundo control, el dump bueno contra un manifiesto alterado, que sí falla la comparación |
 | AC-3 | **Cumplido.** Solo hay `.age`, en la carpeta local y en OneDrive, con la clave privada aparte. El ADR nombra las dos rutas con `%USERPROFILE%`. La copia de OneDrive no trae los `.recuentos` |
 | AC-4 | **No cumplido como está escrito.** Antes del paso 3 se borraron los tres avisos de DigitalOcean: las tres alertas del chequeo de Uptime, que sigue existiendo, y las dos alertas de recursos. Los cinco chequeos de Healthchecks.io se pausaron **después** de AC-5, porque el backup final reactiva un chequeo pausado al avisar (ver abajo). Lo confirmó el usuario |
-| AC-6 | **Pendiente** hasta el 2026-11-19 a las 18:44 UTC |
-| AC-7 | **Cumplido en parte.** La lectura dio `200` y la ingestión quedó `processed`. **Falta que el usuario confirme que entra a la interfaz** y ve las tres organizaciones |
-| AC-8 | **Cumplido en parte.** La guía se siguió tal como estaba escrita, en un Postgres nuevo, con lectura `200` e ingestión `accepted`. Tiene dos límites. El ingreso a la interfaz no se comprobó, igual que en AC-7. Y la guía **cambió después** por la revisión: los pasos cambiados se corrieron, pero la guía entera no se volvió a seguir desde cero |
-| AC-9 | En el repositorio, escrito. En Notion, la 13.5, las cinco tareas y el «Estado» del raíz, escritos y releídos el 2026-11-18. Faltan el hub del vault y, en Notion, el cierre de la 13.6 y de la fase |
-| AC-10 | Pendiente: se entrega después de AC-6 |
+| AC-6 | **Cumplido.** Comprobado el 2026-11-19, con la ventana cerrada: cero eventos de unidades del CRM en los dos droplets, con un control que sí los encuentra antes de AC-5, y el horario del backup pasado sin disparo `[leído]`. Ninguna alerta de Healthchecks.io ni de DigitalOcean, según el usuario `[transcrito]` |
+| AC-7 | **Cumplido.** La lectura dio `200` y la ingestión quedó `processed`. El 2026-11-18 el usuario confirmó que entra a la interfaz de la demo y ve las tres organizaciones `[transcrito]` |
+| AC-8 | **Cumplido en parte.** La guía se siguió tal como estaba escrita, en un Postgres nuevo, con lectura `200` e ingestión `accepted`. Tiene dos límites. El ingreso a la interfaz no se comprobó sobre esa base: el usuario lo confirmó sobre `crm_demo` (AC-7). Y la guía **cambió después** por la revisión: los pasos cambiados se corrieron, pero la guía entera no se volvió a seguir desde cero |
+| AC-9 | **Cumplido.** En el repositorio, escrito. En Notion, la 13.5, las cinco tareas y el «Estado» del raíz, el 2026-11-18; la 13.6, el proyecto de la Fase 13 y su tarea espejo en «Completado», el 2026-11-19. Todo releído después de escribir. El hub del vault se actualizó los dos días |
+| AC-10 | **Cumplido, con un desvío.** El resumen se entregó **provisional** el 2026-11-18, antes de AC-6, y **final** el 2026-11-19, al cerrar. Sin IPs ni secretos |
 
 **Desvíos y su motivo:**
 
@@ -340,7 +339,10 @@ usuario.
   empezar apareció un hecho que el brief no vio: `crm-backup.service` encadena
   `crm-heartbeat@backup`, y en Healthchecks.io un chequeo pausado se reactiva cuando recibe un
   aviso. La sesión propuso borrar las alertas de DigitalOcean antes del paso 3 y pausar
-  Healthchecks.io después del paso 6, y el usuario siguió ese orden. AC-6 dirá si funcionó.
+  Healthchecks.io después del paso 6, y el usuario siguió ese orden. AC-6 mostró que alcanzó: ningún aviso en las 24 h.
+- **El resumen para Vixora CRM se adelantó (AC-10).** El brief lo ponía después de AC-6. El usuario
+  lo pidió antes, para que Vixora CRM pudiera avanzar, y se entregó marcado como provisional, con lo
+  que todavía faltaba. La versión final se entregó al cerrar.
 - **El control negativo de AC-2**, por lo que explica la tabla.
 - **La búsqueda de productos de AC-7 lleva `q`.** `GET /api/read/v1/products` sin `q` da `400` por
   contrato (`read-v1.md`), así que la prueba usó `?q=iphone`.
@@ -349,8 +351,7 @@ usuario.
 
 **Pendientes que el cierre de la Fase 13 deja con destino:**
 
-- **AC-6 y el resumen para Vixora CRM**, que va después de AC-6.
-- **En Notion**, cada paso con su autorización:
+- **En Notion**, *hecho el 2026-11-18 y el 2026-11-19*, cada paso con su autorización:
   - la 13.6, la 13.5.2-b (descartada, con el motivo), el proyecto de la fase y su tarea espejo;
   - las cinco tareas de la Fase 13 que siguen en «Esperando». **El usuario aprobó esta propuesta
     el 2026-11-18**, y se aplica en Notion en su turno. Quedan sin objeto las dos atadas a los droplets: la rotación de syslog y la nota de
